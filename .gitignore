@@ -1,0 +1,55 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android
+.gradle/
+local.properties
+**/GeneratedPluginRegistrant.java
+android/**/generated/
+android/app/src/main/res/values/strings.xml
+
+# iOS
+**/Pods/
+**/DerivedData/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/ServiceDefinitions.json
+ios/Podfile.lock
+ios/.pbpkg/
+
+# Web
+public/
+
+# MacOS
+.DS_Store
+.history/
+.vscode/
+.idea/
+*.log
+*.lock
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.pbxuser
+*.pyc
+*.swp
+*~
+*.orig
+*.rej
+*.bak
+*.tmp
+*.temp
+
+# Test
+test_report/
+coverage/
+
+# Misc
+.env
+.DS_Store

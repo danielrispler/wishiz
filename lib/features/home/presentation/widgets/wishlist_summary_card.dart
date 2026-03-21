@@ -5,6 +5,7 @@ class WishlistSummaryCard extends StatelessWidget {
   final String title;
   final int itemCount;
   final String lastUpdated;
+  final String? coverImageUrl;
   final VoidCallback? onTap;
 
   const WishlistSummaryCard({
@@ -12,6 +13,7 @@ class WishlistSummaryCard extends StatelessWidget {
     required this.title,
     required this.itemCount,
     required this.lastUpdated,
+    this.coverImageUrl,
     this.onTap,
   });
 
@@ -35,6 +37,29 @@ class WishlistSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (coverImageUrl != null && coverImageUrl!.isNotEmpty) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.network(
+                        coverImageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: colorScheme.surfaceContainerHigh,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.image_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.spacing4),
+                ],
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium,

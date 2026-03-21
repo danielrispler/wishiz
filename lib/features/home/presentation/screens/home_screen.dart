@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
 import 'package:wishiz/features/home/presentation/widgets/glassmorphic_bottom_nav.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
+import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
+import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    required this.repository,
+  });
+
+  final WishlistRepository repository;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -13,13 +22,35 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
-  void _showPlaceholderMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+  Future<void> _openWishlistEditor({Wishlist? wishlist}) async {
+    final wishlistId = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => WishlistEditorScreen(
+          repository: widget.repository,
+          wishlist: wishlist,
+        ),
+      ),
+    );
+
+    if (!mounted || wishlistId == null || wishlist != null) {
+      return;
+    }
+
+    await _openWishlistDetails(wishlistId);
+  }
+
+  Future<void> _openWishlistDetails(String wishlistId) {
+    return Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WishlistDetailScreen(
+          repository: widget.repository,
+          wishlistId: wishlistId,
+        ),
+      ),
     );
   }
 
-  Widget _buildHomeTab() {
+  Widget _buildHomeTab(List<Wishlist> activeWishlists) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return SafeArea(
@@ -52,24 +83,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: AppConstants.spacing4),
-                
-                // Static Data Setup
-                WishlistSummaryCard(
-                  title: 'Home Decor',
-                  itemCount: 12,
-                  lastUpdated: '2 days ago',
-                  onTap: () => _showPlaceholderMessage('Opening Home Decor list...'),
-                ),
-                WishlistSummaryCard(
-                  title: 'Tech Gear 2024',
-                  itemCount: 5,
-                  lastUpdated: 'yesterday',
-                  onTap: () => _showPlaceholderMessage('Opening Tech Gear 2024 list...'),
-                ),
-                
+
+                if (activeWishlists.isEmpty)
+                  _buildEmptyState(
+                    title: 'No lists yet',
+                    description:
+                        'Create your first list to turn this editorial shell into a working collection.',
+                  )
+                else
+                  ...activeWishlists.map(
+                    (wishlist) => WishlistSummaryCard(
+                      title: wishlist.title,
+                      itemCount: wishlist.itemCount,
+                      lastUpdated: _formatRelativeDate(wishlist.updatedAt),
+                      coverImageUrl: wishlist.coverImageUrl,
+                      onTap: () => _openWishlistDetails(wishlist.id),
+                    ),
+                  ),
+
                 const SizedBox(height: AppConstants.spacing6),
-                
-                // New Wishlist Section
+
                 Text(
                   'New Wishlist',
                   style: Theme.of(context).textTheme.headlineSmall,
@@ -93,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(AppConstants.radiusFull),
                   ),
                   child: ElevatedButton(
-                    onPressed: () => _showPlaceholderMessage('Create List flow coming next.'),
+                    onPressed: () => _openWishlistEditor(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -108,8 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                
-                // Provide padding for glassmorphic nav bar overlay
+
                 const SizedBox(height: 100),
               ]),
             ),
@@ -119,37 +151,149 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPlaceholderTab(String title) {
+  Widget _buildCollectionTab({
+    required String title,
+    required String description,
+    required List<Wishlist> wishlists,
+    required String emptyTitle,
+    required String emptyDescription,
+  }) {
     return SafeArea(
-      child: Center(
-        child: Text(
-          '$title tab placeholder',
-          style: Theme.of(context).textTheme.headlineSmall,
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppConstants.spacing4,
+          AppConstants.spacing6,
+          AppConstants.spacing4,
+          100,
         ),
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          if (wishlists.isEmpty)
+            _buildEmptyState(
+              title: emptyTitle,
+              description: emptyDescription,
+            )
+          else
+            ...wishlists.map(
+              (wishlist) => WishlistSummaryCard(
+                title: wishlist.title,
+                itemCount: wishlist.itemCount,
+                lastUpdated: _formatRelativeDate(wishlist.updatedAt),
+                coverImageUrl: wishlist.coverImageUrl,
+                onTap: () => _openWishlistDetails(wishlist.id),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: IndexedStack(
-        index: _currentIndex,
+  Widget _buildEmptyState({
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHomeTab(),
-          _buildPlaceholderTab('Shared'),
-          _buildPlaceholderTab('Past lists'),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ],
       ),
-      bottomNavigationBar: GlassmorphicBottomNav(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-      ),
+    );
+  }
+
+  String _formatRelativeDate(DateTime updatedAt) {
+    final difference = DateTime.now().difference(updatedAt);
+
+    if (difference.inDays >= 2) {
+      return '${difference.inDays} days ago';
+    }
+    if (difference.inDays == 1) {
+      return 'yesterday';
+    }
+    if (difference.inHours >= 1) {
+      return '${difference.inHours}h ago';
+    }
+    if (difference.inMinutes >= 1) {
+      return '${difference.inMinutes}m ago';
+    }
+    return 'just now';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<Wishlist>>(
+      valueListenable: widget.repository.watchWishlists(),
+      builder: (context, wishlists, _) {
+        final activeWishlists = wishlists
+            .where((wishlist) => !wishlist.isArchived)
+            .toList(growable: false);
+        final sharedWishlists = wishlists
+            .where((wishlist) => wishlist.isShared && !wishlist.isArchived)
+            .toList(growable: false);
+        final archivedWishlists = wishlists
+            .where((wishlist) => wishlist.isArchived)
+            .toList(growable: false);
+
+        return Scaffold(
+          extendBody: true,
+          body: IndexedStack(
+            index: _currentIndex,
+            children: [
+              _buildHomeTab(activeWishlists),
+              _buildCollectionTab(
+                title: 'Shared',
+                description:
+                    'Collections that are collaborative, visible, and ready for shared planning.',
+                wishlists: sharedWishlists,
+                emptyTitle: 'Nothing shared yet',
+                emptyDescription:
+                    'Lists marked as shared will appear here without changing your current design system.',
+              ),
+              _buildCollectionTab(
+                title: 'Past lists',
+                description:
+                    'Archived collections stay available here so the active space remains clean.',
+                wishlists: archivedWishlists,
+                emptyTitle: 'No archived lists',
+                emptyDescription:
+                    'Archive a finished list to move it here while keeping its details intact.',
+              ),
+            ],
+          ),
+          bottomNavigationBar: GlassmorphicBottomNav(
+            currentIndex: _currentIndex,
+            onTap: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+          ),
+        );
+      },
     );
   }
 }

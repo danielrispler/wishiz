@@ -185,6 +185,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
+    String priority = 'Medium',
+    String status = 'Saved',
     String? imageUrl,
     String? productUrl,
   }) {
@@ -193,6 +195,8 @@ class PersistentWishlistRepository implements WishlistRepository {
       title: title,
       notes: notes,
       priceLabel: priceLabel,
+      priority: priority,
+      status: status,
       imageUrl: imageUrl,
       productUrl: productUrl,
     );
@@ -207,6 +211,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
+    String priority = 'Medium',
+    String status = 'Saved',
     String? imageUrl,
     String? productUrl,
   }) {
@@ -216,6 +222,8 @@ class PersistentWishlistRepository implements WishlistRepository {
       title: title,
       notes: notes,
       priceLabel: priceLabel,
+      priority: priority,
+      status: status,
       imageUrl: imageUrl,
       productUrl: productUrl,
     );

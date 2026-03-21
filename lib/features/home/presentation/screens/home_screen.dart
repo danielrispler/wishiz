@@ -52,6 +52,53 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showFeedback(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+  }
+
+  Future<void> _confirmDeleteWishlist(Wishlist wishlist) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete list?'),
+        content: Text(
+          'Remove "${wishlist.title}" permanently from this device?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || shouldDelete != true) {
+      return;
+    }
+
+    widget.repository.deleteWishlist(wishlist.id);
+    _showFeedback('List deleted.');
+  }
+
+  void _archiveWishlist(Wishlist wishlist) {
+    widget.repository.archiveWishlist(wishlist.id);
+    _showFeedback('List archived.');
+  }
+
+  void _restoreWishlist(Wishlist wishlist) {
+    widget.repository.restoreWishlist(wishlist.id);
+    _showFeedback('List restored.');
+  }
+
   Widget _buildHomeTab(List<Wishlist> activeWishlists) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -101,14 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   )
                 else
                   ...activeWishlists.map(
-                    (wishlist) => WishlistSummaryCard(
-                      title: wishlist.title,
-                      itemCount: wishlist.itemCount,
-                      lastUpdated: _formatRelativeDate(wishlist.updatedAt),
-                      coverImageUrl: wishlist.coverImageUrl,
-                      supportingText: _supportingTextForWishlist(wishlist),
-                      onTap: () => _openWishlistDetails(wishlist.id),
-                    ),
+                    (wishlist) => _buildWishlistCard(wishlist),
                   ),
 
                 const SizedBox(height: AppConstants.spacing6),
@@ -135,19 +175,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     borderRadius: BorderRadius.circular(AppConstants.radiusFull),
                   ),
-                  child: ElevatedButton(
-                    onPressed: () => _openWishlistEditor(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(vertical: AppConstants.spacing4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                  child: Semantics(
+                    button: true,
+                    label: 'Create a new wishlist',
+                    child: ElevatedButton(
+                      onPressed: () => _openWishlistEditor(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(vertical: AppConstants.spacing4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      'Create List',
-                      style: Theme.of(context).textTheme.titleSmall,
+                      child: Text(
+                        'Create List',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                     ),
                   ),
                 ),
@@ -201,18 +245,96 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           else
             ...wishlists.map(
-              (wishlist) => WishlistSummaryCard(
-                title: wishlist.title,
-                itemCount: wishlist.itemCount,
-                lastUpdated: _formatRelativeDate(wishlist.updatedAt),
-                coverImageUrl: wishlist.coverImageUrl,
-                supportingText: _supportingTextForWishlist(wishlist),
-                onTap: () => _openWishlistDetails(wishlist.id),
+              (wishlist) => _buildWishlistCard(
+                wishlist,
+                isArchivedView: title == 'Past lists',
+                isSharedView: title == 'Shared',
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _buildWishlistCard(
+    Wishlist wishlist, {
+    bool isArchivedView = false,
+    bool isSharedView = false,
+  }) {
+    return WishlistSummaryCard(
+      title: wishlist.title,
+      itemCount: wishlist.itemCount,
+      lastUpdated: _formatRelativeDate(wishlist.updatedAt),
+      coverImageUrl: wishlist.coverImageUrl,
+      supportingText: _supportingTextForWishlist(wishlist),
+      actions: _buildWishlistActions(
+        wishlist,
+        isArchivedView: isArchivedView,
+        isSharedView: isSharedView,
+      ),
+      onTap: () => _openWishlistDetails(wishlist.id),
+    );
+  }
+
+  List<Widget> _buildWishlistActions(
+    Wishlist wishlist, {
+    required bool isArchivedView,
+    required bool isSharedView,
+  }) {
+    if (isArchivedView) {
+      return [
+        Tooltip(
+          message: 'Restore list',
+          child: TextButton.icon(
+            onPressed: () => _restoreWishlist(wishlist),
+            icon: const Icon(Icons.unarchive_outlined),
+            label: const Text('Restore'),
+          ),
+        ),
+        Tooltip(
+          message: 'Delete list',
+          child: TextButton.icon(
+            onPressed: () => _confirmDeleteWishlist(wishlist),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Delete'),
+          ),
+        ),
+      ];
+    }
+
+    final actions = <Widget>[
+      Tooltip(
+        message: 'Edit list',
+        child: TextButton.icon(
+          onPressed: () => _openWishlistEditor(wishlist: wishlist),
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Edit'),
+        ),
+      ),
+      Tooltip(
+        message: 'Archive list',
+        child: TextButton.icon(
+          onPressed: () => _archiveWishlist(wishlist),
+          icon: const Icon(Icons.archive_outlined),
+          label: const Text('Archive'),
+        ),
+      ),
+    ];
+
+    if (wishlist.isShared || isSharedView) {
+      actions.add(
+        Tooltip(
+          message: 'Manage sharing',
+          child: TextButton.icon(
+            onPressed: () => _openWishlistDetails(wishlist.id),
+            icon: const Icon(Icons.group_outlined),
+            label: const Text('Manage Sharing'),
+          ),
+        ),
+      );
+    }
+
+    return actions;
   }
 
   Widget _buildSearchField({
@@ -229,32 +351,36 @@ class _HomeScreenState extends State<HomeScreen> {
         horizontal: AppConstants.spacing4,
         vertical: 2,
       ),
-      child: TextFormField(
-        key: ValueKey('$hintText-$_searchFieldVersion'),
-        initialValue: _searchQuery,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          icon: const Icon(Icons.search),
-          hintText: hintText,
-          border: InputBorder.none,
-          suffixIcon: _searchQuery.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: 'Clear search',
-                  onPressed: () {
-                    setState(() {
-                      _searchQuery = '';
-                      _searchFieldVersion += 1;
-                    });
-                  },
-                  icon: const Icon(Icons.close),
-                ),
+      child: Semantics(
+        textField: true,
+        label: hintText,
+        child: TextFormField(
+          key: ValueKey('$hintText-$_searchFieldVersion'),
+          initialValue: _searchQuery,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            icon: const Icon(Icons.search),
+            hintText: hintText,
+            border: InputBorder.none,
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      setState(() {
+                        _searchQuery = '';
+                        _searchFieldVersion += 1;
+                      });
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+          ),
+          onChanged: (value) {
+            setState(() {
+              _searchQuery = value.trim();
+            });
+          },
         ),
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value.trim();
-          });
-        },
       ),
     );
   }

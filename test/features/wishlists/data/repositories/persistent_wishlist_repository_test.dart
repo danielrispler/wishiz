@@ -30,6 +30,8 @@ void main() {
       repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Weekender bag',
+        priority: 'High',
+        status: 'Considering',
         imageUrl: 'https://example.com/bag.jpg',
         productUrl: 'https://example.com/bag',
       );
@@ -44,6 +46,8 @@ void main() {
       expect(reloadedWishlist?.coverImageUrl, 'https://example.com/travel.jpg');
       expect(reloadedWishlist?.items, hasLength(1));
       expect(reloadedWishlist?.items.first.title, 'Weekender bag');
+      expect(reloadedWishlist?.items.first.priority, 'High');
+      expect(reloadedWishlist?.items.first.status, 'Considering');
       expect(reloadedWishlist?.items.first.imageUrl, 'https://example.com/bag.jpg');
       expect(
         reloadedWishlist?.items.first.productUrl,

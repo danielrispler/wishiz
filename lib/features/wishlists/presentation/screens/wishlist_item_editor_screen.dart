@@ -29,6 +29,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late final TextEditingController _priceController;
   late final TextEditingController _imageUrlController;
   late final TextEditingController _productUrlController;
+  late String _selectedPriority;
+  late String _selectedStatus;
 
   @override
   void initState() {
@@ -38,6 +40,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     _priceController = TextEditingController(text: widget.item?.priceLabel ?? '');
     _imageUrlController = TextEditingController(text: widget.item?.imageUrl ?? '');
     _productUrlController = TextEditingController(text: widget.item?.productUrl ?? '');
+    _selectedPriority = widget.item?.priority ?? WishlistItem.priorities[1];
+    _selectedStatus = widget.item?.status ?? WishlistItem.statuses.first;
   }
 
   @override
@@ -57,7 +61,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
 
     final title = _titleController.text.trim();
     final notes = _optionalValue(_notesController.text);
-    final priceLabel = _optionalValue(_priceController.text);
+    final priceLabel = _normalizePriceLabel(_priceController.text);
     final imageUrl = _optionalValue(_imageUrlController.text);
     final productUrl = _optionalValue(_productUrlController.text);
 
@@ -68,6 +72,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         title: title,
         notes: notes,
         priceLabel: priceLabel,
+        priority: _selectedPriority,
+        status: _selectedStatus,
         imageUrl: imageUrl,
         productUrl: productUrl,
       );
@@ -77,6 +83,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         title: title,
         notes: notes,
         priceLabel: priceLabel,
+        priority: _selectedPriority,
+        status: _selectedStatus,
         imageUrl: imageUrl,
         productUrl: productUrl,
       );
@@ -159,6 +167,51 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     hintText: '\$120',
                     border: InputBorder.none,
                   ),
+                  validator: _validateOptionalPrice,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacing3),
+              _buildFieldCard(
+                context,
+                child: DropdownButtonFormField<String>(
+                  value: _selectedPriority,
+                  decoration: const InputDecoration(
+                    labelText: 'Priority',
+                    border: InputBorder.none,
+                  ),
+                  items: WishlistItem.priorities.map((priority) {
+                    return DropdownMenuItem(
+                      value: priority,
+                      child: Text(priority),
+                    );
+                  }).toList(growable: false),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedPriority = value ?? WishlistItem.priorities[1];
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacing3),
+              _buildFieldCard(
+                context,
+                child: DropdownButtonFormField<String>(
+                  value: _selectedStatus,
+                  decoration: const InputDecoration(
+                    labelText: 'Status',
+                    border: InputBorder.none,
+                  ),
+                  items: WishlistItem.statuses.map((status) {
+                    return DropdownMenuItem(
+                      value: status,
+                      child: Text(status),
+                    );
+                  }).toList(growable: false),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedStatus = value ?? WishlistItem.statuses.first;
+                    });
+                  },
                 ),
               ),
               const SizedBox(height: AppConstants.spacing3),
@@ -249,6 +302,28 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   String? _optionalValue(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _normalizePriceLabel(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    return trimmed.startsWith('\$') ? trimmed : '\$$trimmed';
+  }
+
+  String? _validateOptionalPrice(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final normalized = trimmed.startsWith('\$')
+        ? trimmed.substring(1)
+        : trimmed;
+    final isValid = RegExp(r'^\d+([.,]\d{1,2})?$').hasMatch(normalized);
+    return isValid ? null : 'Use a valid amount like 120 or 120.00.';
   }
 
   String? _validateOptionalUrl(String? value) {

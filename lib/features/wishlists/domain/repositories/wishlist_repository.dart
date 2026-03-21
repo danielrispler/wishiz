@@ -48,6 +48,8 @@ abstract class WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
+    String priority = 'Medium',
+    String status = 'Saved',
     String? imageUrl,
     String? productUrl,
   });
@@ -58,6 +60,8 @@ abstract class WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
+    String priority = 'Medium',
+    String status = 'Saved',
     String? imageUrl,
     String? productUrl,
   });

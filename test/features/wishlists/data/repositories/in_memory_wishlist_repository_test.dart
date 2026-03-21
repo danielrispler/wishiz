@@ -61,6 +61,8 @@ void main() {
         title: 'Stoneware bowl set',
         notes: 'Look for a matte finish.',
         priceLabel: '\$84',
+        priority: 'High',
+        status: 'Considering',
         imageUrl: 'https://example.com/bowls.jpg',
         productUrl: 'https://example.com/bowls',
       );
@@ -71,6 +73,8 @@ void main() {
         title: 'Stoneware serving bowl set',
         notes: null,
         priceLabel: null,
+        priority: 'Low',
+        status: 'Purchased',
         imageUrl: null,
         productUrl: 'https://example.com/serving-bowls',
       );
@@ -83,6 +87,8 @@ void main() {
       expect(refreshedWishlist?.items.first.title, 'Stoneware serving bowl set');
       expect(refreshedWishlist?.items.first.notes, isNull);
       expect(refreshedWishlist?.items.first.priceLabel, isNull);
+      expect(refreshedWishlist?.items.first.priority, 'Low');
+      expect(refreshedWishlist?.items.first.status, 'Purchased');
       expect(refreshedWishlist?.items.first.imageUrl, isNull);
       expect(
         refreshedWishlist?.items.first.productUrl,

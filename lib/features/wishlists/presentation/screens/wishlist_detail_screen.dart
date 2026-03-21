@@ -157,14 +157,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       ),
                     ),
                     if (!wishlist.isArchived)
-                      TextButton.icon(
-                        tooltip: 'Add a new item',
-                        onPressed: () => _openItemEditor(
-                          context,
-                          wishlistId: wishlist.id,
+                      Tooltip(
+                        message: 'Add a new item',
+                        child: TextButton.icon(
+                          onPressed: () => _openItemEditor(
+                            context,
+                            wishlistId: wishlist.id,
+                          ),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Item'),
                         ),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Item'),
                       ),
                   ],
                 ),

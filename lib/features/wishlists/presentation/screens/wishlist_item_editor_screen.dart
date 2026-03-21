@@ -86,6 +86,12 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       return;
     }
 
+    final message = widget.isEditing ? 'Item updated.' : 'Item added.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     Navigator.of(context).pop();
   }
 

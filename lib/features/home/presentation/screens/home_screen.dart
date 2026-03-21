@@ -21,6 +21,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  String _searchQuery = '';
+  int _searchFieldVersion = 0;
 
   Future<void> _openWishlistEditor({Wishlist? wishlist}) async {
     final wishlistId = await Navigator.of(context).push<String>(
@@ -83,12 +85,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: AppConstants.spacing4),
+                _buildSearchField(
+                  hintText: 'Search your lists',
+                ),
+                const SizedBox(height: AppConstants.spacing4),
 
                 if (activeWishlists.isEmpty)
                   _buildEmptyState(
-                    title: 'No lists yet',
-                    description:
-                        'Create your first list to turn this editorial shell into a working collection.',
+                    title: _searchQuery.isEmpty
+                        ? 'No lists yet'
+                        : 'No matching lists',
+                    description: _searchQuery.isEmpty
+                        ? 'Create your first list to turn this editorial shell into a working collection.'
+                        : 'Try a different title or clear the search to see every collection again.',
                   )
                 else
                   ...activeWishlists.map(
@@ -97,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: wishlist.itemCount,
                       lastUpdated: _formatRelativeDate(wishlist.updatedAt),
                       coverImageUrl: wishlist.coverImageUrl,
+                      supportingText: _supportingTextForWishlist(wishlist),
                       onTap: () => _openWishlistDetails(wishlist.id),
                     ),
                   ),
@@ -178,10 +188,16 @@ class _HomeScreenState extends State<HomeScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: AppConstants.spacing4),
+          _buildSearchField(
+            hintText: 'Search $title',
+          ),
+          const SizedBox(height: AppConstants.spacing4),
           if (wishlists.isEmpty)
             _buildEmptyState(
-              title: emptyTitle,
-              description: emptyDescription,
+              title: _searchQuery.isEmpty ? emptyTitle : 'No matching lists',
+              description: _searchQuery.isEmpty
+                  ? emptyDescription
+                  : 'Try a different title or clear the search to see every collection again.',
             )
           else
             ...wishlists.map(
@@ -190,12 +206,82 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemCount: wishlist.itemCount,
                 lastUpdated: _formatRelativeDate(wishlist.updatedAt),
                 coverImageUrl: wishlist.coverImageUrl,
+                supportingText: _supportingTextForWishlist(wishlist),
                 onTap: () => _openWishlistDetails(wishlist.id),
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _buildSearchField({
+    required String hintText,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacing4,
+        vertical: 2,
+      ),
+      child: TextFormField(
+        key: ValueKey('$hintText-$_searchFieldVersion'),
+        initialValue: _searchQuery,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          icon: const Icon(Icons.search),
+          hintText: hintText,
+          border: InputBorder.none,
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    setState(() {
+                      _searchQuery = '';
+                      _searchFieldVersion += 1;
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.trim();
+          });
+        },
+      ),
+    );
+  }
+
+  List<Wishlist> _filterWishlists(List<Wishlist> wishlists) {
+    final query = _searchQuery.toLowerCase();
+    if (query.isEmpty) {
+      return wishlists;
+    }
+
+    return wishlists.where((wishlist) {
+      return wishlist.title.toLowerCase().contains(query);
+    }).toList(growable: false);
+  }
+
+  String? _supportingTextForWishlist(Wishlist wishlist) {
+    if (!wishlist.isShared || wishlist.sharedUsers.isEmpty) {
+      return null;
+    }
+
+    final owner = wishlist.sharedUsers.first;
+    if (wishlist.sharedUsers.length == 1) {
+      return '${owner.role} · ${owner.name}';
+    }
+
+    final collaboratorCount = wishlist.sharedUsers.length - 1;
+    return '${owner.role} · ${owner.name} +$collaboratorCount more';
   }
 
   Widget _buildEmptyState({
@@ -248,15 +334,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return ValueListenableBuilder<List<Wishlist>>(
       valueListenable: widget.repository.watchWishlists(),
       builder: (context, wishlists, _) {
-        final activeWishlists = wishlists
+        final activeWishlists = _filterWishlists(
+          wishlists
             .where((wishlist) => !wishlist.isArchived)
-            .toList(growable: false);
-        final sharedWishlists = wishlists
+            .toList(growable: false),
+        );
+        final sharedWishlists = _filterWishlists(
+          wishlists
             .where((wishlist) => wishlist.isShared && !wishlist.isArchived)
-            .toList(growable: false);
-        final archivedWishlists = wishlists
+            .toList(growable: false),
+        );
+        final archivedWishlists = _filterWishlists(
+          wishlists
             .where((wishlist) => wishlist.isArchived)
-            .toList(growable: false);
+            .toList(growable: false),
+        );
 
         return Scaffold(
           extendBody: true,

@@ -121,5 +121,33 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('adds and removes collaborators on a shared wishlist', () {
+      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final wishlist = repository.createWishlist(
+        title: 'Weekend Trip',
+        description: 'Packing, bookings, and gift ideas.',
+      );
+
+      final sharedWishlist = repository.addSharedUser(
+        wishlistId: wishlist.id,
+        name: 'Maya',
+        email: 'maya@example.com',
+        role: 'Editor',
+      );
+
+      final collaboratorId = sharedWishlist!.sharedUsers.first.id;
+      final removed = repository.removeSharedUser(
+        wishlistId: wishlist.id,
+        userId: collaboratorId,
+      );
+
+      expect(sharedWishlist.isShared, isTrue);
+      expect(sharedWishlist.sharedUsers, hasLength(1));
+      expect(sharedWishlist.sharedUsers.first.email, 'maya@example.com');
+      expect(removed, isTrue);
+      expect(repository.findById(wishlist.id)?.sharedUsers, isEmpty);
+      expect(repository.findById(wishlist.id)?.isShared, isFalse);
+    });
   });
 }

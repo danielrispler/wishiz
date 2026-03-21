@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 
@@ -29,6 +30,18 @@ abstract class WishlistRepository {
   Wishlist? restoreWishlist(String id);
 
   bool deleteWishlist(String id);
+
+  Wishlist? addSharedUser({
+    required String wishlistId,
+    required String name,
+    required String email,
+    required String role,
+  });
+
+  bool removeSharedUser({
+    required String wishlistId,
+    required String userId,
+  });
 
   WishlistItem addWishlistItem({
     required String wishlistId,

@@ -76,6 +76,12 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
       return;
     }
 
+    final message = widget.isEditing ? 'List updated.' : 'List created.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     Navigator.of(context).pop(savedWishlist.id);
   }
 

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -57,11 +60,13 @@ class WishlistDetailScreen extends StatelessWidget {
                 onSelected: (action) async {
                   if (action == _WishlistAction.archive) {
                     repository.archiveWishlist(wishlist.id);
+                    _showFeedback(context, 'List archived.');
                     return;
                   }
 
                   if (action == _WishlistAction.restore) {
                     repository.restoreWishlist(wishlist.id);
+                    _showFeedback(context, 'List restored.');
                     return;
                   }
 
@@ -87,6 +92,7 @@ class WishlistDetailScreen extends StatelessWidget {
 
                   if (shouldDelete == true) {
                     repository.deleteWishlist(wishlist.id);
+                    _showFeedback(context, 'List deleted.');
                     if (context.mounted) {
                       Navigator.of(context).pop();
                     }
@@ -125,6 +131,8 @@ class WishlistDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.all(AppConstants.spacing4),
               children: [
                 _buildHeroCard(context, wishlist),
+                const SizedBox(height: AppConstants.spacing6),
+                _buildSharingSection(context, wishlist),
                 const SizedBox(height: AppConstants.spacing6),
                 Row(
                   children: [
@@ -249,6 +257,100 @@ class WishlistDetailScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildSharingSection(BuildContext context, Wishlist wishlist) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sharing',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              if (!wishlist.isArchived)
+                TextButton.icon(
+                  onPressed: () => _openInviteDialog(context, wishlist),
+                  icon: const Icon(Icons.person_add_alt_1_outlined),
+                  label: const Text('Invite'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            wishlist.sharedUsers.isEmpty
+                ? 'No collaborators yet. Invite someone to make this list shared.'
+                : 'Owner and collaborators for this list.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (wishlist.sharedUsers.isNotEmpty) ...[
+            const SizedBox(height: AppConstants.spacing4),
+            ...wishlist.sharedUsers.map(
+              (user) => _buildSharedUserRow(context, wishlist, user),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSharedUserRow(
+    BuildContext context,
+    Wishlist wishlist,
+    SharedUser user,
+  ) {
+    final canRemove = !wishlist.isArchived && user.role.toLowerCase() != 'owner';
+    final trimmedName = user.name.trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Row(
+        children: [
+          CircleAvatar(
+            child: Text(
+              trimmedName.isEmpty ? '?' : trimmedName[0].toUpperCase(),
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacing4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${user.role} · ${user.email}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          if (canRemove)
+            IconButton(
+              tooltip: 'Remove collaborator',
+              onPressed: () => _removeCollaborator(context, wishlist, user),
+              icon: const Icon(Icons.person_remove_outlined),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openItemEditor(
     BuildContext context, {
     required String wishlistId,
@@ -263,6 +365,142 @@ class WishlistDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openInviteDialog(
+    BuildContext context,
+    Wishlist wishlist,
+  ) async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    var role = 'Editor';
+
+    final collaborator = await showDialog<_InviteCollaboratorResult>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Invite collaborator'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please add a name.';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                      ),
+                      validator: (value) {
+                        final trimmed = value?.trim() ?? '';
+                        final uri = Uri.tryParse('mailto:$trimmed');
+                        if (trimmed.isEmpty) {
+                          return 'Please add an email.';
+                        }
+                        if (uri == null || !trimmed.contains('@')) {
+                          return 'Please add a valid email.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: AppConstants.spacing3),
+                    DropdownButtonFormField<String>(
+                      value: role,
+                      decoration: const InputDecoration(
+                        labelText: 'Role',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Editor',
+                          child: Text('Editor'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Viewer',
+                          child: Text('Viewer'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          role = value ?? 'Editor';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) {
+                      return;
+                    }
+
+                    Navigator.of(context).pop(
+                      _InviteCollaboratorResult(
+                        name: nameController.text.trim(),
+                        email: emailController.text.trim(),
+                        role: role,
+                      ),
+                    );
+                  },
+                  child: const Text('Invite'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameController.dispose();
+    emailController.dispose();
+
+    if (collaborator == null) {
+      return;
+    }
+
+    repository.addSharedUser(
+      wishlistId: wishlist.id,
+      name: collaborator.name,
+      email: collaborator.email,
+      role: collaborator.role,
+    );
+    _showFeedback(context, 'Collaborator invited.');
+  }
+
+  void _removeCollaborator(
+    BuildContext context,
+    Wishlist wishlist,
+    SharedUser user,
+  ) {
+    final wasRemoved = repository.removeSharedUser(
+      wishlistId: wishlist.id,
+      userId: user.id,
+    );
+
+    if (wasRemoved) {
+      _showFeedback(context, '${user.name} removed.');
+    }
   }
 
   Widget _buildEmptyItemsState(BuildContext context, Wishlist wishlist) {
@@ -302,109 +540,183 @@ class WishlistDetailScreen extends StatelessWidget {
     Wishlist wishlist,
     WishlistItem item,
   ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
-            _buildNetworkImage(
-              context,
-              imageUrl: item.imageUrl!,
-              aspectRatio: 4 / 3,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      child: Slidable(
+        key: ValueKey(item.id),
+        startActionPane: ActionPane(
+          motion: const StretchMotion(),
+          extentRatio: 0.28,
+          children: [
+            SlidableAction(
+              onPressed: (_) => _shareItem(context, wishlist, item),
+              backgroundColor: Colors.green.shade600,
+              foregroundColor: Colors.white,
+              icon: Icons.share_outlined,
+              label: 'Share',
+              borderRadius: BorderRadius.circular(AppConstants.radiusXl),
             ),
-            const SizedBox(height: AppConstants.spacing4),
           ],
-          Row(
+        ),
+        endActionPane: wishlist.isArchived
+            ? null
+            : ActionPane(
+                motion: const StretchMotion(),
+                extentRatio: 0.28,
+                children: [
+                  SlidableAction(
+                    onPressed: (_) => _confirmDeleteItem(context, wishlist, item),
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    icon: Icons.delete_outline,
+                    label: 'Delete',
+                    borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+                  ),
+                ],
+              ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          padding: const EdgeInsets.all(AppConstants.spacing4),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  item.title,
-                  style: Theme.of(context).textTheme.titleMedium,
+              if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
+                _buildNetworkImage(
+                  context,
+                  imageUrl: item.imageUrl!,
+                  aspectRatio: 4 / 3,
                 ),
-              ),
-              if (!wishlist.isArchived)
-                PopupMenuButton<_WishlistItemAction>(
-                  onSelected: (action) async {
-                    if (action == _WishlistItemAction.edit) {
-                      await _openItemEditor(
-                        context,
-                        wishlistId: wishlist.id,
-                        item: item,
-                      );
-                      return;
-                    }
-
-                    final shouldDelete = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete item?'),
-                        content: Text(
-                          'Remove "${item.title}" from this list?',
+                const SizedBox(height: AppConstants.spacing4),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  if (!wishlist.isArchived)
+                    PopupMenuButton<_WishlistItemAction>(
+                      onSelected: (action) async {
+                        if (action == _WishlistItemAction.edit) {
+                          await _openItemEditor(
+                            context,
+                            wishlistId: wishlist.id,
+                            item: item,
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _WishlistItemAction.edit,
+                          child: Text('Edit item'),
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (shouldDelete == true) {
-                      repository.deleteWishlistItem(
-                        wishlistId: wishlist.id,
-                        itemId: item.id,
-                      );
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: _WishlistItemAction.edit,
-                      child: Text('Edit item'),
+                      ],
                     ),
-                    PopupMenuItem(
-                      value: _WishlistItemAction.delete,
-                      child: Text('Delete item'),
-                    ),
-                  ],
+                ],
+              ),
+              if (item.notes != null && item.notes!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  item.notes!,
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
+              ],
+              if (item.priceLabel != null && item.priceLabel!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  item.priceLabel!,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ],
+              if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  item.productUrl!,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ],
             ],
           ),
-          if (item.notes != null && item.notes!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              item.notes!,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-          if (item.priceLabel != null && item.priceLabel!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              item.priceLabel!,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ],
-          if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              item.productUrl!,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteItem(
+    BuildContext context,
+    Wishlist wishlist,
+    WishlistItem item,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete item?'),
+        content: Text(
+          'Remove "${item.title}" from this list?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
+
+    if (shouldDelete == true) {
+      repository.deleteWishlistItem(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+      );
+      _showFeedback(context, 'Item deleted.');
+    }
+  }
+
+  Future<void> _shareItem(
+    BuildContext context,
+    Wishlist wishlist,
+    WishlistItem item,
+  ) async {
+    await Clipboard.setData(
+      ClipboardData(text: _buildShareText(wishlist, item)),
+    );
+    _showFeedback(context, 'Share details copied.');
+  }
+
+  String _buildShareText(Wishlist wishlist, WishlistItem item) {
+    final lines = <String>[
+      '${item.title} from ${wishlist.title}',
+    ];
+
+    if (item.priceLabel != null && item.priceLabel!.isNotEmpty) {
+      lines.add('Price: ${item.priceLabel!}');
+    }
+    if (item.notes != null && item.notes!.isNotEmpty) {
+      lines.add(item.notes!);
+    }
+    if (item.productUrl != null && item.productUrl!.isNotEmpty) {
+      lines.add(item.productUrl!);
+    }
+
+    return lines.join('\n');
+  }
+
+  void _showFeedback(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message)),
+      );
   }
 
   Widget _buildNetworkImage(
@@ -463,5 +775,16 @@ enum _WishlistAction {
 
 enum _WishlistItemAction {
   edit,
-  delete,
+}
+
+class _InviteCollaboratorResult {
+  const _InviteCollaboratorResult({
+    required this.name,
+    required this.email,
+    required this.role,
+  });
+
+  final String name;
+  final String email;
+  final String role;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -7,7 +8,7 @@ import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repositor
 class InMemoryWishlistRepository implements WishlistRepository {
   InMemoryWishlistRepository({List<Wishlist>? initialWishlists})
     : _wishlists = ValueNotifier<List<Wishlist>>(
-        List<Wishlist>.unmodifiable(initialWishlists ?? _buildSeedWishlists()),
+        List<Wishlist>.unmodifiable(initialWishlists ?? seedWishlists()),
       );
 
   static final InMemoryWishlistRepository instance = InMemoryWishlistRepository();
@@ -106,6 +107,67 @@ class InMemoryWishlistRepository implements WishlistRepository {
       _wishlists.value.where((wishlist) => wishlist.id != id),
     );
     return previousLength != _wishlists.value.length;
+  }
+
+  @override
+  Wishlist? addSharedUser({
+    required String wishlistId,
+    required String name,
+    required String email,
+    required String role,
+  }) {
+    return _replaceWishlist(
+      wishlistId,
+      (wishlist) {
+        final normalizedEmail = email.toLowerCase();
+        final alreadyExists = wishlist.sharedUsers.any(
+          (user) => user.email.toLowerCase() == normalizedEmail,
+        );
+        if (alreadyExists) {
+          return wishlist;
+        }
+
+        return wishlist.copyWith(
+          isShared: true,
+          sharedUsers: [
+            ...wishlist.sharedUsers,
+            SharedUser(
+              id: _uuid.v4(),
+              name: name,
+              email: email,
+              role: role,
+            ),
+          ],
+          updatedAt: DateTime.now(),
+        );
+      },
+    );
+  }
+
+  @override
+  bool removeSharedUser({
+    required String wishlistId,
+    required String userId,
+  }) {
+    var wasRemoved = false;
+
+    final updatedWishlist = _replaceWishlist(
+      wishlistId,
+      (wishlist) {
+        final nextUsers = wishlist.sharedUsers
+            .where((user) => user.id != userId)
+            .toList(growable: false);
+        wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
+
+        return wishlist.copyWith(
+          isShared: nextUsers.isNotEmpty,
+          sharedUsers: nextUsers,
+          updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
+        );
+      },
+    );
+
+    return updatedWishlist != null && wasRemoved;
   }
 
   @override
@@ -236,7 +298,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
     return updatedWishlist;
   }
 
-  static List<Wishlist> _buildSeedWishlists() {
+  static List<Wishlist> seedWishlists() {
     final now = DateTime.now();
 
     return [
@@ -308,6 +370,20 @@ class InMemoryWishlistRepository implements WishlistRepository {
         createdAt: now.subtract(const Duration(days: 14)),
         updatedAt: now.subtract(const Duration(hours: 6)),
         isShared: true,
+        sharedUsers: const [
+          SharedUser(
+            id: 'user-maya',
+            name: 'Maya',
+            email: 'maya@example.com',
+            role: 'Owner',
+          ),
+          SharedUser(
+            id: 'user-dan',
+            name: 'Dan',
+            email: 'dan@example.com',
+            role: 'Editor',
+          ),
+        ],
         items: [
           WishlistItem(
             id: 'hosting-plates',

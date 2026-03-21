@@ -1,3 +1,4 @@
+import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 
 class Wishlist {
@@ -10,8 +11,10 @@ class Wishlist {
     required this.updatedAt,
     this.isArchived = false,
     this.isShared = false,
+    List<SharedUser> sharedUsers = const [],
     List<WishlistItem> items = const [],
-  }) : items = List.unmodifiable(items);
+  }) : sharedUsers = List.unmodifiable(sharedUsers),
+       items = List.unmodifiable(items);
 
   final String id;
   final String title;
@@ -21,6 +24,7 @@ class Wishlist {
   final DateTime updatedAt;
   final bool isArchived;
   final bool isShared;
+  final List<SharedUser> sharedUsers;
   final List<WishlistItem> items;
 
   int get itemCount => items.length;
@@ -34,6 +38,7 @@ class Wishlist {
     DateTime? updatedAt,
     bool? isArchived,
     bool? isShared,
+    List<SharedUser>? sharedUsers,
     List<WishlistItem>? items,
   }) {
     return Wishlist(
@@ -47,6 +52,7 @@ class Wishlist {
       updatedAt: updatedAt ?? this.updatedAt,
       isArchived: isArchived ?? this.isArchived,
       isShared: isShared ?? this.isShared,
+      sharedUsers: sharedUsers ?? this.sharedUsers,
       items: items ?? this.items,
     );
   }

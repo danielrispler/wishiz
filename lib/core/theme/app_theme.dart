@@ -22,7 +22,8 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(AppConstants.radiusXl)),
+          borderRadius:
+              BorderRadius.all(Radius.circular(AppConstants.radiusXl)),
         ),
       ),
     );

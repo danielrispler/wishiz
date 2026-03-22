@@ -29,12 +29,14 @@ class WishlistStorageCodec {
       'id': wishlist.id,
       'title': wishlist.title,
       'description': wishlist.description,
+      'year': wishlist.year,
       'coverImageUrl': wishlist.coverImageUrl,
       'createdAt': wishlist.createdAt.toIso8601String(),
       'updatedAt': wishlist.updatedAt.toIso8601String(),
       'isArchived': wishlist.isArchived,
       'isShared': wishlist.isShared,
-      'sharedUsers': wishlist.sharedUsers.map(_sharedUserToJson).toList(growable: false),
+      'sharedUsers':
+          wishlist.sharedUsers.map(_sharedUserToJson).toList(growable: false),
       'items': wishlist.items.map(_itemToJson).toList(growable: false),
     };
   }
@@ -44,6 +46,7 @@ class WishlistStorageCodec {
       id: json['id'] as String,
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
+      year: json['year'] as int? ?? DateTime.now().year,
       coverImageUrl: json['coverImageUrl'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -80,12 +83,14 @@ class WishlistStorageCodec {
     return {
       'id': item.id,
       'title': item.title,
+      'rank': item.rank,
       'notes': item.notes,
       'priceLabel': item.priceLabel,
       'priority': item.priority,
       'status': item.status,
       'imageUrl': item.imageUrl,
       'productUrl': item.productUrl,
+      'purchasedAt': item.purchasedAt?.toIso8601String(),
       'createdAt': item.createdAt.toIso8601String(),
     };
   }
@@ -94,12 +99,16 @@ class WishlistStorageCodec {
     return WishlistItem(
       id: json['id'] as String,
       title: json['title'] as String,
+      rank: json['rank'] as int? ?? 1,
       notes: json['notes'] as String?,
       priceLabel: json['priceLabel'] as String?,
       priority: json['priority'] as String? ?? 'Medium',
       status: json['status'] as String? ?? 'Saved',
       imageUrl: json['imageUrl'] as String?,
       productUrl: json['productUrl'] as String?,
+      purchasedAt: (json['purchasedAt'] as String?) == null
+          ? null
+          : DateTime.parse(json['purchasedAt'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }

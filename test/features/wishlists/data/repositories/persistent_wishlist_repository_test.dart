@@ -16,7 +16,7 @@ void main() {
       expect(storage.value, contains('Home Decor'));
     });
 
-    test('reloads saved wishlists and items from storage', () async {
+    test('reloads saved wishlists and ranked items from storage', () async {
       final storage = _FakeWishlistStorage();
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
@@ -25,6 +25,7 @@ void main() {
       final wishlist = repository.createWishlist(
         title: 'Travel',
         description: 'Carry-on upgrades and essentials.',
+        year: 2027,
         coverImageUrl: 'https://example.com/travel.jpg',
       );
       repository.addWishlistItem(
@@ -43,12 +44,15 @@ void main() {
       final reloadedWishlist = reloadedRepository.findById(wishlist.id);
 
       expect(reloadedWishlist, isNotNull);
+      expect(reloadedWishlist?.year, 2027);
       expect(reloadedWishlist?.coverImageUrl, 'https://example.com/travel.jpg');
       expect(reloadedWishlist?.items, hasLength(1));
       expect(reloadedWishlist?.items.first.title, 'Weekender bag');
+      expect(reloadedWishlist?.items.first.rank, 1);
       expect(reloadedWishlist?.items.first.priority, 'High');
       expect(reloadedWishlist?.items.first.status, 'Considering');
-      expect(reloadedWishlist?.items.first.imageUrl, 'https://example.com/bag.jpg');
+      expect(reloadedWishlist?.items.first.imageUrl,
+          'https://example.com/bag.jpg');
       expect(
         reloadedWishlist?.items.first.productUrl,
         'https://example.com/bag',
@@ -64,6 +68,7 @@ void main() {
       final wishlist = repository.createWishlist(
         title: 'Dinner Party',
         description: 'Plates, flowers, and candles.',
+        year: 2026,
       );
       repository.addSharedUser(
         wishlistId: wishlist.id,

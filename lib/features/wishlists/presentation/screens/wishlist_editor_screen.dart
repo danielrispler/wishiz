@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -21,21 +25,27 @@ class WishlistEditorScreen extends StatefulWidget {
 
 class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
 
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _coverImageUrlController;
+  late final TextEditingController _yearController;
   late bool _isShared;
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.wishlist?.title ?? '');
+    _titleController =
+        TextEditingController(text: widget.wishlist?.title ?? '');
     _descriptionController = TextEditingController(
       text: widget.wishlist?.description ?? '',
     );
     _coverImageUrlController = TextEditingController(
       text: widget.wishlist?.coverImageUrl ?? '',
+    );
+    _yearController = TextEditingController(
+      text: (widget.wishlist?.year ?? DateTime.now().year).toString(),
     );
     _isShared = widget.wishlist?.isShared ?? false;
   }
@@ -45,7 +55,19 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _coverImageUrlController.dispose();
+    _yearController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickCoverImage() async {
+    final image = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (image == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _coverImageUrlController.text = image.path;
+    });
   }
 
   void _saveWishlist() {
@@ -56,18 +78,21 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final coverImageUrl = _optionalValue(_coverImageUrlController.text);
+    final year = int.parse(_yearController.text.trim());
 
     final savedWishlist = widget.isEditing
         ? widget.repository.updateWishlist(
             id: widget.wishlist!.id,
             title: title,
             description: description,
+            year: year,
             coverImageUrl: coverImageUrl,
             isShared: _isShared,
           )
         : widget.repository.createWishlist(
             title: title,
             description: description,
+            year: year,
             coverImageUrl: coverImageUrl,
             isShared: _isShared,
           );
@@ -101,8 +126,8 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
             children: [
               Text(
                 widget.isEditing
-                    ? 'Refine the collection without changing the overall visual identity.'
-                    : 'Start a new collection while keeping the current curated tone.',
+                    ? 'Update the list details, year, and cover image without waiting for a backend upload flow.'
+                    : 'Create a list with a title, year, and gallery cover so it already feels like a real collection.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: AppConstants.spacing4),
@@ -129,15 +154,55 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
               _buildFieldCard(
                 context,
                 child: TextFormField(
+                  controller: _yearController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Year',
+                    hintText: '2026',
+                    border: InputBorder.none,
+                  ),
+                  validator: _validateYear,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacing3),
+              _buildFieldCard(
+                context,
+                child: TextFormField(
                   controller: _descriptionController,
                   minLines: 3,
                   maxLines: 5,
                   decoration: const InputDecoration(
                     labelText: 'Description',
-                    hintText: 'A calm, minimal collection with tactile materials.',
+                    hintText:
+                        'A calm, minimal collection with tactile materials.',
                     border: InputBorder.none,
                   ),
                 ),
+              ),
+              const SizedBox(height: AppConstants.spacing3),
+              if (_coverImageUrlController.text.isNotEmpty) ...[
+                _buildImagePreview(context),
+                const SizedBox(height: AppConstants.spacing3),
+              ],
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: _pickCoverImage,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Choose From Gallery'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _coverImageUrlController.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.clear_outlined),
+                    label: const Text('Clear Image'),
+                  ),
+                ],
               ),
               const SizedBox(height: AppConstants.spacing3),
               _buildFieldCard(
@@ -146,11 +211,11 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   controller: _coverImageUrlController,
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
-                    labelText: 'Cover image URL',
-                    hintText: 'https://',
+                    labelText: 'Cover image path or URL',
+                    hintText: 'https:// or local image path',
                     border: InputBorder.none,
                   ),
-                  validator: _validateOptionalUrl,
+                  validator: _validateOptionalImageSource,
                 ),
               ),
               const SizedBox(height: AppConstants.spacing3),
@@ -167,7 +232,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   subtitle: Text(
-                    'Show this collection in the Shared tab too.',
+                    'Enable member sharing and link-based invites for this list.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   value: _isShared,
@@ -235,19 +300,76 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     );
   }
 
+  Widget _buildImagePreview(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final source = _coverImageUrlController.text.trim();
+    final uri = Uri.tryParse(source);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    final image = kIsWeb || isRemote
+        ? Image.network(
+            source,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _imageFallback(
+              colorScheme,
+            ),
+          )
+        : Image.file(
+            File(source),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _imageFallback(
+              colorScheme,
+            ),
+          );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: image,
+      ),
+    );
+  }
+
+  Widget _imageFallback(ColorScheme colorScheme) {
+    return Container(
+      color: colorScheme.surfaceContainerHigh,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
   String? _optionalValue(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  String? _validateOptionalUrl(String? value) {
+  String? _validateOptionalImageSource(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) {
       return null;
     }
 
     final uri = Uri.tryParse(trimmed);
-    final isValid = uri != null && uri.hasScheme && uri.hasAuthority;
-    return isValid ? null : 'Please enter a valid URL.';
+    final isRemote = uri != null && uri.hasScheme && uri.hasAuthority;
+    final isLocalFile = !kIsWeb && File(trimmed).existsSync();
+    return isRemote || isLocalFile
+        ? null
+        : 'Enter a valid image URL or pick a gallery image.';
+  }
+
+  String? _validateYear(String? value) {
+    final parsed = int.tryParse(value?.trim() ?? '');
+    if (parsed == null || parsed < 2000 || parsed > 2100) {
+      return 'Please enter a valid year.';
+    }
+    return null;
   }
 }

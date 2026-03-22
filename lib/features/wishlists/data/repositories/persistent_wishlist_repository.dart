@@ -13,9 +13,9 @@ class PersistentWishlistRepository implements WishlistRepository {
     required WishlistStorage storage,
     required InMemoryWishlistRepository repository,
     WishlistStorageCodec codec = const WishlistStorageCodec(),
-  }) : _storage = storage,
-       _repository = repository,
-       _codec = codec;
+  })  : _storage = storage,
+        _repository = repository,
+        _codec = codec;
 
   final WishlistStorage _storage;
   final InMemoryWishlistRepository _repository;
@@ -36,7 +36,8 @@ class PersistentWishlistRepository implements WishlistRepository {
 
     final repository = PersistentWishlistRepository._(
       storage: storage,
-      repository: InMemoryWishlistRepository(initialWishlists: initialWishlists),
+      repository:
+          InMemoryWishlistRepository(initialWishlists: initialWishlists),
       codec: codec,
     );
 
@@ -72,7 +73,8 @@ class PersistentWishlistRepository implements WishlistRepository {
   }
 
   @override
-  ValueListenable<List<Wishlist>> watchWishlists() => _repository.watchWishlists();
+  ValueListenable<List<Wishlist>> watchWishlists() =>
+      _repository.watchWishlists();
 
   @override
   List<Wishlist> getWishlists() => _repository.getWishlists();
@@ -84,12 +86,14 @@ class PersistentWishlistRepository implements WishlistRepository {
   Wishlist createWishlist({
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool isShared = false,
   }) {
     final wishlist = _repository.createWishlist(
       title: title,
       description: description,
+      year: year,
       coverImageUrl: coverImageUrl,
       isShared: isShared,
     );
@@ -102,6 +106,7 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String id,
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool? isShared,
   }) {
@@ -109,6 +114,7 @@ class PersistentWishlistRepository implements WishlistRepository {
       id: id,
       title: title,
       description: description,
+      year: year,
       coverImageUrl: coverImageUrl,
       isShared: isShared,
     );
@@ -201,6 +207,38 @@ class PersistentWishlistRepository implements WishlistRepository {
       productUrl: productUrl,
     );
     _persist();
+    return item;
+  }
+
+  @override
+  Wishlist? reorderWishlistItems({
+    required String wishlistId,
+    required List<String> orderedItemIds,
+  }) {
+    final wishlist = _repository.reorderWishlistItems(
+      wishlistId: wishlistId,
+      orderedItemIds: orderedItemIds,
+    );
+    if (wishlist != null) {
+      _persist();
+    }
+    return wishlist;
+  }
+
+  @override
+  WishlistItem? updateWishlistItemStatus({
+    required String wishlistId,
+    required String itemId,
+    required String status,
+  }) {
+    final item = _repository.updateWishlistItemStatus(
+      wishlistId: wishlistId,
+      itemId: itemId,
+      status: status,
+    );
+    if (item != null) {
+      _persist();
+    }
     return item;
   }
 

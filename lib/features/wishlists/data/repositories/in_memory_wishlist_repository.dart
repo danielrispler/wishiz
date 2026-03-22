@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
@@ -7,11 +9,12 @@ import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repositor
 
 class InMemoryWishlistRepository implements WishlistRepository {
   InMemoryWishlistRepository({List<Wishlist>? initialWishlists})
-    : _wishlists = ValueNotifier<List<Wishlist>>(
-        List<Wishlist>.unmodifiable(initialWishlists ?? seedWishlists()),
-      );
+      : _wishlists = ValueNotifier<List<Wishlist>>(
+          List<Wishlist>.unmodifiable(initialWishlists ?? seedWishlists()),
+        );
 
-  static final InMemoryWishlistRepository instance = InMemoryWishlistRepository();
+  static final InMemoryWishlistRepository instance =
+      InMemoryWishlistRepository();
   static final Uuid _uuid = Uuid();
 
   final ValueNotifier<List<Wishlist>> _wishlists;
@@ -37,6 +40,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   Wishlist createWishlist({
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool isShared = false,
   }) {
@@ -45,6 +49,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       id: _uuid.v4(),
       title: title,
       description: description,
+      year: year,
       coverImageUrl: coverImageUrl,
       createdAt: now,
       updatedAt: now,
@@ -63,6 +68,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String id,
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool? isShared,
   }) {
@@ -71,6 +77,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       (wishlist) => wishlist.copyWith(
         title: title,
         description: description,
+        year: year,
         coverImageUrl: coverImageUrl,
         isShared: isShared ?? wishlist.isShared,
         updatedAt: DateTime.now(),
@@ -181,23 +188,30 @@ class InMemoryWishlistRepository implements WishlistRepository {
     String? imageUrl,
     String? productUrl,
   }) {
+    final wishlist = findById(wishlistId);
+    if (wishlist == null) {
+      throw StateError('Wishlist "$wishlistId" was not found.');
+    }
+
     final now = DateTime.now();
     final item = WishlistItem(
       id: _uuid.v4(),
       title: title,
+      rank: _nextRankForWishlist(wishlist),
       notes: notes,
       priceLabel: priceLabel,
       priority: priority,
       status: status,
       imageUrl: imageUrl,
       productUrl: productUrl,
+      purchasedAt: status == 'Purchased' ? now : null,
       createdAt: now,
     );
 
     final updatedWishlist = _replaceWishlist(
       wishlistId,
       (wishlist) => wishlist.copyWith(
-        items: [item, ...wishlist.items],
+        items: [...wishlist.items, item],
         updatedAt: now,
       ),
     );
@@ -207,6 +221,86 @@ class InMemoryWishlistRepository implements WishlistRepository {
     }
 
     return item;
+  }
+
+  @override
+  Wishlist? reorderWishlistItems({
+    required String wishlistId,
+    required List<String> orderedItemIds,
+  }) {
+    if (orderedItemIds.isEmpty) {
+      return findById(wishlistId);
+    }
+
+    return _replaceWishlist(
+      wishlistId,
+      (wishlist) {
+        final itemById = {
+          for (final item in wishlist.items) item.id: item,
+        };
+        final prioritizedItems = orderedItemIds
+            .map(itemById.remove)
+            .whereType<WishlistItem>()
+            .toList(growable: false);
+        final remainingItems = wishlist.items
+            .where((item) => itemById.containsKey(item.id))
+            .toList(growable: false);
+        final reorderedItems = [
+          ...prioritizedItems,
+          ...remainingItems,
+        ];
+        final rankedItems = List<WishlistItem>.generate(
+          reorderedItems.length,
+          (index) => reorderedItems[index].copyWith(rank: index + 1),
+          growable: false,
+        );
+
+        return wishlist.copyWith(
+          items: rankedItems,
+          updatedAt: DateTime.now(),
+        );
+      },
+    );
+  }
+
+  @override
+  WishlistItem? updateWishlistItemStatus({
+    required String wishlistId,
+    required String itemId,
+    required String status,
+  }) {
+    WishlistItem? updatedItem;
+    var didUpdate = false;
+
+    final updatedWishlist = _replaceWishlist(
+      wishlistId,
+      (wishlist) {
+        final nextItems = wishlist.items.map((item) {
+          if (item.id != itemId) {
+            return item;
+          }
+
+          final purchasedAt = status == 'Purchased' ? DateTime.now() : null;
+          updatedItem = item.copyWith(
+            status: status,
+            purchasedAt: purchasedAt,
+          );
+          didUpdate = true;
+          return updatedItem!;
+        }).toList(growable: false);
+
+        return wishlist.copyWith(
+          items: nextItems,
+          updatedAt: didUpdate ? DateTime.now() : wishlist.updatedAt,
+        );
+      },
+    );
+
+    if (updatedWishlist == null || !didUpdate) {
+      return null;
+    }
+
+    return updatedItem;
   }
 
   @override
@@ -240,6 +334,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
             status: status,
             imageUrl: imageUrl,
             productUrl: productUrl,
+            purchasedAt: status == 'Purchased' ? DateTime.now() : null,
           );
           didUpdate = true;
           return updatedItem!;
@@ -306,6 +401,14 @@ class InMemoryWishlistRepository implements WishlistRepository {
     return updatedWishlist;
   }
 
+  int _nextRankForWishlist(Wishlist wishlist) {
+    return wishlist.items.fold<int>(
+          0,
+          (highestRank, item) => math.max(highestRank, item.rank),
+        ) +
+        1;
+  }
+
   static List<Wishlist> seedWishlists() {
     final now = DateTime.now();
 
@@ -313,7 +416,9 @@ class InMemoryWishlistRepository implements WishlistRepository {
       Wishlist(
         id: 'home-decor',
         title: 'Home Decor',
-        description: 'Soft lighting, sculptural objects, and pieces for a calmer living room.',
+        description:
+            'Soft lighting, sculptural objects, and pieces for a calmer living room.',
+        year: 2026,
         coverImageUrl: 'https://picsum.photos/seed/home-decor/1200/800',
         createdAt: now.subtract(const Duration(days: 21)),
         updatedAt: now.subtract(const Duration(days: 2)),
@@ -321,6 +426,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'decor-lamp',
             title: 'Marble table lamp',
+            rank: 1,
             notes: 'Warm bulb, low profile shade.',
             priceLabel: '\$180',
             priority: 'High',
@@ -331,6 +437,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'decor-vase',
             title: 'Stoneware floor vase',
+            rank: 2,
             notes: 'Neutral finish, tall silhouette.',
             priceLabel: '\$96',
             priority: 'Medium',
@@ -341,6 +448,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'decor-throw',
             title: 'Brushed wool throw',
+            rank: 3,
             notes: 'Textural layer for the reading chair.',
             priceLabel: '\$74',
             priority: 'Low',
@@ -353,7 +461,9 @@ class InMemoryWishlistRepository implements WishlistRepository {
       Wishlist(
         id: 'tech-gear',
         title: 'Tech Gear 2024',
-        description: 'Portable tools and desk upgrades for daily work and travel.',
+        description:
+            'Portable tools and desk upgrades for daily work and travel.',
+        year: 2024,
         coverImageUrl: 'https://picsum.photos/seed/tech-gear/1200/800',
         createdAt: now.subtract(const Duration(days: 60)),
         updatedAt: now.subtract(const Duration(days: 1)),
@@ -361,6 +471,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'tech-keyboard',
             title: 'Low-profile keyboard',
+            rank: 1,
             notes: 'Quiet switches and compact layout.',
             priceLabel: '\$129',
             priority: 'High',
@@ -371,6 +482,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'tech-monitor-light',
             title: 'Monitor light bar',
+            rank: 2,
             notes: 'For late-night desk work.',
             priceLabel: '\$89',
             priority: 'Medium',
@@ -383,7 +495,9 @@ class InMemoryWishlistRepository implements WishlistRepository {
       Wishlist(
         id: 'shared-weekend',
         title: 'Weekend Hosting',
-        description: 'A collaborative list for pieces we both want before the next dinner party.',
+        description:
+            'A collaborative list for pieces we both want before the next dinner party.',
+        year: 2026,
         coverImageUrl: 'https://picsum.photos/seed/shared-weekend/1200/800',
         createdAt: now.subtract(const Duration(days: 14)),
         updatedAt: now.subtract(const Duration(hours: 6)),
@@ -406,6 +520,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'hosting-plates',
             title: 'Set of dinner plates',
+            rank: 1,
             notes: 'Matte finish, set of six.',
             priceLabel: '\$148',
             priority: 'High',
@@ -416,11 +531,13 @@ class InMemoryWishlistRepository implements WishlistRepository {
           WishlistItem(
             id: 'hosting-candles',
             title: 'Taper candle pair',
+            rank: 2,
             notes: 'For the dining setup.',
             priceLabel: '\$28',
             priority: 'Low',
             status: 'Purchased',
             imageUrl: 'https://picsum.photos/seed/hosting-candles/900/700',
+            purchasedAt: now.subtract(const Duration(days: 1)),
             createdAt: now.subtract(const Duration(days: 2)),
           ),
         ],
@@ -429,19 +546,21 @@ class InMemoryWishlistRepository implements WishlistRepository {
         id: 'archived-registry',
         title: 'Summer Registry',
         description: 'An older collection we have already wrapped up.',
+        year: 2025,
         coverImageUrl: 'https://picsum.photos/seed/archived-registry/1200/800',
         createdAt: now.subtract(const Duration(days: 180)),
         updatedAt: now.subtract(const Duration(days: 30)),
-        isArchived: true,
         items: [
           WishlistItem(
             id: 'registry-tray',
             title: 'Walnut serving tray',
+            rank: 1,
             notes: 'Already purchased.',
             priceLabel: '\$112',
             priority: 'Medium',
             status: 'Purchased',
             imageUrl: 'https://picsum.photos/seed/registry-tray/900/700',
+            purchasedAt: now.subtract(const Duration(days: 80)),
             createdAt: now.subtract(const Duration(days: 90)),
           ),
         ],

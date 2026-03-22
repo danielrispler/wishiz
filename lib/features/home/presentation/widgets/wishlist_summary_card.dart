@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 
@@ -47,26 +50,17 @@ class WishlistSummaryCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (coverImageUrl != null && coverImageUrl!.isNotEmpty) ...[
+                      if (coverImageUrl != null &&
+                          coverImageUrl!.isNotEmpty) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(
                             AppConstants.radiusXl - 8,
                           ),
                           child: AspectRatio(
                             aspectRatio: 16 / 9,
-                            child: Image.network(
-                              coverImageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: colorScheme.surfaceContainerHigh,
-                                  alignment: Alignment.center,
-                                  child: Icon(
-                                    Icons.image_outlined,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                );
-                              },
+                            child: _buildCoverImage(
+                              context,
+                              colorScheme: colorScheme,
                             ),
                           ),
                         ),
@@ -81,7 +75,8 @@ class WishlistSummaryCard extends StatelessWidget {
                         '$itemCount items · Updated $lastUpdated',
                         style: Theme.of(context).textTheme.labelMedium,
                       ),
-                      if (supportingText != null && supportingText!.isNotEmpty) ...[
+                      if (supportingText != null &&
+                          supportingText!.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
                           supportingText!,
@@ -110,6 +105,42 @@ class WishlistSummaryCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCoverImage(
+    BuildContext context, {
+    required ColorScheme colorScheme,
+  }) {
+    final source = coverImageUrl!;
+    final uri = Uri.tryParse(source);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    final fallback = Container(
+      color: colorScheme.surfaceContainerHigh,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+
+    if (kIsWeb || isRemote) {
+      return Image.network(
+        source,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    }
+
+    return Image.file(
+      File(source),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => fallback,
     );
   }
 }

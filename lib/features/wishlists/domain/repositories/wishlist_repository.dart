@@ -13,6 +13,7 @@ abstract class WishlistRepository {
   Wishlist createWishlist({
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool isShared = false,
   });
@@ -21,6 +22,7 @@ abstract class WishlistRepository {
     required String id,
     required String title,
     required String description,
+    required int year,
     String? coverImageUrl,
     bool? isShared,
   });
@@ -52,6 +54,17 @@ abstract class WishlistRepository {
     String status = 'Saved',
     String? imageUrl,
     String? productUrl,
+  });
+
+  Wishlist? reorderWishlistItems({
+    required String wishlistId,
+    required List<String> orderedItemIds,
+  });
+
+  WishlistItem? updateWishlistItemStatus({
+    required String wishlistId,
+    required String itemId,
+    required String status,
   });
 
   WishlistItem? updateWishlistItem({

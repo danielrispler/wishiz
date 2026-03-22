@@ -8,17 +8,20 @@ class WishlistItemEditorScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.wishlistId,
+    required this.preferredCurrencySymbol,
     this.item,
   });
 
   final WishlistRepository repository;
   final String wishlistId;
+  final String preferredCurrencySymbol;
   final WishlistItem? item;
 
   bool get isEditing => item != null;
 
   @override
-  State<WishlistItemEditorScreen> createState() => _WishlistItemEditorScreenState();
+  State<WishlistItemEditorScreen> createState() =>
+      _WishlistItemEditorScreenState();
 }
 
 class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
@@ -37,9 +40,12 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     super.initState();
     _titleController = TextEditingController(text: widget.item?.title ?? '');
     _notesController = TextEditingController(text: widget.item?.notes ?? '');
-    _priceController = TextEditingController(text: widget.item?.priceLabel ?? '');
-    _imageUrlController = TextEditingController(text: widget.item?.imageUrl ?? '');
-    _productUrlController = TextEditingController(text: widget.item?.productUrl ?? '');
+    _priceController =
+        TextEditingController(text: widget.item?.priceLabel ?? '');
+    _imageUrlController =
+        TextEditingController(text: widget.item?.imageUrl ?? '');
+    _productUrlController =
+        TextEditingController(text: widget.item?.productUrl ?? '');
     _selectedPriority = widget.item?.priority ?? WishlistItem.priorities[1];
     _selectedStatus = widget.item?.status ?? WishlistItem.statuses.first;
   }
@@ -152,7 +158,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   maxLines: 5,
                   decoration: const InputDecoration(
                     labelText: 'Notes',
-                    hintText: 'Why it fits the collection or what to compare before buying.',
+                    hintText:
+                        'Why it fits the collection or what to compare before buying.',
                     border: InputBorder.none,
                   ),
                 ),
@@ -162,9 +169,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                 context,
                 child: TextFormField(
                   controller: _priceController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Price',
-                    hintText: '\$120',
+                    hintText: '${widget.preferredCurrencySymbol}120',
                     border: InputBorder.none,
                   ),
                   validator: _validateOptionalPrice,
@@ -310,7 +317,11 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       return null;
     }
 
-    return trimmed.startsWith('\$') ? trimmed : '\$$trimmed';
+    final normalizedAmount = trimmed.replaceFirst(
+      RegExp(r'^[^\d]+'),
+      '',
+    );
+    return '${widget.preferredCurrencySymbol}$normalizedAmount';
   }
 
   String? _validateOptionalPrice(String? value) {
@@ -319,9 +330,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       return null;
     }
 
-    final normalized = trimmed.startsWith('\$')
-        ? trimmed.substring(1)
-        : trimmed;
+    final normalized = trimmed.replaceFirst(RegExp(r'^[^\d]+'), '');
     final isValid = RegExp(r'^\d+([.,]\d{1,2})?$').hasMatch(normalized);
     return isValid ? null : 'Use a valid amount like 120 or 120.00.';
   }

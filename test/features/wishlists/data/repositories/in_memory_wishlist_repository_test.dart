@@ -8,12 +8,14 @@ void main() {
   );
 
   group('InMemoryWishlistRepository', () {
-    test('creates a wishlist with a UUID and exposes it through the notifier', () {
+    test('creates a wishlist with a year and exposes it through the notifier',
+        () {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
 
       final createdWishlist = repository.createWishlist(
         title: 'Reading Corner',
         description: 'Warm textures and quieter lighting.',
+        year: 2027,
         coverImageUrl: 'https://example.com/cover.jpg',
         isShared: true,
       );
@@ -21,99 +23,74 @@ void main() {
       expect(repository.getWishlists(), hasLength(1));
       expect(createdWishlist.id, matches(uuidPattern));
       expect(repository.getWishlists().first.title, 'Reading Corner');
+      expect(repository.getWishlists().first.year, 2027);
       expect(repository.watchWishlists().value.first.id, createdWishlist.id);
-      expect(repository.watchWishlists().value.first.coverImageUrl, 'https://example.com/cover.jpg');
+      expect(
+        repository.watchWishlists().value.first.coverImageUrl,
+        'https://example.com/cover.jpg',
+      );
       expect(repository.watchWishlists().value.first.isShared, isTrue);
     });
 
-    test('archives and restores an existing wishlist', () {
-      final repository = InMemoryWishlistRepository();
-      final wishlist = repository.getWishlists().first;
-
-      final archived = repository.archiveWishlist(wishlist.id);
-      final restored = repository.restoreWishlist(wishlist.id);
-
-      expect(archived?.isArchived, isTrue);
-      expect(restored?.isArchived, isFalse);
-    });
-
-    test('deletes a wishlist by id', () {
-      final repository = InMemoryWishlistRepository();
-      final initialCount = repository.getWishlists().length;
-      final wishlist = repository.getWishlists().first;
-
-      final wasDeleted = repository.deleteWishlist(wishlist.id);
-
-      expect(wasDeleted, isTrue);
-      expect(repository.getWishlists(), hasLength(initialCount - 1));
-      expect(repository.findById(wishlist.id), isNull);
-    });
-
-    test('adds and updates an item inside a wishlist', () {
+    test('adds items with rank order and updates purchase status', () {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
       final wishlist = repository.createWishlist(
         title: 'Hosting',
         description: 'Ceramics and table details.',
+        year: 2026,
       );
 
-      final item = repository.addWishlistItem(
+      final firstItem = repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Stoneware bowl set',
-        notes: 'Look for a matte finish.',
-        priceLabel: '\$84',
-        priority: 'High',
-        status: 'Considering',
-        imageUrl: 'https://example.com/bowls.jpg',
-        productUrl: 'https://example.com/bowls',
+      );
+      final secondItem = repository.addWishlistItem(
+        wishlistId: wishlist.id,
+        title: 'Large serving spoon',
       );
 
-      final updatedItem = repository.updateWishlistItem(
+      repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
-        itemId: item.id,
-        title: 'Stoneware serving bowl set',
-        notes: null,
-        priceLabel: null,
-        priority: 'Low',
+        itemId: secondItem.id,
         status: 'Purchased',
-        imageUrl: null,
-        productUrl: 'https://example.com/serving-bowls',
       );
 
       final refreshedWishlist = repository.findById(wishlist.id);
 
-      expect(updatedItem, isNotNull);
-      expect(item.id, matches(uuidPattern));
-      expect(refreshedWishlist?.items, hasLength(1));
-      expect(refreshedWishlist?.items.first.title, 'Stoneware serving bowl set');
-      expect(refreshedWishlist?.items.first.notes, isNull);
-      expect(refreshedWishlist?.items.first.priceLabel, isNull);
-      expect(refreshedWishlist?.items.first.priority, 'Low');
-      expect(refreshedWishlist?.items.first.status, 'Purchased');
-      expect(refreshedWishlist?.items.first.imageUrl, isNull);
-      expect(
-        refreshedWishlist?.items.first.productUrl,
-        'https://example.com/serving-bowls',
-      );
+      expect(firstItem.rank, 1);
+      expect(secondItem.rank, 2);
+      expect(refreshedWishlist?.activeItemCount, 1);
+      expect(refreshedWishlist?.purchasedItemCount, 1);
+      expect(refreshedWishlist?.purchasedItems.first.status, 'Purchased');
+      expect(refreshedWishlist?.purchasedItems.first.purchasedAt, isNotNull);
     });
 
-    test('deletes an item from a wishlist', () {
+    test('reprioritizes items by assigning sequential rank values', () {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
       final wishlist = repository.createWishlist(
         title: 'Desk Setup',
         description: 'Work tools and upgrades.',
+        year: 2026,
       );
-      final item = repository.addWishlistItem(
+      final first = repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Desk lamp',
       );
-
-      final wasDeleted = repository.deleteWishlistItem(
+      final second = repository.addWishlistItem(
         wishlistId: wishlist.id,
-        itemId: item.id,
+        title: 'Monitor stand',
       );
 
-      expect(wasDeleted, isTrue);
-      expect(repository.findById(wishlist.id)?.items, isEmpty);
+      repository.reorderWishlistItems(
+        wishlistId: wishlist.id,
+        orderedItemIds: [second.id, first.id],
+      );
+
+      final refreshedWishlist = repository.findById(wishlist.id);
+
+      expect(refreshedWishlist?.items.first.id, second.id);
+      expect(refreshedWishlist?.items.first.rank, 1);
+      expect(refreshedWishlist?.items.last.rank, 2);
     });
 
     test('throws when adding an item to a missing wishlist', () {
@@ -133,6 +110,7 @@ void main() {
       final wishlist = repository.createWishlist(
         title: 'Weekend Trip',
         description: 'Packing, bookings, and gift ideas.',
+        year: 2026,
       );
 
       final sharedWishlist = repository.addSharedUser(

@@ -1,6 +1,13 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/features/auth/domain/entities/app_user.dart';
+import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
@@ -12,11 +19,15 @@ class WishlistDetailScreen extends StatefulWidget {
   const WishlistDetailScreen({
     super.key,
     required this.repository,
+    required this.authRepository,
     required this.wishlistId,
+    this.showPurchasedOnly = false,
   });
 
   final WishlistRepository repository;
+  final AuthRepository authRepository;
   final String wishlistId;
+  final bool showPurchasedOnly;
 
   @override
   State<WishlistDetailScreen> createState() => _WishlistDetailScreenState();
@@ -24,14 +35,15 @@ class WishlistDetailScreen extends StatefulWidget {
 
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   static const String _allFilter = 'All';
-  static const String _sortNewest = 'Newest';
-  static const String _sortOldest = 'Oldest';
-  static const String _sortPriority = 'Priority';
-  static const String _sortStatus = 'Status';
+  static const String _sortHighestRank = 'Highest Rank';
+  static const String _sortLowestRank = 'Lowest Rank';
+  static const String _sortNewestAdded = 'Newest Added';
 
   String _selectedStatus = _allFilter;
   String _selectedPriority = _allFilter;
-  String _selectedSort = _sortNewest;
+  String _selectedSort = _sortHighestRank;
+
+  AppUser? get _currentUser => widget.authRepository.getCurrentUser();
 
   @override
   Widget build(BuildContext context) {
@@ -52,91 +64,79 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           );
         }
 
+        final sourceItems = widget.showPurchasedOnly
+            ? wishlist.purchasedItems
+            : wishlist.activeItems;
+        final visibleItems = _applyFilters(sourceItems);
+        final canReorder = !widget.showPurchasedOnly &&
+            _selectedStatus == _allFilter &&
+            _selectedPriority == _allFilter &&
+            _selectedSort == _sortHighestRank &&
+            visibleItems.length > 1;
+
         return Scaffold(
           appBar: AppBar(
-            title: const Text('List Details'),
+            title:
+                Text(widget.showPurchasedOnly ? 'Past List' : 'List Details'),
             actions: [
               IconButton(
-                tooltip: 'Edit list',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => WishlistEditorScreen(
-                        repository: widget.repository,
-                        wishlist: wishlist,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Share list',
+                onPressed: () => _shareWishlist(wishlist),
+                icon: const Icon(Icons.share_outlined),
               ),
+              if (!widget.showPurchasedOnly)
+                IconButton(
+                  tooltip: 'Edit list',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => WishlistEditorScreen(
+                          repository: widget.repository,
+                          wishlist: wishlist,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                ),
               PopupMenuButton<_WishlistAction>(
                 onSelected: (action) async {
-                  if (action == _WishlistAction.archive) {
-                    widget.repository.archiveWishlist(wishlist.id);
-                    _showFeedback(context, 'List archived.');
-                    return;
-                  }
-
-                  if (action == _WishlistAction.restore) {
-                    widget.repository.restoreWishlist(wishlist.id);
-                    _showFeedback(context, 'List restored.');
-                    return;
-                  }
-
-                  final shouldDelete = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete list?'),
-                      content: const Text(
-                        'This removes the list from the current app session.',
+                  if (action == _WishlistAction.delete) {
+                    final shouldDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete list?'),
+                        content: Text(
+                          'Remove "${wishlist.title}" permanently from this device?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Delete'),
+                          ),
+                        ],
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
+                    );
 
-                  if (shouldDelete == true) {
-                    widget.repository.deleteWishlist(wishlist.id);
-                    _showFeedback(context, 'List deleted.');
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
+                    if (shouldDelete == true) {
+                      widget.repository.deleteWishlist(wishlist.id);
+                      _showFeedback(context, 'List deleted.');
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                      }
                     }
                   }
                 },
-                itemBuilder: (context) {
-                  if (wishlist.isArchived) {
-                    return const [
-                      PopupMenuItem(
-                        value: _WishlistAction.restore,
-                        child: Text('Restore list'),
-                      ),
-                      PopupMenuItem(
-                        value: _WishlistAction.delete,
-                        child: Text('Delete list'),
-                      ),
-                    ];
-                  }
-
-                  return const [
-                    PopupMenuItem(
-                      value: _WishlistAction.archive,
-                      child: Text('Archive list'),
-                    ),
-                    PopupMenuItem(
-                      value: _WishlistAction.delete,
-                      child: Text('Delete list'),
-                    ),
-                  ];
-                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _WishlistAction.delete,
+                    child: Text('Delete list'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -152,11 +152,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Items',
+                        widget.showPurchasedOnly ? 'Purchased Items' : 'Items',
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
                     ),
-                    if (!wishlist.isArchived)
+                    if (!widget.showPurchasedOnly)
                       Tooltip(
                         message: 'Add a new item',
                         child: TextButton.icon(
@@ -172,29 +172,54 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  wishlist.isArchived
-                      ? 'Archived lists stay readable here. Restore the list to change its items.'
-                      : wishlist.items.isEmpty
-                          ? 'This list is ready for its first item.'
-                          : 'Capture, refine, and remove items directly from this collection.',
+                  widget.showPurchasedOnly
+                      ? 'Past lists only show items that were marked as purchased.'
+                      : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: AppConstants.spacing4),
-                if (wishlist.items.isNotEmpty) ...[
-                  _buildItemInteractionHint(context, wishlist),
+                if (sourceItems.isNotEmpty) ...[
+                  _buildItemControls(context),
                   const SizedBox(height: AppConstants.spacing4),
                 ],
-                if (wishlist.items.isNotEmpty) ...[
-                  _buildItemFilters(context),
-                  const SizedBox(height: AppConstants.spacing4),
-                ],
-                if (wishlist.items.isEmpty)
-                  _buildEmptyItemsState(context, wishlist)
-                else if (_applyFilters(wishlist.items).isEmpty)
+                if (sourceItems.isEmpty)
+                  _buildEmptyItemsState(context)
+                else if (visibleItems.isEmpty)
                   _buildFilteredItemsEmptyState(context)
+                else if (canReorder)
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: visibleItems.length,
+                    onReorder: (oldIndex, newIndex) {
+                      _reorderItems(
+                        wishlist: wishlist,
+                        visibleItems: visibleItems,
+                        oldIndex: oldIndex,
+                        newIndex: newIndex,
+                      );
+                    },
+                    itemBuilder: (context, index) {
+                      final item = visibleItems[index];
+                      return _buildItemCard(
+                        context,
+                        wishlist: wishlist,
+                        item: item,
+                        key: ValueKey('reorder-${item.id}'),
+                        showDragHandle: true,
+                        dragIndex: index,
+                      );
+                    },
+                  )
                 else
-                  ..._applyFilters(wishlist.items).map(
-                    (item) => _buildItemCard(context, wishlist, item),
+                  ...visibleItems.map(
+                    (item) => _buildItemCard(
+                      context,
+                      wishlist: wishlist,
+                      item: item,
+                      key: ValueKey('item-${item.id}'),
+                    ),
                   ),
               ],
             ),
@@ -218,9 +243,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         children: [
           if (wishlist.coverImageUrl != null &&
               wishlist.coverImageUrl!.isNotEmpty) ...[
-            _buildNetworkImage(
+            _buildImage(
               context,
-              imageUrl: wishlist.coverImageUrl!,
+              imageSource: wishlist.coverImageUrl!,
               aspectRatio: 16 / 9,
             ),
             const SizedBox(height: AppConstants.spacing4),
@@ -241,20 +266,17 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              _buildMetadataChip(context, label: '${wishlist.year}'),
               _buildMetadataChip(
                 context,
-                label: '${wishlist.itemCount} items',
+                label: '${wishlist.activeItemCount} active',
               ),
               _buildMetadataChip(
                 context,
-                label: wishlist.isArchived ? 'Archived' : 'Active',
+                label: '${wishlist.purchasedItemCount} purchased',
               ),
               if (wishlist.isShared)
                 _buildMetadataChip(context, label: 'Shared'),
-              _buildMetadataChip(
-                context,
-                label: 'Updated ${_formatRelativeDate(wishlist.updatedAt)}',
-              ),
             ],
           ),
         ],
@@ -302,7 +324,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
-              if (!wishlist.isArchived)
+              TextButton.icon(
+                onPressed: () => _shareWishlist(wishlist),
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('Share Link'),
+              ),
+              if (!widget.showPurchasedOnly)
                 TextButton.icon(
                   onPressed: () => _openInviteDialog(context, wishlist),
                   icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -312,9 +339,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            wishlist.sharedUsers.isEmpty
-                ? 'No collaborators yet. Invite someone to make this list shared.'
-                : 'Owner and collaborators for this list.',
+            'Send the list link through WhatsApp, email, or messages. Members can still be tracked locally until the backend arrives.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           if (wishlist.sharedUsers.isNotEmpty) ...[
@@ -333,9 +358,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     Wishlist wishlist,
     SharedUser user,
   ) {
-    final canRemove = !wishlist.isArchived && user.role.toLowerCase() != 'owner';
-    final trimmedName = user.name.trim();
-
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
       decoration: BoxDecoration(
@@ -346,9 +368,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       child: Row(
         children: [
           CircleAvatar(
-            child: Text(
-              trimmedName.isEmpty ? '?' : trimmedName[0].toUpperCase(),
-            ),
+            child: Text(user.name.isEmpty ? '?' : user.name[0].toUpperCase()),
           ),
           const SizedBox(width: AppConstants.spacing4),
           Expanded(
@@ -367,12 +387,478 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               ],
             ),
           ),
-          if (canRemove)
+          if (!widget.showPurchasedOnly)
             IconButton(
               tooltip: 'Remove collaborator',
               onPressed: () => _removeCollaborator(context, wishlist, user),
               icon: const Icon(Icons.person_remove_outlined),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemControls(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Sort by rank',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacing4,
+            vertical: 2,
+          ),
+          child: DropdownButtonFormField<String>(
+            value: _selectedSort,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              labelText: 'Order',
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: _sortHighestRank,
+                child: Text(_sortHighestRank),
+              ),
+              DropdownMenuItem(
+                value: _sortLowestRank,
+                child: Text(_sortLowestRank),
+              ),
+              DropdownMenuItem(
+                value: _sortNewestAdded,
+                child: Text(_sortNewestAdded),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedSort = value ?? _sortHighestRank;
+              });
+            },
+          ),
+        ),
+        const SizedBox(height: AppConstants.spacing3),
+        if (!widget.showPurchasedOnly) ...[
+          Text(
+            'Filter by status',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildFilterChip(
+                label: _allFilter,
+                isSelected: _selectedStatus == _allFilter,
+                onSelected: () {
+                  setState(() {
+                    _selectedStatus = _allFilter;
+                  });
+                },
+              ),
+              ...WishlistItem.statuses
+                  .where((status) => status != 'Purchased')
+                  .map(
+                    (status) => _buildFilterChip(
+                      label: status,
+                      isSelected: _selectedStatus == status,
+                      onSelected: () {
+                        setState(() {
+                          _selectedStatus = status;
+                        });
+                      },
+                    ),
+                  ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacing3),
+        ],
+        Text(
+          'Filter by priority',
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildFilterChip(
+              label: _allFilter,
+              isSelected: _selectedPriority == _allFilter,
+              onSelected: () {
+                setState(() {
+                  _selectedPriority = _allFilter;
+                });
+              },
+            ),
+            ...WishlistItem.priorities.map(
+              (priority) => _buildFilterChip(
+                label: priority,
+                isSelected: _selectedPriority == priority,
+                onSelected: () {
+                  setState(() {
+                    _selectedPriority = priority;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onSelected(),
+    );
+  }
+
+  Widget _buildEmptyItemsState(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Text(
+        widget.showPurchasedOnly
+            ? 'No purchased items yet. Swipe right on an active item to move it into Past Lists.'
+            : 'No active items yet. Add the first item to start ranking this list.',
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
+
+  Widget _buildFilteredItemsEmptyState(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'No items match these filters.',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Clear the current filters to see the rest of the ranked items again.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _selectedStatus = _allFilter;
+                _selectedPriority = _allFilter;
+              });
+            },
+            child: const Text('Clear Filters'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<WishlistItem> _applyFilters(List<WishlistItem> items) {
+    final filteredItems = items.where((item) {
+      final statusMatches = widget.showPurchasedOnly
+          ? true
+          : _selectedStatus == _allFilter || item.status == _selectedStatus;
+      final priorityMatches =
+          _selectedPriority == _allFilter || item.priority == _selectedPriority;
+      return statusMatches && priorityMatches;
+    }).toList(growable: false);
+
+    filteredItems.sort((left, right) {
+      switch (_selectedSort) {
+        case _sortLowestRank:
+          return right.rank.compareTo(left.rank);
+        case _sortNewestAdded:
+          return right.createdAt.compareTo(left.createdAt);
+        case _sortHighestRank:
+        default:
+          return left.rank.compareTo(right.rank);
+      }
+    });
+
+    return filteredItems;
+  }
+
+  void _reorderItems({
+    required Wishlist wishlist,
+    required List<WishlistItem> visibleItems,
+    required int oldIndex,
+    required int newIndex,
+  }) {
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+
+    final nextItems = List<WishlistItem>.from(visibleItems);
+    final movedItem = nextItems.removeAt(oldIndex);
+    nextItems.insert(newIndex, movedItem);
+
+    widget.repository.reorderWishlistItems(
+      wishlistId: wishlist.id,
+      orderedItemIds: nextItems.map((item) => item.id).toList(growable: false),
+    );
+    _showFeedback(context, 'Item rank updated.');
+  }
+
+  Widget _buildItemCard(
+    BuildContext context, {
+    required Wishlist wishlist,
+    required WishlistItem item,
+    required Key key,
+    bool showDragHandle = false,
+    int? dragIndex,
+  }) {
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      child: Dismissible(
+        key: ValueKey('dismiss-${item.id}'),
+        direction: widget.showPurchasedOnly
+            ? DismissDirection.endToStart
+            : DismissDirection.horizontal,
+        background: _buildSwipeBackground(
+          context,
+          color: Colors.green.shade600,
+          alignment: Alignment.centerLeft,
+          icon: Icons.check_circle_outline,
+          label: 'Purchased',
+        ),
+        secondaryBackground: _buildSwipeBackground(
+          context,
+          color: Colors.red.shade600,
+          alignment: Alignment.centerRight,
+          icon: Icons.delete_outline,
+          label: 'Delete',
+        ),
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.startToEnd &&
+              !widget.showPurchasedOnly) {
+            widget.repository.updateWishlistItemStatus(
+              wishlistId: wishlist.id,
+              itemId: item.id,
+              status: 'Purchased',
+            );
+            _showFeedback(context, 'Moved to Past Lists.');
+            return false;
+          }
+
+          return _confirmDeleteItem(context, wishlist, item);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          padding: const EdgeInsets.all(AppConstants.spacing4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
+                _buildImage(
+                  context,
+                  imageSource: item.imageUrl!,
+                  aspectRatio: 4 / 3,
+                ),
+                const SizedBox(height: AppConstants.spacing4),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showDragHandle && dragIndex != null)
+                    ReorderableDragStartListener(
+                      index: dragIndex,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Icon(
+                          Icons.drag_indicator,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Share item',
+                    onPressed: () => _shareItem(wishlist, item),
+                    icon: const Icon(Icons.share_outlined),
+                  ),
+                  PopupMenuButton<_WishlistItemAction>(
+                    tooltip: 'Item actions',
+                    onSelected: (action) async {
+                      if (action == _WishlistItemAction.edit) {
+                        await _openItemEditor(
+                          context,
+                          wishlistId: wishlist.id,
+                          item: item,
+                        );
+                        return;
+                      }
+
+                      if (action == _WishlistItemAction.moveToActive) {
+                        widget.repository.updateWishlistItemStatus(
+                          wishlistId: wishlist.id,
+                          itemId: item.id,
+                          status: 'Saved',
+                        );
+                        _showFeedback(context, 'Moved back to active items.');
+                        return;
+                      }
+
+                      await _confirmDeleteItem(context, wishlist, item);
+                    },
+                    itemBuilder: (context) {
+                      if (widget.showPurchasedOnly) {
+                        return const [
+                          PopupMenuItem(
+                            value: _WishlistItemAction.edit,
+                            child: Text('Edit item'),
+                          ),
+                          PopupMenuItem(
+                            value: _WishlistItemAction.moveToActive,
+                            child: Text('Move back to active'),
+                          ),
+                          PopupMenuItem(
+                            value: _WishlistItemAction.delete,
+                            child: Text('Delete item'),
+                          ),
+                        ];
+                      }
+
+                      return const [
+                        PopupMenuItem(
+                          value: _WishlistItemAction.edit,
+                          child: Text('Edit item'),
+                        ),
+                        PopupMenuItem(
+                          value: _WishlistItemAction.delete,
+                          child: Text('Delete item'),
+                        ),
+                      ];
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildMetadataChip(context, label: 'Rank #${item.rank}'),
+                  _buildMetadataChip(context, label: item.status),
+                  _buildMetadataChip(context,
+                      label: '${item.priority} priority'),
+                ],
+              ),
+              if (item.notes != null && item.notes!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  item.notes!,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+              if (item.priceLabel != null && item.priceLabel!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  item.priceLabel!,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ],
+              if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => _openProductLink(item),
+                  borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      item.productUrl!,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _openProductLink(item),
+                      icon: const Icon(Icons.open_in_new_outlined),
+                      label: const Text('Open Link'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _copyProductLink(item),
+                      icon: const Icon(Icons.link_outlined),
+                      label: const Text('Copy Link'),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeBackground(
+    BuildContext context, {
+    required Color color,
+    required Alignment alignment,
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing4),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: alignment == Alignment.centerLeft
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.end,
+        children: [
+          Icon(icon, color: Colors.white),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Colors.white,
+                ),
+          ),
         ],
       ),
     );
@@ -389,6 +875,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           repository: widget.repository,
           wishlistId: wishlistId,
           item: item,
+          preferredCurrencySymbol:
+              _currentUser?.preferredCurrencySymbol ?? '\$',
         ),
       ),
     );
@@ -417,10 +905,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   children: [
                     TextFormField(
                       controller: nameController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Name',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Name'),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please add a name.';
@@ -431,16 +916,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     TextFormField(
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Email'),
                       validator: (value) {
                         final trimmed = value?.trim() ?? '';
-                        final uri = Uri.tryParse('mailto:$trimmed');
-                        if (trimmed.isEmpty) {
-                          return 'Please add an email.';
-                        }
-                        if (uri == null || !trimmed.contains('@')) {
+                        if (trimmed.isEmpty || !trimmed.contains('@')) {
                           return 'Please add a valid email.';
                         }
                         return null;
@@ -449,9 +928,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     const SizedBox(height: AppConstants.spacing3),
                     DropdownButtonFormField<String>(
                       value: role,
-                      decoration: const InputDecoration(
-                        labelText: 'Role',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Role'),
                       items: const [
                         DropdownMenuItem(
                           value: 'Editor',
@@ -538,475 +1015,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     }
   }
 
-  Widget _buildEmptyItemsState(BuildContext context, Wishlist wishlist) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            wishlist.isArchived
-                ? 'No items were saved in this archived list.'
-                : 'No items yet. Start the collection with the first saved piece.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (!wishlist.isArchived) ...[
-            const SizedBox(height: AppConstants.spacing4),
-            TextButton.icon(
-              onPressed: () => _openItemEditor(
-                context,
-                wishlistId: wishlist.id,
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Add First Item'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilteredItemsEmptyState(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'No items match these filters.',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Try a different status or priority to widen the view.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: AppConstants.spacing4),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedStatus = _allFilter;
-                _selectedPriority = _allFilter;
-              });
-            },
-            child: const Text('Clear Filters'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemInteractionHint(
-    BuildContext context,
-    Wishlist wishlist,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.swipe_outlined),
-          const SizedBox(width: AppConstants.spacing3),
-          Expanded(
-            child: Text(
-              wishlist.isArchived
-                  ? 'Swipe right on an item to copy share details.'
-                  : 'Swipe right on an item to share it, or swipe left to reveal delete.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemFilters(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Sort items',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacing4,
-            vertical: 2,
-          ),
-          child: DropdownButtonFormField<String>(
-            value: _selectedSort,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              labelText: 'Order',
-            ),
-            items: const [
-              DropdownMenuItem(
-                value: _sortNewest,
-                child: Text(_sortNewest),
-              ),
-              DropdownMenuItem(
-                value: _sortOldest,
-                child: Text(_sortOldest),
-              ),
-              DropdownMenuItem(
-                value: _sortPriority,
-                child: Text(_sortPriority),
-              ),
-              DropdownMenuItem(
-                value: _sortStatus,
-                child: Text(_sortStatus),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                _selectedSort = value ?? _sortNewest;
-              });
-            },
-          ),
-        ),
-        const SizedBox(height: AppConstants.spacing3),
-        Text(
-          'Filter by status',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildFilterChip(
-              label: _allFilter,
-              isSelected: _selectedStatus == _allFilter,
-              onSelected: () {
-                setState(() {
-                  _selectedStatus = _allFilter;
-                });
-              },
-            ),
-            ...WishlistItem.statuses.map(
-              (status) => _buildFilterChip(
-                label: status,
-                isSelected: _selectedStatus == status,
-                onSelected: () {
-                  setState(() {
-                    _selectedStatus = status;
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppConstants.spacing3),
-        Text(
-          'Filter by priority',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildFilterChip(
-              label: _allFilter,
-              isSelected: _selectedPriority == _allFilter,
-              onSelected: () {
-                setState(() {
-                  _selectedPriority = _allFilter;
-                });
-              },
-            ),
-            ...WishlistItem.priorities.map(
-              (priority) => _buildFilterChip(
-                label: priority,
-                isSelected: _selectedPriority == priority,
-                onSelected: () {
-                  setState(() {
-                    _selectedPriority = priority;
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onSelected,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => onSelected(),
-    );
-  }
-
-  List<WishlistItem> _applyFilters(List<WishlistItem> items) {
-    final filteredItems = items.where((item) {
-      final statusMatches =
-          _selectedStatus == _allFilter || item.status == _selectedStatus;
-      final priorityMatches =
-          _selectedPriority == _allFilter || item.priority == _selectedPriority;
-      return statusMatches && priorityMatches;
-    }).toList(growable: false);
-
-    filteredItems.sort((left, right) {
-      switch (_selectedSort) {
-        case _sortOldest:
-          return left.createdAt.compareTo(right.createdAt);
-        case _sortPriority:
-          final priorityOrder =
-              _priorityWeight(left.priority).compareTo(
-                _priorityWeight(right.priority),
-              );
-          if (priorityOrder != 0) {
-            return priorityOrder;
-          }
-          return right.createdAt.compareTo(left.createdAt);
-        case _sortStatus:
-          final statusOrder =
-              WishlistItem.statuses.indexOf(left.status).compareTo(
-                WishlistItem.statuses.indexOf(right.status),
-              );
-          if (statusOrder != 0) {
-            return statusOrder;
-          }
-          return right.createdAt.compareTo(left.createdAt);
-        case _sortNewest:
-        default:
-          return right.createdAt.compareTo(left.createdAt);
-      }
-    });
-
-    return filteredItems;
-  }
-
-  int _priorityWeight(String priority) {
-    switch (priority) {
-      case 'High':
-        return 0;
-      case 'Medium':
-        return 1;
-      case 'Low':
-      default:
-        return 2;
-    }
-  }
-
-  Widget _buildItemCard(
-    BuildContext context,
-    Wishlist wishlist,
-    WishlistItem item,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppConstants.spacing3),
-      child: Semantics(
-        label:
-            'Wishlist item ${item.title}, status ${item.status}, priority ${item.priority}.',
-        child: Dismissible(
-          key: ValueKey(item.id),
-          direction: wishlist.isArchived
-              ? DismissDirection.startToEnd
-              : DismissDirection.horizontal,
-          dismissThresholds: const {
-            DismissDirection.startToEnd: 0.25,
-            DismissDirection.endToStart: 0.25,
-          },
-          background: _buildSwipeActionBackground(
-            context,
-            alignment: Alignment.centerLeft,
-            color: Colors.green.shade600,
-            icon: Icons.share_outlined,
-            label: 'Share',
-          ),
-          secondaryBackground: _buildSwipeActionBackground(
-            context,
-            alignment: Alignment.centerRight,
-            color: Colors.red.shade600,
-            icon: Icons.delete_outline,
-            label: 'Delete',
-          ),
-          confirmDismiss: (direction) async {
-            if (direction == DismissDirection.startToEnd) {
-              await _shareItem(context, wishlist, item);
-              return false;
-            }
-
-            return _confirmDeleteItem(context, wishlist, item);
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-            ),
-            padding: const EdgeInsets.all(AppConstants.spacing4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
-                  _buildNetworkImage(
-                    context,
-                    imageUrl: item.imageUrl!,
-                    aspectRatio: 4 / 3,
-                  ),
-                  const SizedBox(height: AppConstants.spacing4),
-                ],
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    PopupMenuButton<_WishlistItemAction>(
-                      tooltip: 'Item actions',
-                      onSelected: (action) async {
-                        if (action == _WishlistItemAction.edit) {
-                          await _openItemEditor(
-                            context,
-                            wishlistId: wishlist.id,
-                            item: item,
-                          );
-                          return;
-                        }
-
-                        if (action == _WishlistItemAction.share) {
-                          await _shareItem(context, wishlist, item);
-                          return;
-                        }
-
-                        await _confirmDeleteItem(context, wishlist, item);
-                      },
-                      itemBuilder: (context) {
-                        if (wishlist.isArchived) {
-                          return const [
-                            PopupMenuItem(
-                              value: _WishlistItemAction.share,
-                              child: Text('Share item'),
-                            ),
-                          ];
-                        }
-
-                        return const [
-                          PopupMenuItem(
-                            value: _WishlistItemAction.edit,
-                            child: Text('Edit item'),
-                          ),
-                          PopupMenuItem(
-                            value: _WishlistItemAction.share,
-                            child: Text('Share item'),
-                          ),
-                          PopupMenuItem(
-                            value: _WishlistItemAction.delete,
-                            child: Text('Delete item'),
-                          ),
-                        ];
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildMetadataChip(context, label: item.status),
-                    _buildMetadataChip(
-                      context,
-                      label: '${item.priority} priority',
-                    ),
-                  ],
-                ),
-                if (item.notes != null && item.notes!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    item.notes!,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-                if (item.priceLabel != null && item.priceLabel!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    item.priceLabel!,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ],
-                if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    item.productUrl!,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  TextButton.icon(
-                    onPressed: () => _copyProductLink(context, item),
-                    icon: const Icon(Icons.link_outlined),
-                    label: const Text('Copy Link'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwipeActionBackground(
-    BuildContext context, {
-    required Alignment alignment,
-    required Color color,
-    required IconData icon,
-    required String label,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing4),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: alignment == Alignment.centerLeft
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.end,
-        children: [
-          Icon(icon, color: Colors.white),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<bool> _confirmDeleteItem(
     BuildContext context,
     Wishlist wishlist,
@@ -1016,9 +1024,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete item?'),
-        content: Text(
-          'Remove "${item.title}" from this list?',
-        ),
+        content: Text('Remove "${item.title}" from this list?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -1044,33 +1050,24 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     return false;
   }
 
-  Future<void> _shareItem(
-    BuildContext context,
-    Wishlist wishlist,
-    WishlistItem item,
-  ) async {
-    await Clipboard.setData(
-      ClipboardData(text: _buildShareText(wishlist, item)),
+  Future<void> _shareWishlist(Wishlist wishlist) async {
+    await Share.share(
+      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: https://wishiz.app/lists/${wishlist.id}',
+      subject: wishlist.title,
     );
-    _showFeedback(context, 'Share details copied.');
   }
 
-  Future<void> _copyProductLink(
-    BuildContext context,
-    WishlistItem item,
-  ) async {
-    final productUrl = item.productUrl;
-    if (productUrl == null || productUrl.isEmpty) {
-      return;
-    }
-
-    await Clipboard.setData(ClipboardData(text: productUrl));
-    _showFeedback(context, 'Product link copied.');
+  Future<void> _shareItem(Wishlist wishlist, WishlistItem item) async {
+    await Share.share(
+      _buildShareText(wishlist, item),
+      subject: item.title,
+    );
   }
 
   String _buildShareText(Wishlist wishlist, WishlistItem item) {
     final lines = <String>[
       '${item.title} from ${wishlist.title}',
+      'Rank: #${item.rank}',
     ];
 
     if (item.priceLabel != null && item.priceLabel!.isNotEmpty) {
@@ -1086,6 +1083,39 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     return lines.join('\n');
   }
 
+  Future<void> _copyProductLink(WishlistItem item) async {
+    final productUrl = item.productUrl;
+    if (productUrl == null || productUrl.isEmpty) {
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: productUrl));
+    _showFeedback(context, 'Product link copied.');
+  }
+
+  Future<void> _openProductLink(WishlistItem item) async {
+    final productUrl = item.productUrl;
+    if (productUrl == null || productUrl.isEmpty) {
+      return;
+    }
+
+    final uri = Uri.tryParse(productUrl);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      _showFeedback(context, 'This link is not valid.');
+      return;
+    }
+
+    final didLaunch = await launchUrl(
+      uri,
+      mode:
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+    );
+
+    if (!didLaunch && mounted) {
+      _showFeedback(context, 'We could not open that link.');
+    }
+  }
+
   void _showFeedback(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1094,63 +1124,57 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       );
   }
 
-  Widget _buildNetworkImage(
+  Widget _buildImage(
     BuildContext context, {
-    required String imageUrl,
+    required String imageSource,
     required double aspectRatio,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final uri = Uri.tryParse(imageSource);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    final fallback = Container(
+      color: colorScheme.surfaceContainerHigh,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+
+    final image = kIsWeb || isRemote
+        ? Image.network(
+            imageSource,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => fallback,
+          )
+        : Image.file(
+            File(imageSource),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => fallback,
+          );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
       child: AspectRatio(
         aspectRatio: aspectRatio,
-        child: Image.network(
-          imageUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: colorScheme.surfaceContainerHigh,
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.image_outlined,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            );
-          },
-        ),
+        child: image,
       ),
     );
-  }
-
-  String _formatRelativeDate(DateTime updatedAt) {
-    final difference = DateTime.now().difference(updatedAt);
-
-    if (difference.inDays >= 2) {
-      return '${difference.inDays} days ago';
-    }
-    if (difference.inDays == 1) {
-      return 'yesterday';
-    }
-    if (difference.inHours >= 1) {
-      return '${difference.inHours}h ago';
-    }
-    if (difference.inMinutes >= 1) {
-      return '${difference.inMinutes}m ago';
-    }
-    return 'just now';
   }
 }
 
 enum _WishlistAction {
-  archive,
-  restore,
   delete,
 }
 
 enum _WishlistItemAction {
   edit,
-  share,
+  moveToActive,
   delete,
 }
 

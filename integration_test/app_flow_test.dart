@@ -6,9 +6,28 @@ import 'package:wishiz/main.dart' as app;
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('searches a list and opens its detail screen', (tester) async {
+  testWidgets('signs up, searches by name, and opens a list detail screen', (
+    tester,
+  ) async {
     await app.main();
     await tester.pumpAndSettle();
+
+    if (find.text('Need an account? Sign up').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Need an account? Sign up'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Dana');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Rios');
+      await tester.enterText(find.byType(TextFormField).at(2), '28');
+      await tester.enterText(
+        find.byType(TextFormField).at(3),
+        'dana@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).at(4), 'password123');
+      await tester.enterText(find.byType(TextFormField).at(5), 'password123');
+      await tester.tap(find.text('Sign Up'));
+      await tester.pumpAndSettle();
+    }
 
     expect(find.text('Wishiz'), findsOneWidget);
 

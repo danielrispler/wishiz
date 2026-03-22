@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
-import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
+import 'package:wishiz/features/auth/domain/entities/app_user.dart';
+import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
+import 'package:wishiz/features/auth/presentation/screens/account_screen.dart';
 import 'package:wishiz/features/home/presentation/widgets/glassmorphic_bottom_nav.dart';
+import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
@@ -11,18 +16,26 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.repository,
+    required this.authRepository,
+    required this.currentUser,
   });
 
   final WishlistRepository repository;
+  final AuthRepository authRepository;
+  final AppUser currentUser;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const int _allYears = -1;
+
   int _currentIndex = 0;
   String _searchQuery = '';
   int _searchFieldVersion = 0;
+  int _selectedYear = _allYears;
+  String? _lastReminderSignature;
 
   Future<void> _openWishlistEditor({Wishlist? wishlist}) async {
     final wishlistId = await Navigator.of(context).push<String>(
@@ -41,12 +54,27 @@ class _HomeScreenState extends State<HomeScreen> {
     await _openWishlistDetails(wishlistId);
   }
 
-  Future<void> _openWishlistDetails(String wishlistId) {
+  Future<void> _openWishlistDetails(
+    String wishlistId, {
+    bool showPurchasedOnly = false,
+  }) {
     return Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WishlistDetailScreen(
           repository: widget.repository,
+          authRepository: widget.authRepository,
           wishlistId: wishlistId,
+          showPurchasedOnly: showPurchasedOnly,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAccountScreen() {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AccountScreen(
+          authRepository: widget.authRepository,
         ),
       ),
     );
@@ -89,128 +117,107 @@ class _HomeScreenState extends State<HomeScreen> {
     _showFeedback('List deleted.');
   }
 
-  void _archiveWishlist(Wishlist wishlist) {
-    widget.repository.archiveWishlist(wishlist.id);
-    _showFeedback('List archived.');
-  }
-
-  void _restoreWishlist(Wishlist wishlist) {
-    widget.repository.restoreWishlist(wishlist.id);
-    _showFeedback('List restored.');
-  }
-
-  Widget _buildHomeTab(List<Wishlist> activeWishlists) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return SafeArea(
-      bottom: false,
-      child: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppConstants.spacing4,
-            ),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                const SizedBox(height: AppConstants.spacing6),
-                
-                // Brand Header
-                Text(
-                  'Wishiz',
-                  style: Theme.of(context).textTheme.displayMedium,
-                ),
-                const SizedBox(height: AppConstants.spacing8),
-                
-                // My Lists Section
-                Text(
-                  'My lists',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Organize your inspirations and curated desires.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: AppConstants.spacing4),
-                _buildSearchField(
-                  hintText: 'Search your lists',
-                ),
-                const SizedBox(height: AppConstants.spacing4),
-
-                if (activeWishlists.isEmpty)
-                  _buildEmptyState(
-                    title: _searchQuery.isEmpty
-                        ? 'No lists yet'
-                        : 'No matching lists',
-                    description: _searchQuery.isEmpty
-                        ? 'Create your first list to turn this editorial shell into a working collection.'
-                        : 'Try a different title or clear the search to see every collection again.',
-                  )
-                else
-                  ...activeWishlists.map(
-                    (wishlist) => _buildWishlistCard(wishlist),
-                  ),
-
-                const SizedBox(height: AppConstants.spacing6),
-
-                Text(
-                  'New Wishlist',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Give your curated collection a name to get started.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: AppConstants.spacing4),
-                
-                // Primary CTA Button
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [colorScheme.primary, colorScheme.primaryContainer],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(AppConstants.radiusFull),
-                  ),
-                  child: Semantics(
-                    button: true,
-                    label: 'Create a new wishlist',
-                    child: ElevatedButton(
-                      onPressed: () => _openWishlistEditor(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(vertical: AppConstants.spacing4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppConstants.radiusFull),
-                        ),
-                      ),
-                      child: Text(
-                        'Create List',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 100),
-              ]),
-            ),
-          ),
-        ],
-      ),
+  Future<void> _shareWishlist(Wishlist wishlist) async {
+    final link = _buildWishlistLink(wishlist);
+    await Share.share(
+      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: $link',
+      subject: wishlist.title,
     );
   }
 
-  Widget _buildCollectionTab({
-    required String title,
-    required String description,
-    required List<Wishlist> wishlists,
-    required String emptyTitle,
-    required String emptyDescription,
+  String _buildWishlistLink(Wishlist wishlist) {
+    return 'https://wishiz.app/lists/${wishlist.id}';
+  }
+
+  Widget _buildHeader({bool showName = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: showName
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Wishiz',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.currentUser.fullName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                )
+              : Text(
+                  'Wishiz',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+        ),
+        IconButton(
+          tooltip: 'Account',
+          onPressed: _openAccountScreen,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.account_circle_outlined),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopCreateSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Create a New List',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Start the next wishlist first, then browse and filter everything else below.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: AppConstants.spacing4),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                colorScheme.primary,
+                colorScheme.primaryContainer,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+          ),
+          child: ElevatedButton(
+            onPressed: () => _openWishlistEditor(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(
+                vertical: AppConstants.spacing4,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+              ),
+            ),
+            child: Text(
+              'Create List',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHomeTab({
+    required List<Wishlist> activeWishlists,
+    required List<int> availableYears,
   }) {
     return SafeArea(
       bottom: false,
@@ -222,6 +229,68 @@ class _HomeScreenState extends State<HomeScreen> {
           100,
         ),
         children: [
+          _buildHeader(showName: true),
+          const SizedBox(height: AppConstants.spacing8),
+          _buildTopCreateSection(),
+          const SizedBox(height: AppConstants.spacing8),
+          Text(
+            'My Lists',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Search by name, narrow by year, and open only the active items you still want.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          _buildSearchAndFilters(
+            hintText: 'Search your lists',
+            availableYears: availableYears,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          if (activeWishlists.isEmpty)
+            _buildEmptyState(
+              title: _searchQuery.isEmpty && _selectedYear == _allYears
+                  ? 'No active lists yet'
+                  : 'No matching lists',
+              description: _searchQuery.isEmpty && _selectedYear == _allYears
+                  ? 'Create your first list to start planning what comes next.'
+                  : 'Try another title, another year, or clear the filters.',
+            )
+          else
+            ...activeWishlists.map(
+              (wishlist) => _buildWishlistCard(
+                wishlist,
+                itemCount: wishlist.activeItemCount,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionTab({
+    required String title,
+    required String description,
+    required List<Wishlist> wishlists,
+    required String emptyTitle,
+    required String emptyDescription,
+    required List<int> availableYears,
+    bool showPurchasedOnly = false,
+    bool isSharedView = false,
+  }) {
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppConstants.spacing4,
+          AppConstants.spacing6,
+          AppConstants.spacing4,
+          100,
+        ),
+        children: [
+          _buildHeader(),
+          const SizedBox(height: AppConstants.spacing8),
           Text(
             title,
             style: Theme.of(context).textTheme.headlineSmall,
@@ -232,23 +301,30 @@ class _HomeScreenState extends State<HomeScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: AppConstants.spacing4),
-          _buildSearchField(
+          _buildSearchAndFilters(
             hintText: 'Search $title',
+            availableYears: availableYears,
           ),
           const SizedBox(height: AppConstants.spacing4),
           if (wishlists.isEmpty)
             _buildEmptyState(
-              title: _searchQuery.isEmpty ? emptyTitle : 'No matching lists',
-              description: _searchQuery.isEmpty
+              title: _searchQuery.isEmpty && _selectedYear == _allYears
+                  ? emptyTitle
+                  : 'No matching lists',
+              description: _searchQuery.isEmpty && _selectedYear == _allYears
                   ? emptyDescription
-                  : 'Try a different title or clear the search to see every collection again.',
+                  : 'Try another title, another year, or clear the filters.',
             )
           else
             ...wishlists.map(
               (wishlist) => _buildWishlistCard(
                 wishlist,
-                isArchivedView: title == 'Past lists',
-                isSharedView: title == 'Shared',
+                itemCount: showPurchasedOnly
+                    ? wishlist.purchasedItemCount
+                    : wishlist.activeItemCount,
+                openPurchasedOnly: showPurchasedOnly,
+                isSharedView: isSharedView,
+                isPastView: showPurchasedOnly,
               ),
             ),
         ],
@@ -258,45 +334,157 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWishlistCard(
     Wishlist wishlist, {
-    bool isArchivedView = false,
+    required int itemCount,
+    bool openPurchasedOnly = false,
     bool isSharedView = false,
+    bool isPastView = false,
   }) {
     return WishlistSummaryCard(
       title: wishlist.title,
-      itemCount: wishlist.itemCount,
+      itemCount: itemCount,
       lastUpdated: _formatRelativeDate(wishlist.updatedAt),
       coverImageUrl: wishlist.coverImageUrl,
-      supportingText: _supportingTextForWishlist(wishlist),
+      supportingText: _supportingTextForWishlist(
+        wishlist,
+        showPurchasedOnly: openPurchasedOnly,
+      ),
       actions: _buildWishlistActions(
         wishlist,
-        isArchivedView: isArchivedView,
         isSharedView: isSharedView,
+        isPastView: isPastView,
       ),
-      onTap: () => _openWishlistDetails(wishlist.id),
+      onTap: () => _openWishlistDetails(
+        wishlist.id,
+        showPurchasedOnly: openPurchasedOnly,
+      ),
+    );
+  }
+
+  Widget _buildRemindersTab({
+    required List<_ReminderEntry> reminders,
+    required List<int> availableYears,
+  }) {
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppConstants.spacing4,
+          AppConstants.spacing6,
+          AppConstants.spacing4,
+          100,
+        ),
+        children: [
+          _buildHeader(),
+          const SizedBox(height: AppConstants.spacing8),
+          Text(
+            'Reminders',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.currentUser.notificationsEnabled
+                ? 'Items appear here once they have been waiting for ${widget.currentUser.reminderDays} days or longer.'
+                : 'Turn reminders back on from your account settings whenever you want the app to nudge you again.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          _buildSearchAndFilters(
+            hintText: 'Search reminders',
+            availableYears: availableYears,
+          ),
+          const SizedBox(height: AppConstants.spacing4),
+          if (!widget.currentUser.notificationsEnabled)
+            _buildEmptyState(
+              title: 'Reminders are turned off',
+              description:
+                  'Open the account icon in the top-right corner to enable reminder notifications and set the number of days.',
+            )
+          else if (reminders.isEmpty)
+            _buildEmptyState(
+              title: _searchQuery.isEmpty && _selectedYear == _allYears
+                  ? 'No reminders yet'
+                  : 'No matching reminders',
+              description: _searchQuery.isEmpty && _selectedYear == _allYears
+                  ? 'When saved items sit on your wishlist longer than your chosen reminder window, they will show up here.'
+                  : 'Try another search term or clear the year filter.',
+            )
+          else
+            ...reminders.map(_buildReminderCard),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReminderCard(_ReminderEntry reminder) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacing4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            reminder.item.title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${reminder.wishlist.title} · ${reminder.wishlist.year}',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Saved ${reminder.daysWaiting} day${reminder.daysWaiting == 1 ? '' : 's'} ago.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (reminder.item.priceLabel != null &&
+              reminder.item.priceLabel!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              reminder.item.priceLabel!,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ],
+          const SizedBox(height: AppConstants.spacing3),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () => _openWishlistDetails(reminder.wishlist.id),
+                icon: const Icon(Icons.visibility_outlined),
+                label: const Text('Open List'),
+              ),
+              if (reminder.item.productUrl != null &&
+                  reminder.item.productUrl!.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _openWishlistDetails(reminder.wishlist.id),
+                  icon: const Icon(Icons.open_in_new_outlined),
+                  label: const Text('View in List'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   List<Widget> _buildWishlistActions(
     Wishlist wishlist, {
-    required bool isArchivedView,
     required bool isSharedView,
+    required bool isPastView,
   }) {
-    if (isArchivedView) {
+    if (isPastView) {
       return [
         Tooltip(
-          message: 'Restore list',
+          message: 'Share list',
           child: TextButton.icon(
-            onPressed: () => _restoreWishlist(wishlist),
-            icon: const Icon(Icons.unarchive_outlined),
-            label: const Text('Restore'),
-          ),
-        ),
-        Tooltip(
-          message: 'Delete list',
-          child: TextButton.icon(
-            onPressed: () => _confirmDeleteWishlist(wishlist),
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Delete'),
+            onPressed: () => _shareWishlist(wishlist),
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Share'),
           ),
         ),
       ];
@@ -312,11 +500,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       Tooltip(
-        message: 'Archive list',
+        message: 'Share list',
         child: TextButton.icon(
-          onPressed: () => _archiveWishlist(wishlist),
-          icon: const Icon(Icons.archive_outlined),
-          label: const Text('Archive'),
+          onPressed: () => _shareWishlist(wishlist),
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share'),
         ),
       ),
     ];
@@ -334,80 +522,226 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    actions.add(
+      Tooltip(
+        message: 'Delete list',
+        child: TextButton.icon(
+          onPressed: () => _confirmDeleteWishlist(wishlist),
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('Delete'),
+        ),
+      ),
+    );
+
     return actions;
   }
 
-  Widget _buildSearchField({
+  Widget _buildSearchAndFilters({
     required String hintText,
+    required List<int> availableYears,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: 2,
-      ),
-      child: Semantics(
-        textField: true,
-        label: hintText,
-        child: TextFormField(
-          key: ValueKey('$hintText-$_searchFieldVersion'),
-          initialValue: _searchQuery,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            icon: const Icon(Icons.search),
-            hintText: hintText,
-            border: InputBorder.none,
-            suffixIcon: _searchQuery.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Clear search',
-                    onPressed: () {
-                      setState(() {
-                        _searchQuery = '';
-                        _searchFieldVersion += 1;
-                      });
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value.trim();
-            });
-          },
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacing4,
+            vertical: 2,
+          ),
+          child: TextFormField(
+            key: ValueKey('$hintText-$_searchFieldVersion'),
+            initialValue: _searchQuery,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              icon: const Icon(Icons.search),
+              hintText: hintText,
+              border: InputBorder.none,
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        setState(() {
+                          _searchQuery = '';
+                          _searchFieldVersion += 1;
+                        });
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value.trim();
+              });
+            },
+          ),
         ),
-      ),
+        const SizedBox(height: AppConstants.spacing3),
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacing4,
+            vertical: 2,
+          ),
+          child: DropdownButtonFormField<int>(
+            value: _selectedYear,
+            decoration: const InputDecoration(
+              labelText: 'Filter by year',
+              border: InputBorder.none,
+            ),
+            items: [
+              const DropdownMenuItem(
+                value: _allYears,
+                child: Text('All years'),
+              ),
+              ...availableYears.map(
+                (year) => DropdownMenuItem(
+                  value: year,
+                  child: Text(year.toString()),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedYear = value ?? _allYears;
+              });
+            },
+          ),
+        ),
+      ],
     );
   }
 
   List<Wishlist> _filterWishlists(List<Wishlist> wishlists) {
     final query = _searchQuery.toLowerCase();
-    if (query.isEmpty) {
-      return wishlists;
-    }
 
     return wishlists.where((wishlist) {
-      return wishlist.title.toLowerCase().contains(query);
+      final matchesQuery =
+          query.isEmpty || wishlist.title.toLowerCase().contains(query);
+      final matchesYear =
+          _selectedYear == _allYears || wishlist.year == _selectedYear;
+      return matchesQuery && matchesYear;
     }).toList(growable: false);
   }
 
-  String? _supportingTextForWishlist(Wishlist wishlist) {
-    if (!wishlist.isShared || wishlist.sharedUsers.isEmpty) {
-      return null;
+  List<_ReminderEntry> _buildReminderEntries(List<Wishlist> wishlists) {
+    if (!widget.currentUser.notificationsEnabled) {
+      return const [];
     }
 
-    final owner = wishlist.sharedUsers.first;
-    if (wishlist.sharedUsers.length == 1) {
-      return '${owner.role} · ${owner.name}';
+    final now = DateTime.now();
+    final minimumAge = Duration(days: widget.currentUser.reminderDays);
+    final reminders = <_ReminderEntry>[];
+
+    for (final wishlist in wishlists) {
+      for (final item in wishlist.activeItems) {
+        final age = now.difference(item.createdAt);
+        if (age < minimumAge) {
+          continue;
+        }
+
+        reminders.add(
+          _ReminderEntry(
+            wishlist: wishlist,
+            item: item,
+            daysWaiting: age.inDays,
+          ),
+        );
+      }
     }
 
-    final collaboratorCount = wishlist.sharedUsers.length - 1;
-    return '${owner.role} · ${owner.name} +$collaboratorCount more';
+    reminders.sort((left, right) {
+      final dayComparison = right.daysWaiting.compareTo(left.daysWaiting);
+      if (dayComparison != 0) {
+        return dayComparison;
+      }
+      return left.item.rank.compareTo(right.item.rank);
+    });
+
+    return reminders;
+  }
+
+  List<_ReminderEntry> _filterReminders(List<_ReminderEntry> reminders) {
+    final query = _searchQuery.toLowerCase();
+
+    return reminders.where((reminder) {
+      final matchesQuery = query.isEmpty ||
+          reminder.item.title.toLowerCase().contains(query) ||
+          reminder.wishlist.title.toLowerCase().contains(query);
+      final matchesYear =
+          _selectedYear == _allYears || reminder.wishlist.year == _selectedYear;
+      return matchesQuery && matchesYear;
+    }).toList(growable: false);
+  }
+
+  void _scheduleReminderPrompt(List<_ReminderEntry> reminders) {
+    final signature = [
+      widget.currentUser.id,
+      widget.currentUser.notificationsEnabled,
+      widget.currentUser.reminderDays,
+      reminders.length,
+    ].join('|');
+
+    if (_lastReminderSignature == signature || reminders.isEmpty) {
+      _lastReminderSignature = signature;
+      return;
+    }
+
+    _lastReminderSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'You have ${reminders.length} wishlist reminder${reminders.length == 1 ? '' : 's'} ready.',
+            ),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () {
+                setState(() {
+                  _currentIndex = 3;
+                });
+              },
+            ),
+          ),
+        );
+    });
+  }
+
+  List<int> _availableYears(List<Wishlist> wishlists) {
+    final years = wishlists.map((wishlist) => wishlist.year).toSet().toList()
+      ..sort((left, right) => right.compareTo(left));
+    return years;
+  }
+
+  String _supportingTextForWishlist(
+    Wishlist wishlist, {
+    required bool showPurchasedOnly,
+  }) {
+    final segments = <String>[
+      wishlist.year.toString(),
+    ];
+
+    if (showPurchasedOnly) {
+      segments.add('${wishlist.purchasedItemCount} purchased');
+    } else if (wishlist.isShared && wishlist.sharedUsers.isNotEmpty) {
+      segments.add('${wishlist.sharedUsers.length} members');
+    }
+
+    return segments.join(' · ');
   }
 
   Widget _buildEmptyState({
@@ -460,50 +794,77 @@ class _HomeScreenState extends State<HomeScreen> {
     return ValueListenableBuilder<List<Wishlist>>(
       valueListenable: widget.repository.watchWishlists(),
       builder: (context, wishlists, _) {
-        final activeWishlists = _filterWishlists(
-          wishlists
+        final visibleWishlists = wishlists
             .where((wishlist) => !wishlist.isArchived)
-            .toList(growable: false),
+            .toList(growable: false);
+        final availableYears = _availableYears(visibleWishlists);
+        final reminderEntries = _buildReminderEntries(visibleWishlists);
+        final filteredReminders = _filterReminders(reminderEntries);
+        final activeWishlists = _filterWishlists(
+          visibleWishlists
+              .where(
+                (wishlist) =>
+                    wishlist.activeItemCount > 0 || wishlist.items.isEmpty,
+              )
+              .toList(growable: false),
         );
         final sharedWishlists = _filterWishlists(
-          wishlists
-            .where((wishlist) => wishlist.isShared && !wishlist.isArchived)
-            .toList(growable: false),
+          visibleWishlists
+              .where(
+                (wishlist) =>
+                    wishlist.isShared &&
+                    (wishlist.activeItemCount > 0 || wishlist.items.isEmpty),
+              )
+              .toList(growable: false),
         );
-        final archivedWishlists = _filterWishlists(
-          wishlists
-            .where((wishlist) => wishlist.isArchived)
-            .toList(growable: false),
+        final pastWishlists = _filterWishlists(
+          visibleWishlists
+              .where((wishlist) => wishlist.purchasedItemCount > 0)
+              .toList(growable: false),
         );
+
+        _scheduleReminderPrompt(reminderEntries);
 
         return Scaffold(
           extendBody: true,
           body: IndexedStack(
             index: _currentIndex,
             children: [
-              _buildHomeTab(activeWishlists),
+              _buildHomeTab(
+                activeWishlists: activeWishlists,
+                availableYears: availableYears,
+              ),
               _buildCollectionTab(
                 title: 'Shared',
                 description:
-                    'Collections that are collaborative, visible, and ready for shared planning.',
+                    'Lists that are ready to send to other members through a share link.',
                 wishlists: sharedWishlists,
                 emptyTitle: 'Nothing shared yet',
                 emptyDescription:
-                    'Lists marked as shared will appear here without changing your current design system.',
+                    'Turn on sharing in a list and it will appear here.',
+                availableYears: availableYears,
+                isSharedView: true,
               ),
               _buildCollectionTab(
-                title: 'Past lists',
+                title: 'Past Lists',
                 description:
-                    'Archived collections stay available here so the active space remains clean.',
-                wishlists: archivedWishlists,
-                emptyTitle: 'No archived lists',
+                    'Purchased items are grouped here under the original list they came from.',
+                wishlists: pastWishlists,
+                emptyTitle: 'No purchased items yet',
                 emptyDescription:
-                    'Archive a finished list to move it here while keeping its details intact.',
+                    'Swipe right on an item in an active list to move it here.',
+                availableYears: availableYears,
+                showPurchasedOnly: true,
+              ),
+              _buildRemindersTab(
+                reminders: filteredReminders,
+                availableYears: availableYears,
               ),
             ],
           ),
           bottomNavigationBar: GlassmorphicBottomNav(
             currentIndex: _currentIndex,
+            reminderCount: reminderEntries.length,
             onTap: (index) {
               setState(() {
                 _currentIndex = index;
@@ -514,4 +875,16 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+}
+
+class _ReminderEntry {
+  const _ReminderEntry({
+    required this.wishlist,
+    required this.item,
+    required this.daysWaiting,
+  });
+
+  final Wishlist wishlist;
+  final WishlistItem item;
+  final int daysWaiting;
 }

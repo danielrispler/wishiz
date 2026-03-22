@@ -6,6 +6,7 @@ class Wishlist {
     required this.id,
     required this.title,
     required this.description,
+    required this.year,
     this.coverImageUrl,
     required this.createdAt,
     required this.updatedAt,
@@ -13,12 +14,13 @@ class Wishlist {
     this.isShared = false,
     List<SharedUser> sharedUsers = const [],
     List<WishlistItem> items = const [],
-  }) : sharedUsers = List.unmodifiable(sharedUsers),
-       items = List.unmodifiable(items);
+  })  : sharedUsers = List.unmodifiable(sharedUsers),
+        items = List.unmodifiable(items);
 
   final String id;
   final String title;
   final String description;
+  final int year;
   final String? coverImageUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -28,11 +30,20 @@ class Wishlist {
   final List<WishlistItem> items;
 
   int get itemCount => items.length;
+  List<WishlistItem> get activeItems => List.unmodifiable(
+        items.where((item) => item.status != 'Purchased'),
+      );
+  List<WishlistItem> get purchasedItems => List.unmodifiable(
+        items.where((item) => item.status == 'Purchased'),
+      );
+  int get activeItemCount => activeItems.length;
+  int get purchasedItemCount => purchasedItems.length;
 
   Wishlist copyWith({
     String? id,
     String? title,
     String? description,
+    int? year,
     Object? coverImageUrl = _noValue,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -45,6 +56,7 @@ class Wishlist {
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
+      year: year ?? this.year,
       coverImageUrl: identical(coverImageUrl, _noValue)
           ? this.coverImageUrl
           : coverImageUrl as String?,

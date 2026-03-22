@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -26,6 +30,7 @@ class WishlistItemEditorScreen extends StatefulWidget {
 
 class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
 
   late final TextEditingController _titleController;
   late final TextEditingController _notesController;
@@ -58,6 +63,41 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     _imageUrlController.dispose();
     _productUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickItemImage() async {
+    final image = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (image == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _imageUrlController.text = image.path;
+    });
+  }
+
+  void _applyLinkDefaults() {
+    final productUrl = _optionalValue(_productUrlController.text);
+    if (productUrl == null) {
+      return;
+    }
+
+    final uri = Uri.tryParse(productUrl);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      return;
+    }
+
+    final inferredTitle = _inferTitleFromProductUri(uri);
+    final inferredNotes = _inferNotesFromProductUri(uri);
+
+    setState(() {
+      if (_titleController.text.trim().isEmpty && inferredTitle != null) {
+        _titleController.text = inferredTitle;
+      }
+      if (_notesController.text.trim().isEmpty && inferredNotes != null) {
+        _notesController.text = inferredNotes;
+      }
+    });
   }
 
   void _saveItem() {
@@ -222,18 +262,29 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.spacing3),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _imageUrlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Image URL',
-                    hintText: 'https://',
-                    border: InputBorder.none,
+              if (_imageUrlController.text.isNotEmpty) ...[
+                _buildImagePreview(context),
+                const SizedBox(height: AppConstants.spacing3),
+              ],
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: _pickItemImage,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Choose From Gallery'),
                   ),
-                  validator: _validateOptionalUrl,
-                ),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _imageUrlController.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.clear_outlined),
+                    label: const Text('Clear Image'),
+                  ),
+                ],
               ),
               const SizedBox(height: AppConstants.spacing3),
               _buildFieldCard(
@@ -247,6 +298,16 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     border: InputBorder.none,
                   ),
                   validator: _validateOptionalUrl,
+                  onEditingComplete: _applyLinkDefaults,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacing3),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _applyLinkDefaults,
+                  icon: const Icon(Icons.auto_fix_high_outlined),
+                  label: const Text('Use Link Defaults'),
                 ),
               ),
               const SizedBox(height: AppConstants.spacing6),
@@ -344,5 +405,90 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final uri = Uri.tryParse(trimmed);
     final isValid = uri != null && uri.hasScheme && uri.hasAuthority;
     return isValid ? null : 'Please enter a valid URL.';
+  }
+
+  Widget _buildImagePreview(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final source = _imageUrlController.text.trim();
+    final uri = Uri.tryParse(source);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    final image = kIsWeb || isRemote
+        ? Image.network(
+            source,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _imageFallback(
+              colorScheme,
+            ),
+          )
+        : Image.file(
+            File(source),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _imageFallback(
+              colorScheme,
+            ),
+          );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: image,
+      ),
+    );
+  }
+
+  Widget _imageFallback(ColorScheme colorScheme) {
+    return Container(
+      color: colorScheme.surfaceContainerHigh,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  String? _inferTitleFromProductUri(Uri uri) {
+    final pathSegments = uri.pathSegments.where((segment) => segment.isNotEmpty);
+    for (final segment in pathSegments.toList().reversed) {
+      final decoded = Uri.decodeComponent(segment)
+          .replaceAll(RegExp(r'[-_+]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final cleaned = decoded
+          .replaceAll(RegExp(r'\b\d+\b'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (cleaned.isNotEmpty && cleaned.length > 2) {
+        return _toTitleCase(cleaned);
+      }
+    }
+
+    return null;
+  }
+
+  String? _inferNotesFromProductUri(Uri uri) {
+    final host = uri.host.replaceFirst(RegExp(r'^www\.'), '').trim();
+    if (host.isEmpty) {
+      return null;
+    }
+
+    return 'Imported from $host.';
+  }
+
+  String _toTitleCase(String value) {
+    return value
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map((word) {
+          final lower = word.toLowerCase();
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
   }
 }

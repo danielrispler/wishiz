@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Wishiz uses the camera so you can add photos to your wishlists.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Wishiz may access the microphone when capturing video for wishlist items.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wishiz uses your photo library so you can choose images for your wishlists.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

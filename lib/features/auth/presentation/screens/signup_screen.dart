@@ -24,8 +24,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
+  final _fullNameController = TextEditingController();
   final _birthdayController = TextEditingController();
   DateTime? _selectedBirthday;
   bool _isSubmitting = false;
@@ -35,8 +34,7 @@ class _SignupScreenState extends State<SignupScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _firstNameController.dispose();
-    _lastNameController.dispose();
+    _fullNameController.dispose();
     _birthdayController.dispose();
     super.dispose();
   }
@@ -75,8 +73,7 @@ class _SignupScreenState extends State<SignupScreen> {
       final result = await widget.authRepository.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
+        fullName: _fullNameController.text.trim(),
         birthday: _selectedBirthday!,
       );
 
@@ -145,21 +142,9 @@ class _SignupScreenState extends State<SignupScreen> {
                       _buildFieldCard(
                         context,
                         child: TextFormField(
-                          controller: _firstNameController,
+                          controller: _fullNameController,
                           decoration: const InputDecoration(
-                            labelText: 'First name',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateRequired,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.spacing3),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _lastNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Last name',
+                            labelText: 'Full name',
                             border: InputBorder.none,
                           ),
                           validator: _validateRequired,

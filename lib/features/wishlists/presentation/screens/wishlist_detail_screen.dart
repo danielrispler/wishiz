@@ -43,187 +43,193 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   String _selectedPriority = _allFilter;
   String _selectedSort = _sortHighestRank;
 
-  AppUser? get _currentUser => widget.authRepository.getCurrentUser();
-
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<Wishlist>>(
-      valueListenable: widget.repository.watchWishlists(),
-      builder: (context, _, __) {
-        final wishlist = widget.repository.findById(widget.wishlistId);
+    return ValueListenableBuilder<AppUser?>(
+      valueListenable: widget.authRepository.watchCurrentUser(),
+      builder: (context, currentUser, __) {
+        return ValueListenableBuilder<List<Wishlist>>(
+          valueListenable: widget.repository.watchWishlists(),
+          builder: (context, _, __) {
+            final wishlist = widget.repository.findById(widget.wishlistId);
 
-        if (wishlist == null) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: Center(
-              child: Text(
-                'This list no longer exists.',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-          );
-        }
-
-        final sourceItems = widget.showPurchasedOnly
-            ? wishlist.purchasedItems
-            : wishlist.activeItems;
-        final visibleItems = _applyFilters(sourceItems);
-        final canReorder = !widget.showPurchasedOnly &&
-            _selectedStatus == _allFilter &&
-            _selectedPriority == _allFilter &&
-            _selectedSort == _sortHighestRank &&
-            visibleItems.length > 1;
-
-        return Scaffold(
-          appBar: AppBar(
-            title:
-                Text(widget.showPurchasedOnly ? 'Past List' : 'List Details'),
-            actions: [
-              IconButton(
-                tooltip: 'Share list',
-                onPressed: () => _shareWishlist(wishlist),
-                icon: const Icon(Icons.share_outlined),
-              ),
-              if (!widget.showPurchasedOnly)
-                IconButton(
-                  tooltip: 'Edit list',
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => WishlistEditorScreen(
-                          repository: widget.repository,
-                          wishlist: wishlist,
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.edit_outlined),
+            if (wishlist == null) {
+              return Scaffold(
+                appBar: AppBar(),
+                body: Center(
+                  child: Text(
+                    'This list no longer exists.',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
-              PopupMenuButton<_WishlistAction>(
-                onSelected: (action) async {
-                  if (action == _WishlistAction.delete) {
-                    final shouldDelete = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete list?'),
-                        content: Text(
-                          'Remove "${wishlist.title}" permanently from this device?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      ),
-                    );
+              );
+            }
 
-                    if (shouldDelete == true) {
-                      widget.repository.deleteWishlist(wishlist.id);
-                      _showFeedback(context, 'List deleted.');
-                      if (context.mounted) {
-                        Navigator.of(context).pop();
+            final sourceItems = widget.showPurchasedOnly
+                ? wishlist.purchasedItems
+                : wishlist.activeItems;
+            final visibleItems = _applyFilters(sourceItems);
+            final canReorder = !widget.showPurchasedOnly &&
+                _selectedStatus == _allFilter &&
+                _selectedPriority == _allFilter &&
+                _selectedSort == _sortHighestRank &&
+                visibleItems.length > 1;
+
+            return Scaffold(
+              appBar: AppBar(
+                title:
+                    Text(widget.showPurchasedOnly ? 'Past List' : 'List Details'),
+                actions: [
+                  IconButton(
+                    tooltip: 'Share list',
+                    onPressed: () => _shareWishlist(wishlist, currentUser),
+                    icon: const Icon(Icons.share_outlined),
+                  ),
+                  if (!widget.showPurchasedOnly)
+                    IconButton(
+                      tooltip: 'Edit list',
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => WishlistEditorScreen(
+                              repository: widget.repository,
+                              wishlist: wishlist,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  PopupMenuButton<_WishlistAction>(
+                    onSelected: (action) async {
+                      if (action == _WishlistAction.delete) {
+                        final shouldDelete = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Delete list?'),
+                            content: Text(
+                              'Remove "${wishlist.title}" permanently from this device?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (shouldDelete == true) {
+                          widget.repository.deleteWishlist(wishlist.id);
+                          _showFeedback(context, 'List deleted.');
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        }
                       }
-                    }
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _WishlistAction.delete,
-                    child: Text('Delete list'),
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _WishlistAction.delete,
+                        child: Text('Delete list'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-          body: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.all(AppConstants.spacing4),
-              children: [
-                _buildHeroCard(context, wishlist),
-                const SizedBox(height: AppConstants.spacing6),
-                _buildSharingSection(context, wishlist),
-                const SizedBox(height: AppConstants.spacing6),
-                Row(
+              body: SafeArea(
+                child: ListView(
+                  padding: const EdgeInsets.all(AppConstants.spacing4),
                   children: [
-                    Expanded(
-                      child: Text(
-                        widget.showPurchasedOnly ? 'Purchased Items' : 'Items',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                    ),
-                    if (!widget.showPurchasedOnly)
-                      Tooltip(
-                        message: 'Add a new item',
-                        child: TextButton.icon(
-                          onPressed: () => _openItemEditor(
-                            context,
-                            wishlistId: wishlist.id,
+                    _buildHeroCard(context, wishlist),
+                    const SizedBox(height: AppConstants.spacing6),
+                    _buildSharingSection(context, wishlist, currentUser),
+                    const SizedBox(height: AppConstants.spacing6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.showPurchasedOnly ? 'Purchased Items' : 'Items',
+                            style: Theme.of(context).textTheme.headlineSmall,
                           ),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Item'),
+                        ),
+                        if (!widget.showPurchasedOnly)
+                          Tooltip(
+                            message: 'Add a new item',
+                            child: TextButton.icon(
+                              onPressed: () => _openItemEditor(
+                                context,
+                                wishlistId: wishlist.id,
+                                currentUser: currentUser,
+                              ),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Item'),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.showPurchasedOnly
+                          ? 'Past lists only show items that were marked as purchased.'
+                          : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: AppConstants.spacing4),
+                    if (sourceItems.isNotEmpty) ...[
+                      _buildItemControls(context),
+                      const SizedBox(height: AppConstants.spacing4),
+                    ],
+                    if (sourceItems.isEmpty)
+                      _buildEmptyItemsState(context)
+                    else if (visibleItems.isEmpty)
+                      _buildFilteredItemsEmptyState(context)
+                    else if (canReorder)
+                      ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        itemCount: visibleItems.length,
+                        onReorder: (oldIndex, newIndex) {
+                          _reorderItems(
+                            wishlist: wishlist,
+                            visibleItems: visibleItems,
+                            oldIndex: oldIndex,
+                            newIndex: newIndex,
+                          );
+                        },
+                        itemBuilder: (context, index) {
+                          final item = visibleItems[index];
+                          return _buildItemCard(
+                            context,
+                            wishlist: wishlist,
+                            item: item,
+                            key: ValueKey('reorder-${item.id}'),
+                            showDragHandle: true,
+                            dragIndex: index,
+                            currentUser: currentUser,
+                          );
+                        },
+                      )
+                    else
+                      ...visibleItems.map(
+                        (item) => _buildItemCard(
+                          context,
+                          wishlist: wishlist,
+                          item: item,
+                          key: ValueKey('item-${item.id}'),
+                          currentUser: currentUser,
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.showPurchasedOnly
-                      ? 'Past lists only show items that were marked as purchased.'
-                      : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: AppConstants.spacing4),
-                if (sourceItems.isNotEmpty) ...[
-                  _buildItemControls(context),
-                  const SizedBox(height: AppConstants.spacing4),
-                ],
-                if (sourceItems.isEmpty)
-                  _buildEmptyItemsState(context)
-                else if (visibleItems.isEmpty)
-                  _buildFilteredItemsEmptyState(context)
-                else if (canReorder)
-                  ReorderableListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    buildDefaultDragHandles: false,
-                    itemCount: visibleItems.length,
-                    onReorder: (oldIndex, newIndex) {
-                      _reorderItems(
-                        wishlist: wishlist,
-                        visibleItems: visibleItems,
-                        oldIndex: oldIndex,
-                        newIndex: newIndex,
-                      );
-                    },
-                    itemBuilder: (context, index) {
-                      final item = visibleItems[index];
-                      return _buildItemCard(
-                        context,
-                        wishlist: wishlist,
-                        item: item,
-                        key: ValueKey('reorder-${item.id}'),
-                        showDragHandle: true,
-                        dragIndex: index,
-                      );
-                    },
-                  )
-                else
-                  ...visibleItems.map(
-                    (item) => _buildItemCard(
-                      context,
-                      wishlist: wishlist,
-                      item: item,
-                      key: ValueKey('item-${item.id}'),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -306,7 +312,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  Widget _buildSharingSection(BuildContext context, Wishlist wishlist) {
+  Widget _buildSharingSection(
+    BuildContext context,
+    Wishlist wishlist,
+    AppUser? currentUser,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -316,16 +326,20 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: AppConstants.spacing3,
+            runSpacing: AppConstants.spacing3,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 120),
                 child: Text(
                   'Sharing',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
               TextButton.icon(
-                onPressed: () => _shareWishlist(wishlist),
+                onPressed: () => _shareWishlist(wishlist, currentUser),
                 icon: const Icon(Icons.share_outlined),
                 label: const Text('Share Link'),
               ),
@@ -628,9 +642,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     required Wishlist wishlist,
     required WishlistItem item,
     required Key key,
+    required AppUser? currentUser,
     bool showDragHandle = false,
     int? dragIndex,
   }) {
+    final displayedPriceLabel =
+        _formatPriceLabelForUser(item.priceLabel, currentUser);
+
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: AppConstants.spacing3),
@@ -717,6 +735,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           context,
                           wishlistId: wishlist.id,
                           item: item,
+                          currentUser: currentUser,
                         );
                         return;
                       }
@@ -783,10 +802,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
-              if (item.priceLabel != null && item.priceLabel!.isNotEmpty) ...[
+              if (displayedPriceLabel != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  item.priceLabel!,
+                  displayedPriceLabel,
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
               ],
@@ -867,6 +886,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   Future<void> _openItemEditor(
     BuildContext context, {
     required String wishlistId,
+    required AppUser? currentUser,
     WishlistItem? item,
   }) {
     return Navigator.of(context).push(
@@ -875,8 +895,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           repository: widget.repository,
           wishlistId: wishlistId,
           item: item,
-          preferredCurrencySymbol:
-              _currentUser?.preferredCurrencySymbol ?? '\$',
+          preferredCurrencySymbol: currentUser?.preferredCurrencySymbol ?? '\$',
         ),
       ),
     );
@@ -1050,28 +1069,51 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     return false;
   }
 
-  Future<void> _shareWishlist(Wishlist wishlist) async {
+  Future<void> _shareWishlist(Wishlist wishlist, AppUser? currentUser) async {
     await Share.share(
-      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: https://wishiz.app/lists/${wishlist.id}',
+      _buildWishlistShareText(wishlist, currentUser),
       subject: wishlist.title,
     );
   }
 
   Future<void> _shareItem(Wishlist wishlist, WishlistItem item) async {
     await Share.share(
-      _buildShareText(wishlist, item),
+      _buildShareText(wishlist, item, widget.authRepository.getCurrentUser()),
       subject: item.title,
     );
   }
 
-  String _buildShareText(Wishlist wishlist, WishlistItem item) {
+  String _buildWishlistShareText(Wishlist wishlist, AppUser? currentUser) {
+    final lines = <String>[
+      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: wishiz://lists/${wishlist.id}',
+    ];
+
+    for (final item in wishlist.activeItems.take(5)) {
+      lines.add('- ${item.title}');
+      final displayedPriceLabel =
+          _formatPriceLabelForUser(item.priceLabel, currentUser);
+      if (displayedPriceLabel != null) {
+        lines.add('Price: $displayedPriceLabel');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  String _buildShareText(
+    Wishlist wishlist,
+    WishlistItem item,
+    AppUser? currentUser,
+  ) {
     final lines = <String>[
       '${item.title} from ${wishlist.title}',
       'Rank: #${item.rank}',
     ];
 
-    if (item.priceLabel != null && item.priceLabel!.isNotEmpty) {
-      lines.add('Price: ${item.priceLabel!}');
+    final displayedPriceLabel =
+        _formatPriceLabelForUser(item.priceLabel, currentUser);
+    if (displayedPriceLabel != null) {
+      lines.add('Price: $displayedPriceLabel');
     }
     if (item.notes != null && item.notes!.isNotEmpty) {
       lines.add(item.notes!);
@@ -1081,6 +1123,26 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     }
 
     return lines.join('\n');
+  }
+
+  String? _formatPriceLabelForUser(String? priceLabel, AppUser? currentUser) {
+    final trimmed = priceLabel?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final currencySymbol = currentUser?.preferredCurrencySymbol;
+    if (currencySymbol == null || currencySymbol.isEmpty) {
+      return trimmed;
+    }
+
+    final amountMatch = RegExp(r'(\d[\d,]*(?:\.\d+)?)').firstMatch(trimmed);
+    final amount = amountMatch?.group(1);
+    if (amount == null || amount.isEmpty) {
+      return trimmed;
+    }
+
+    return '$currencySymbol$amount';
   }
 
   Future<void> _copyProductLink(WishlistItem item) async {

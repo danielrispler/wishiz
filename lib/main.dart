@@ -27,7 +27,7 @@ Future<void> main() async {
 }
 
 class WishizApp extends StatelessWidget {
-  WishizApp({
+  const WishizApp({
     super.key,
     required this.wishlistRepository,
     required this.authRepository,
@@ -63,8 +63,73 @@ class _RootScreen extends StatefulWidget {
   State<_RootScreen> createState() => _RootScreenState();
 }
 
-class _RootScreenState extends State<_RootScreen> {
+class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   bool _showSignup = false;
+  String? _pendingWishlistId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pendingWishlistId = _extractWishlistId(
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Future<bool> didPushRoute(String route) async {
+    final wishlistId = _extractWishlistId(route);
+    if (wishlistId == null) {
+      return false;
+    }
+
+    setState(() {
+      _pendingWishlistId = wishlistId;
+    });
+    return true;
+  }
+
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
+    final location = routeInformation.uri.toString();
+    final wishlistId = _extractWishlistId(location);
+    if (wishlistId == null) {
+      return false;
+    }
+
+    setState(() {
+      _pendingWishlistId = wishlistId;
+    });
+    return true;
+  }
+
+  String? _extractWishlistId(String? route) {
+    final value = route?.trim() ?? '';
+    if (value.isEmpty || value == Navigator.defaultRouteName) {
+      return null;
+    }
+
+    final uri = Uri.tryParse(value);
+    if (uri == null) {
+      return null;
+    }
+
+    if (uri.scheme == 'wishiz' && uri.host == 'lists' && uri.pathSegments.isNotEmpty) {
+      return uri.pathSegments.first;
+    }
+
+    if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'lists') {
+      return uri.pathSegments[1];
+    }
+
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +162,15 @@ class _RootScreenState extends State<_RootScreen> {
           repository: widget.wishlistRepository,
           authRepository: widget.authRepository,
           currentUser: user,
+          initialWishlistId: _pendingWishlistId,
+          onInitialWishlistHandled: () {
+            if (_pendingWishlistId == null) {
+              return;
+            }
+            setState(() {
+              _pendingWishlistId = null;
+            });
+          },
         );
       },
     );

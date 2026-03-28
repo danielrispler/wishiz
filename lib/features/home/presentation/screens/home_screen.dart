@@ -18,11 +18,15 @@ class HomeScreen extends StatefulWidget {
     required this.repository,
     required this.authRepository,
     required this.currentUser,
+    this.initialWishlistId,
+    this.onInitialWishlistHandled,
   });
 
   final WishlistRepository repository;
   final AuthRepository authRepository;
   final AppUser currentUser;
+  final String? initialWishlistId;
+  final VoidCallback? onInitialWishlistHandled;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -36,6 +40,28 @@ class _HomeScreenState extends State<HomeScreen> {
   int _searchFieldVersion = 0;
   int _selectedYear = _allYears;
   String? _lastReminderSignature;
+  String? _handledInitialWishlistId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openInitialWishlistIfNeeded();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialWishlistId == null) {
+      _handledInitialWishlistId = null;
+    }
+    if (oldWidget.initialWishlistId != widget.initialWishlistId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openInitialWishlistIfNeeded();
+      });
+    }
+  }
 
   Future<void> _openWishlistEditor({Wishlist? wishlist}) async {
     final wishlistId = await Navigator.of(context).push<String>(
@@ -68,6 +94,27 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openInitialWishlistIfNeeded() async {
+    final wishlistId = widget.initialWishlistId;
+    if (!mounted ||
+        wishlistId == null ||
+        wishlistId.isEmpty ||
+        _handledInitialWishlistId == wishlistId) {
+      return;
+    }
+
+    final wishlist = widget.repository.findById(wishlistId);
+    _handledInitialWishlistId = wishlistId;
+    widget.onInitialWishlistHandled?.call();
+
+    if (wishlist == null) {
+      _showFeedback('That shared list is not available on this device yet.');
+      return;
+    }
+
+    await _openWishlistDetails(wishlistId);
   }
 
   Future<void> _openAccountScreen() {
@@ -126,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildWishlistLink(Wishlist wishlist) {
-    return 'https://wishiz.app/lists/${wishlist.id}';
+    return 'wishiz://lists/${wishlist.id}';
   }
 
   Widget _buildHeader({bool showName = false}) {

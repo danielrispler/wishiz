@@ -51,8 +51,7 @@ class LocalAuthRepository implements AuthRepository {
   Future<AuthResult> signUp({
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
@@ -67,8 +66,7 @@ class LocalAuthRepository implements AuthRepository {
     final storedUser = _StoredUser(
       id: _uuid.v4(),
       email: normalizedEmail,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
+      fullName: fullName.trim(),
       birthday: birthday,
       passwordHash: _hashPassword(password),
     );
@@ -119,12 +117,12 @@ class LocalAuthRepository implements AuthRepository {
   @override
   Future<AuthResult> updateCurrentUser({
     required String email,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
+    String? currentPassword,
     String? newPassword,
   }) async {
     final currentUser = _currentUser;
@@ -149,15 +147,29 @@ class LocalAuthRepository implements AuthRepository {
     }
 
     final existingUser = _storedUsers[index];
+    final wantsToChangePassword = newPassword != null && newPassword.isNotEmpty;
+
+    if (wantsToChangePassword) {
+      final normalizedCurrentPassword = currentPassword?.trim() ?? '';
+      if (normalizedCurrentPassword.isEmpty) {
+        return const AuthResult.failure(
+          'Enter your current password to set a new one.',
+        );
+      }
+
+      if (_hashPassword(normalizedCurrentPassword) != existingUser.passwordHash) {
+        return const AuthResult.failure('Current password is incorrect.');
+      }
+    }
+
     final updatedUser = existingUser.copyWith(
       email: normalizedEmail,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
+      fullName: fullName.trim(),
       birthday: birthday,
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
-      passwordHash: (newPassword != null && newPassword.isNotEmpty)
+      passwordHash: wantsToChangePassword
           ? _hashPassword(newPassword)
           : existingUser.passwordHash,
     );
@@ -254,8 +266,7 @@ class _StoredUser {
   const _StoredUser({
     required this.id,
     required this.email,
-    required this.firstName,
-    required this.lastName,
+    required this.fullName,
     required this.birthday,
     required this.passwordHash,
     this.preferredCurrencyCode = 'USD',
@@ -265,8 +276,7 @@ class _StoredUser {
 
   final String id;
   final String email;
-  final String firstName;
-  final String lastName;
+  final String fullName;
   final DateTime birthday;
   final String passwordHash;
   final String preferredCurrencyCode;
@@ -277,8 +287,7 @@ class _StoredUser {
     return AppUser(
       id: id,
       email: email,
-      firstName: firstName,
-      lastName: lastName,
+      fullName: fullName,
       birthday: birthday,
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
@@ -289,8 +298,7 @@ class _StoredUser {
   _StoredUser copyWith({
     String? id,
     String? email,
-    String? firstName,
-    String? lastName,
+    String? fullName,
     DateTime? birthday,
     String? passwordHash,
     String? preferredCurrencyCode,
@@ -300,8 +308,7 @@ class _StoredUser {
     return _StoredUser(
       id: id ?? this.id,
       email: email ?? this.email,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
+      fullName: fullName ?? this.fullName,
       birthday: birthday ?? this.birthday,
       passwordHash: passwordHash ?? this.passwordHash,
       preferredCurrencyCode:
@@ -315,8 +322,7 @@ class _StoredUser {
     return {
       'id': id,
       'email': email,
-      'firstName': firstName,
-      'lastName': lastName,
+      'fullName': fullName,
       'birthday': birthday.toIso8601String(),
       'passwordHash': passwordHash,
       'preferredCurrencyCode': preferredCurrencyCode,
@@ -326,11 +332,14 @@ class _StoredUser {
   }
 
   factory _StoredUser.fromJson(Map<String, dynamic> json) {
+    final fallbackFirstName = json['firstName'] as String? ?? '';
+    final fallbackLastName = json['lastName'] as String? ?? '';
+    final fallbackFullName = '$fallbackFirstName $fallbackLastName'.trim();
+
     return _StoredUser(
       id: json['id'] as String,
       email: json['email'] as String,
-      firstName: json['firstName'] as String,
-      lastName: json['lastName'] as String,
+      fullName: (json['fullName'] as String? ?? fallbackFullName).trim(),
       birthday: json['birthday'] != null
           ? DateTime.parse(json['birthday'] as String)
           : DateTime.now().subtract(const Duration(days: 365 * 18)),

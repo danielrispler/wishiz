@@ -45,8 +45,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     super.initState();
     _titleController = TextEditingController(text: widget.item?.title ?? '');
     _notesController = TextEditingController(text: widget.item?.notes ?? '');
-    _priceController =
-        TextEditingController(text: widget.item?.priceLabel ?? '');
+    _priceController = TextEditingController(text: _normalizeExistingPrice());
     _imageUrlController =
         TextEditingController(text: widget.item?.imageUrl ?? '');
     _productUrlController =
@@ -147,6 +146,21 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         SnackBar(content: Text(message)),
       );
     Navigator.of(context).pop();
+  }
+
+  String _normalizeExistingPrice() {
+    final priceLabel = widget.item?.priceLabel?.trim() ?? '';
+    if (priceLabel.isEmpty) {
+      return '';
+    }
+
+    final amountMatch = RegExp(r'(\d[\d,]*(?:\.\d+)?)').firstMatch(priceLabel);
+    final amount = amountMatch?.group(1);
+    if (amount == null || amount.isEmpty) {
+      return priceLabel;
+    }
+
+    return '${widget.preferredCurrencySymbol}$amount';
   }
 
   @override

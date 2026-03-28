@@ -2,8 +2,7 @@ class AppUser {
   const AppUser({
     required this.id,
     required this.email,
-    required this.firstName,
-    required this.lastName,
+    required this.fullName,
     required this.birthday,
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
@@ -25,22 +24,19 @@ class AppUser {
 
   final String id;
   final String email;
-  final String firstName;
-  final String lastName;
+  final String fullName;
   final DateTime birthday;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
 
-  String get fullName => '$firstName $lastName'.trim();
   String get preferredCurrencySymbol =>
       currencySymbols[preferredCurrencyCode] ?? '$preferredCurrencyCode ';
 
   AppUser copyWith({
     String? id,
     String? email,
-    String? firstName,
-    String? lastName,
+    String? fullName,
     DateTime? birthday,
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
@@ -49,8 +45,7 @@ class AppUser {
     return AppUser(
       id: id ?? this.id,
       email: email ?? this.email,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
+      fullName: fullName ?? this.fullName,
       birthday: birthday ?? this.birthday,
       preferredCurrencyCode:
           preferredCurrencyCode ?? this.preferredCurrencyCode,

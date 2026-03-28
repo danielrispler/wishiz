@@ -10,8 +10,7 @@ abstract class AuthRepository {
   Future<AuthResult> signUp({
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
   });
 
@@ -22,12 +21,12 @@ abstract class AuthRepository {
 
   Future<AuthResult> updateCurrentUser({
     required String email,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
+    String? currentPassword,
     String? newPassword,
   });
 

@@ -18,10 +18,10 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController _firstNameController;
-  late final TextEditingController _lastNameController;
+  late final TextEditingController _fullNameController;
   late final TextEditingController _emailController;
   late final TextEditingController _birthdayController;
+  late final TextEditingController _currentPasswordController;
   late final TextEditingController _newPasswordController;
 
   late DateTime _selectedBirthday;
@@ -30,18 +30,19 @@ class _AccountScreenState extends State<AccountScreen> {
   late int _reminderDays;
 
   bool _isSaving = false;
+  bool _showCurrentPassword = false;
   bool _showNewPassword = false;
 
   @override
   void initState() {
     super.initState();
     final user = widget.authRepository.getCurrentUser()!;
-    _firstNameController = TextEditingController(text: user.firstName);
-    _lastNameController = TextEditingController(text: user.lastName);
+    _fullNameController = TextEditingController(text: user.fullName);
     _emailController = TextEditingController(text: user.email);
     _birthdayController = TextEditingController(
       text: _formatBirthday(user.birthday),
     );
+    _currentPasswordController = TextEditingController();
     _newPasswordController = TextEditingController();
     _selectedBirthday = user.birthday;
     _selectedCurrencyCode = user.preferredCurrencyCode;
@@ -51,10 +52,10 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
+    _fullNameController.dispose();
     _emailController.dispose();
     _birthdayController.dispose();
+    _currentPasswordController.dispose();
     _newPasswordController.dispose();
     super.dispose();
   }
@@ -88,12 +89,14 @@ class _AccountScreenState extends State<AccountScreen> {
 
     final result = await widget.authRepository.updateCurrentUser(
       email: _emailController.text.trim(),
-      firstName: _firstNameController.text.trim(),
-      lastName: _lastNameController.text.trim(),
+      fullName: _fullNameController.text.trim(),
       birthday: _selectedBirthday,
       preferredCurrencyCode: _selectedCurrencyCode,
       notificationsEnabled: _notificationsEnabled,
       reminderDays: _reminderDays,
+      currentPassword: _currentPasswordController.text.trim().isEmpty
+          ? null
+          : _currentPasswordController.text,
       newPassword: _newPasswordController.text.trim().isEmpty
           ? null
           : _newPasswordController.text,
@@ -120,6 +123,7 @@ class _AccountScreenState extends State<AccountScreen> {
       );
 
     if (result.isSuccess) {
+      _currentPasswordController.clear();
       _newPasswordController.clear();
     }
   }
@@ -156,21 +160,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   _buildFieldCard(
                     context,
                     child: TextFormField(
-                      controller: _firstNameController,
+                      controller: _fullNameController,
                       decoration: const InputDecoration(
-                        labelText: 'First name',
-                        border: InputBorder.none,
-                      ),
-                      validator: _validateRequired,
-                    ),
-                  ),
-                  const SizedBox(height: AppConstants.spacing3),
-                  _buildFieldCard(
-                    context,
-                    child: TextFormField(
-                      controller: _lastNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Last name',
+                        labelText: 'Full name',
                         border: InputBorder.none,
                       ),
                       validator: _validateRequired,
@@ -218,6 +210,31 @@ class _AccountScreenState extends State<AccountScreen> {
                         Text(
                           'Current password is hidden for safety. Add a new password below to change it.',
                           style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: AppConstants.spacing3),
+                        TextFormField(
+                          controller: _currentPasswordController,
+                          obscureText: !_showCurrentPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Current password',
+                            border: InputBorder.none,
+                            suffixIcon: IconButton(
+                              tooltip: _showCurrentPassword
+                                  ? 'Hide password'
+                                  : 'Show password',
+                              onPressed: () {
+                                setState(() {
+                                  _showCurrentPassword = !_showCurrentPassword;
+                                });
+                              },
+                              icon: Icon(
+                                _showCurrentPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                            ),
+                          ),
+                          validator: _validateCurrentPassword,
                         ),
                         const SizedBox(height: AppConstants.spacing3),
                         TextFormField(
@@ -441,6 +458,16 @@ class _AccountScreenState extends State<AccountScreen> {
     }
     if (trimmed.length < 6) {
       return 'Use at least 6 characters for a new password.';
+    }
+    return null;
+  }
+
+  String? _validateCurrentPassword(String? value) {
+    if (_newPasswordController.text.trim().isEmpty) {
+      return null;
+    }
+    if ((value?.trim() ?? '').isEmpty) {
+      return 'Enter your current password to change it.';
     }
     return null;
   }

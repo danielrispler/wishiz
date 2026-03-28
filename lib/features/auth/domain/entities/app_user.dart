@@ -1,3 +1,5 @@
+import 'package:wishiz/core/utils/currency_utils.dart';
+
 class AppUser {
   const AppUser({
     required this.id,
@@ -17,9 +19,9 @@ class AppUser {
   ];
   static const Map<String, String> currencySymbols = {
     'USD': '\$',
-    'EUR': 'EUR ',
-    'GBP': 'GBP ',
-    'ILS': 'ILS ',
+    'EUR': '€',
+    'GBP': '£',
+    'ILS': '₪',
   };
 
   final String id;
@@ -31,7 +33,7 @@ class AppUser {
   final int reminderDays;
 
   String get preferredCurrencySymbol =>
-      currencySymbols[preferredCurrencyCode] ?? '$preferredCurrencyCode ';
+      CurrencyUtils.symbolFor(preferredCurrencyCode);
 
   AppUser copyWith({
     String? id,

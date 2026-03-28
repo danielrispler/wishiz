@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
@@ -186,7 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const WishizWordmark(height: 44),
+                    Transform.translate(
+                      offset: const Offset(-8, 0),
+                      child: const WishizWordmark(height: 35),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       widget.currentUser.fullName,
@@ -194,7 +198,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 )
-              : const WishizWordmark(height: 44),
+              : Transform.translate(
+                  offset: const Offset(-8, 0),
+                  child: const WishizWordmark(height: 44),
+                ),
         ),
         IconButton(
           tooltip: 'Account',
@@ -486,7 +493,12 @@ class _HomeScreenState extends State<HomeScreen> {
               reminder.item.priceLabel!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              reminder.item.priceLabel!,
+              CurrencyUtils.convertPriceLabel(
+                    reminder.item.priceLabel,
+                    targetCurrencyCode:
+                        widget.currentUser.preferredCurrencyCode,
+                  ) ??
+                  reminder.item.priceLabel!,
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ],
@@ -550,19 +562,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ];
-
-    if (wishlist.isShared || isSharedView) {
-      actions.add(
-        Tooltip(
-          message: 'Manage sharing',
-          child: TextButton.icon(
-            onPressed: () => _openWishlistDetails(wishlist.id),
-            icon: const Icon(Icons.group_outlined),
-            label: const Text('Manage Sharing'),
-          ),
-        ),
-      );
-    }
 
     actions.add(
       Tooltip(

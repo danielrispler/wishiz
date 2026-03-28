@@ -433,6 +433,9 @@ class _AccountScreenState extends State<AccountScreen> {
 
   String _currencyLabel(String code) {
     final symbol = AppUser.currencySymbols[code] ?? code;
+    if (code == 'ILS') {
+      return 'ILS / NIS ($symbol)';
+    }
     return '$code ($symbol)';
   }
 

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
@@ -77,8 +78,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
             return Scaffold(
               appBar: AppBar(
-                title:
-                    Text(widget.showPurchasedOnly ? 'Past List' : 'List Details'),
+                title: Text(
+                    widget.showPurchasedOnly ? 'Past List' : 'List Details'),
                 actions: [
                   IconButton(
                     tooltip: 'Share list',
@@ -112,11 +113,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
                                 child: const Text('Cancel'),
                               ),
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
                                 child: const Text('Delete'),
                               ),
                             ],
@@ -153,7 +156,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            widget.showPurchasedOnly ? 'Purchased Items' : 'Items',
+                            widget.showPurchasedOnly
+                                ? 'Purchased Items'
+                                : 'Items',
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
                         ),
@@ -895,6 +900,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           repository: widget.repository,
           wishlistId: wishlistId,
           item: item,
+          preferredCurrencyCode: currentUser?.preferredCurrencyCode ?? 'USD',
           preferredCurrencySymbol: currentUser?.preferredCurrencySymbol ?? '\$',
         ),
       ),
@@ -1126,23 +1132,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   String? _formatPriceLabelForUser(String? priceLabel, AppUser? currentUser) {
-    final trimmed = priceLabel?.trim() ?? '';
-    if (trimmed.isEmpty) {
-      return null;
-    }
-
-    final currencySymbol = currentUser?.preferredCurrencySymbol;
-    if (currencySymbol == null || currencySymbol.isEmpty) {
-      return trimmed;
-    }
-
-    final amountMatch = RegExp(r'(\d[\d,]*(?:\.\d+)?)').firstMatch(trimmed);
-    final amount = amountMatch?.group(1);
-    if (amount == null || amount.isEmpty) {
-      return trimmed;
-    }
-
-    return '$currencySymbol$amount';
+    return CurrencyUtils.convertPriceLabel(
+      priceLabel,
+      targetCurrencyCode: currentUser?.preferredCurrencyCode ?? 'USD',
+    );
   }
 
   Future<void> _copyProductLink(WishlistItem item) async {

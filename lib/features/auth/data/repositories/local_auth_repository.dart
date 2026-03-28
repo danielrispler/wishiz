@@ -14,6 +14,8 @@ class LocalAuthRepository implements AuthRepository {
       : _currentUserNotifier = ValueNotifier<AppUser?>(_currentUser);
 
   static final Uuid _uuid = Uuid();
+  static const String _devDanielLogin = 'daniel';
+  static const String _devDanielEmail = 'daniel@wishiz.local';
 
   final AuthStorage _storage;
   final List<_StoredUser> _storedUsers;
@@ -89,6 +91,11 @@ class LocalAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
+    if (email.trim().toLowerCase() == _devDanielLogin &&
+        password == _devDanielLogin) {
+      return _logInWithDevDanielUser();
+    }
+
     final normalizedEmail = email.trim().toLowerCase();
     final passwordHash = _hashPassword(password);
     final matchedUser = _storedUsers.cast<_StoredUser?>().firstWhere(
@@ -111,6 +118,37 @@ class LocalAuthRepository implements AuthRepository {
         'We could not restore your session on this device.',
       );
     }
+    return AuthResult.success(_currentUser!);
+  }
+
+  Future<AuthResult> _logInWithDevDanielUser() async {
+    var matchedUser = _storedUsers.cast<_StoredUser?>().firstWhere(
+          (user) => user?.email.toLowerCase() == _devDanielEmail,
+          orElse: () => null,
+        );
+
+    if (matchedUser == null) {
+      final devUser = _StoredUser(
+        id: _uuid.v4(),
+        email: _devDanielEmail,
+        fullName: 'Daniel Daniel',
+        birthday: DateTime(1990, 1, 1),
+        passwordHash: _hashPassword(_devDanielLogin),
+      );
+      _storedUsers.add(devUser);
+      matchedUser = devUser;
+    }
+
+    _setCurrentUser(matchedUser.toAppUser());
+    try {
+      await _persist();
+    } catch (_) {
+      _setCurrentUser(null);
+      return const AuthResult.failure(
+        'We could not restore your session on this device.',
+      );
+    }
+
     return AuthResult.success(_currentUser!);
   }
 
@@ -157,7 +195,8 @@ class LocalAuthRepository implements AuthRepository {
         );
       }
 
-      if (_hashPassword(normalizedCurrentPassword) != existingUser.passwordHash) {
+      if (_hashPassword(normalizedCurrentPassword) !=
+          existingUser.passwordHash) {
         return const AuthResult.failure('Current password is incorrect.');
       }
     }

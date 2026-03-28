@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -12,12 +13,14 @@ class WishlistItemEditorScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.wishlistId,
+    required this.preferredCurrencyCode,
     required this.preferredCurrencySymbol,
     this.item,
   });
 
   final WishlistRepository repository;
   final String wishlistId;
+  final String preferredCurrencyCode;
   final String preferredCurrencySymbol;
   final WishlistItem? item;
 
@@ -149,18 +152,11 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String _normalizeExistingPrice() {
-    final priceLabel = widget.item?.priceLabel?.trim() ?? '';
-    if (priceLabel.isEmpty) {
-      return '';
-    }
-
-    final amountMatch = RegExp(r'(\d[\d,]*(?:\.\d+)?)').firstMatch(priceLabel);
-    final amount = amountMatch?.group(1);
-    if (amount == null || amount.isEmpty) {
-      return priceLabel;
-    }
-
-    return '${widget.preferredCurrencySymbol}$amount';
+    return CurrencyUtils.convertPriceLabel(
+          widget.item?.priceLabel,
+          targetCurrencyCode: widget.preferredCurrencyCode,
+        ) ??
+        '';
   }
 
   @override
@@ -392,11 +388,13 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       return null;
     }
 
-    final normalizedAmount = trimmed.replaceFirst(
-      RegExp(r'^[^\d]+'),
-      '',
-    );
-    return '${widget.preferredCurrencySymbol}$normalizedAmount';
+    final normalizedAmount = trimmed.replaceFirst(RegExp(r'^[^\d]+'), '');
+    final amount = double.tryParse(normalizedAmount.replaceAll(',', ''));
+    if (amount == null) {
+      return trimmed;
+    }
+
+    return CurrencyUtils.formatAmount(amount, widget.preferredCurrencyCode);
   }
 
   String? _validateOptionalPrice(String? value) {
@@ -406,7 +404,10 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     }
 
     final normalized = trimmed.replaceFirst(RegExp(r'^[^\d]+'), '');
-    final isValid = RegExp(r'^\d+([.,]\d{1,2})?$').hasMatch(normalized);
+    final isValid =
+        RegExp(r'^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$').hasMatch(
+      normalized,
+    );
     return isValid ? null : 'Use a valid amount like 120 or 120.00.';
   }
 
@@ -468,7 +469,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String? _inferTitleFromProductUri(Uri uri) {
-    final pathSegments = uri.pathSegments.where((segment) => segment.isNotEmpty);
+    final pathSegments =
+        uri.pathSegments.where((segment) => segment.isNotEmpty);
     for (final segment in pathSegments.toList().reversed) {
       final decoded = Uri.decodeComponent(segment)
           .replaceAll(RegExp(r'[-_+]'), ' ')
@@ -496,13 +498,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String _toTitleCase(String value) {
-    return value
-        .split(' ')
-        .where((word) => word.isNotEmpty)
-        .map((word) {
-          final lower = word.toLowerCase();
-          return '${lower[0].toUpperCase()}${lower.substring(1)}';
-        })
-        .join(' ');
+    return value.split(' ').where((word) => word.isNotEmpty).map((word) {
+      final lower = word.toLowerCase();
+      return '${lower[0].toUpperCase()}${lower.substring(1)}';
+    }).join(' ');
   }
 }

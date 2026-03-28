@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/account_screen.dart';
@@ -185,10 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Wishiz',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
+                    const WishizWordmark(height: 44),
                     const SizedBox(height: 4),
                     Text(
                       widget.currentUser.fullName,
@@ -196,10 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 )
-              : Text(
-                  'Wishiz',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
+              : const WishizWordmark(height: 44),
         ),
         IconButton(
           tooltip: 'Account',

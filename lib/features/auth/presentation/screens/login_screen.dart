@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -75,10 +76,9 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(AppConstants.spacing4),
               children: [
                 const SizedBox(height: AppConstants.spacing8),
-                Text(
-                  'Wishiz',
-                  style: Theme.of(context).textTheme.displayMedium,
-                  textAlign: TextAlign.center,
+                const WishizWordmark(
+                  height: 92,
+                  alignment: Alignment.center,
                 ),
                 const SizedBox(height: AppConstants.spacing4),
                 Text(

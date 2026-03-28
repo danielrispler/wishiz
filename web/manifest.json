@@ -1,6 +1,6 @@
 {
-    "name": "wishiz",
-    "short_name": "wishiz",
+    "name": "Wishiz",
+    "short_name": "Wishiz",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

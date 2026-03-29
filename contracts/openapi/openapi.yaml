@@ -1,0 +1,92 @@
+openapi: 3.0.3
+info:
+  title: Wishiz API
+  version: 0.1.0
+  description: Minimal API scaffold for the Wishiz backend.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required:
+                  - status
+  /wishlists:
+    get:
+      summary: List wishlists
+      responses:
+        '200':
+          description: Wishlist summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: tech-gear
+                    title:
+                      type: string
+                      example: Tech Gear 2024
+                    year:
+                      type: integer
+                      example: 2024
+                  required:
+                    - id
+                    - title
+                    - year
+    post:
+      summary: Create a wishlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Home Decor
+                description:
+                  type: string
+                  example: Soft lighting, sculptural objects, and pieces for a calmer living room.
+                year:
+                  type: integer
+                  example: 2026
+              required:
+                - title
+                - year
+      responses:
+        '201':
+          description: Wishlist created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: home-decor
+                  title:
+                    type: string
+                    example: Home Decor
+                  year:
+                    type: integer
+                    example: 2026
+                required:
+                  - id
+                  - title
+                  - year

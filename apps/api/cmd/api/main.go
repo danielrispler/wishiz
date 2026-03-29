@@ -12,6 +12,7 @@ import (
 	"time"
 
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
+	wishlistapp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
 	wishlistpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/postgres"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/config"
@@ -43,10 +44,18 @@ func run() error {
 	}
 	defer pool.Close()
 
+	if cfg.RunDBMigrations {
+		appLogger.Info("running database migrations (dev-only)")
+		if err := db.RunMigrations(ctx, pool); err != nil {
+			return fmt.Errorf("run database migrations: %w", err)
+		}
+	}
+
 	wishlistRepo := wishlistpostgres.NewRepository(pool)
+	wishlistService := wishlistapp.NewService(wishlistRepo)
 	mux := http.NewServeMux()
 	healthhttp.RegisterRoutes(mux)
-	wishlisthttp.RegisterRoutes(mux, appLogger, wishlistRepo)
+	wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService)
 
 	server := httpx.NewServer(cfg.HTTPAddr, mux)
 

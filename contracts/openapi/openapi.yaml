@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: Wishiz API
-  version: 0.1.0
-  description: Minimal API scaffold for the Wishiz backend.
+  version: 0.2.0
+  description: Wishlist backend MVP for the Wishiz mobile app.
 servers:
   - url: http://localhost:8080
 paths:
@@ -27,27 +27,15 @@ paths:
       summary: List wishlists
       responses:
         '200':
-          description: Wishlist summaries
+          description: Wishlist aggregates
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                      example: tech-gear
-                    title:
-                      type: string
-                      example: Tech Gear 2024
-                    year:
-                      type: integer
-                      example: 2024
-                  required:
-                    - id
-                    - title
-                    - year
+                  $ref: '#/components/schemas/Wishlist'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
       summary: Create a wishlist
       requestBody:
@@ -55,38 +43,441 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                  example: Home Decor
-                description:
-                  type: string
-                  example: Soft lighting, sculptural objects, and pieces for a calmer living room.
-                year:
-                  type: integer
-                  example: 2026
-              required:
-                - title
-                - year
+              $ref: '#/components/schemas/CreateWishlistRequest'
       responses:
         '201':
           description: Wishlist created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: home-decor
-                  title:
-                    type: string
-                    example: Home Decor
-                  year:
-                    type: integer
-                    example: 2026
-                required:
-                  - id
-                  - title
-                  - year
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    get:
+      summary: Get a wishlist by ID
+      responses:
+        '200':
+          description: Wishlist aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      summary: Update wishlist fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchWishlistRequest'
+      responses:
+        '200':
+          description: Updated wishlist aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Delete a wishlist
+      responses:
+        '204':
+          description: Wishlist deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Archive a wishlist
+      responses:
+        '200':
+          description: Archived wishlist aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Restore an archived wishlist
+      responses:
+        '200':
+          description: Restored wishlist aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/items:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Add an item to a wishlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWishlistItemRequest'
+      responses:
+        '201':
+          description: Wishlist item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+      - $ref: '#/components/parameters/ItemID'
+    patch:
+      summary: Update a wishlist item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchWishlistItemRequest'
+      responses:
+        '200':
+          description: Updated wishlist item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistItemNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Delete a wishlist item
+      responses:
+        '204':
+          description: Wishlist item deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistItemNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/items/reorder:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Reorder wishlist items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderWishlistItemsRequest'
+      responses:
+        '200':
+          description: Updated wishlist aggregate after reorder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    WishlistID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ItemID:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ValidationError:
+      description: Validation or malformed request error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    WishlistNotFound:
+      description: Wishlist was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    WishlistItemNotFound:
+      description: Wishlist item was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Wishlist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        year:
+          type: integer
+        coverImageUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isArchived:
+          type: boolean
+        isShared:
+          type: boolean
+        sharedUsers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedUser'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WishlistItem'
+      required:
+        - id
+        - title
+        - description
+        - year
+        - createdAt
+        - updatedAt
+        - isArchived
+        - isShared
+        - sharedUsers
+        - items
+    SharedUser:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+    WishlistItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        rank:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+        priceLabel:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [Low, Medium, High]
+        status:
+          type: string
+          enum: [Saved, Considering, Purchased]
+        imageUrl:
+          type: string
+          nullable: true
+        productUrl:
+          type: string
+          nullable: true
+        purchasedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - rank
+        - priority
+        - status
+        - createdAt
+        - updatedAt
+    CreateWishlistRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        year:
+          type: integer
+        coverImageUrl:
+          type: string
+          nullable: true
+        isShared:
+          type: boolean
+      required:
+        - title
+        - year
+    PatchWishlistRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        year:
+          type: integer
+        coverImageUrl:
+          type: string
+          nullable: true
+        isShared:
+          type: boolean
+      additionalProperties: false
+    CreateWishlistItemRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        priceLabel:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [Low, Medium, High]
+        status:
+          type: string
+          enum: [Saved, Considering, Purchased]
+        imageUrl:
+          type: string
+          nullable: true
+        productUrl:
+          type: string
+          nullable: true
+      required:
+        - title
+    PatchWishlistItemRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        priceLabel:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [Low, Medium, High]
+        status:
+          type: string
+          enum: [Saved, Considering, Purchased]
+        imageUrl:
+          type: string
+          nullable: true
+        productUrl:
+          type: string
+          nullable: true
+      additionalProperties: false
+    ReorderWishlistItemsRequest:
+      type: object
+      properties:
+        orderedItemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+        - orderedItemIds
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            field:
+              type: string
+          required:
+            - code
+            - message
+      required:
+        - error

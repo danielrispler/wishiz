@@ -127,7 +127,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                         );
 
                         if (shouldDelete == true) {
-                          widget.repository.deleteWishlist(wishlist.id);
+                          await widget.repository.deleteWishlist(wishlist.id);
                           _showFeedback(context, 'List deleted.');
                           if (context.mounted) {
                             Navigator.of(context).pop();
@@ -626,7 +626,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     required List<WishlistItem> visibleItems,
     required int oldIndex,
     required int newIndex,
-  }) {
+  }) async {
     if (newIndex > oldIndex) {
       newIndex -= 1;
     }
@@ -635,7 +635,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     final movedItem = nextItems.removeAt(oldIndex);
     nextItems.insert(newIndex, movedItem);
 
-    widget.repository.reorderWishlistItems(
+    await widget.repository.reorderWishlistItems(
       wishlistId: wishlist.id,
       orderedItemIds: nextItems.map((item) => item.id).toList(growable: false),
     );
@@ -679,7 +679,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         confirmDismiss: (direction) async {
           if (direction == DismissDirection.startToEnd &&
               !widget.showPurchasedOnly) {
-            widget.repository.updateWishlistItemStatus(
+            await widget.repository.updateWishlistItemStatus(
               wishlistId: wishlist.id,
               itemId: item.id,
               status: 'Purchased',
@@ -746,7 +746,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       }
 
                       if (action == _WishlistItemAction.moveToActive) {
-                        widget.repository.updateWishlistItemStatus(
+                        await widget.repository.updateWishlistItemStatus(
                           wishlistId: wishlist.id,
                           itemId: item.id,
                           status: 'Saved',
@@ -1009,7 +1009,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     }
 
     final previousCount = wishlist.sharedUsers.length;
-    final updatedWishlist = widget.repository.addSharedUser(
+    final updatedWishlist = await widget.repository.addSharedUser(
       wishlistId: wishlist.id,
       name: collaborator.name,
       email: collaborator.email,
@@ -1025,12 +1025,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  void _removeCollaborator(
+  Future<void> _removeCollaborator(
     BuildContext context,
     Wishlist wishlist,
     SharedUser user,
-  ) {
-    final wasRemoved = widget.repository.removeSharedUser(
+  ) async {
+    final wasRemoved = await widget.repository.removeSharedUser(
       wishlistId: wishlist.id,
       userId: user.id,
     );
@@ -1064,7 +1064,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
 
     if (shouldDelete == true) {
-      widget.repository.deleteWishlistItem(
+      await widget.repository.deleteWishlistItem(
         wishlistId: wishlist.id,
         itemId: item.id,
       );

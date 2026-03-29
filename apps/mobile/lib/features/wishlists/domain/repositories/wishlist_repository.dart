@@ -10,7 +10,7 @@ abstract class WishlistRepository {
 
   Wishlist? findById(String id);
 
-  Wishlist createWishlist({
+  Future<Wishlist> createWishlist({
     required String title,
     required String description,
     required int year,
@@ -18,7 +18,7 @@ abstract class WishlistRepository {
     bool isShared = false,
   });
 
-  Wishlist? updateWishlist({
+  Future<Wishlist?> updateWishlist({
     required String id,
     required String title,
     required String description,
@@ -27,25 +27,25 @@ abstract class WishlistRepository {
     bool? isShared,
   });
 
-  Wishlist? archiveWishlist(String id);
+  Future<Wishlist?> archiveWishlist(String id);
 
-  Wishlist? restoreWishlist(String id);
+  Future<Wishlist?> restoreWishlist(String id);
 
-  bool deleteWishlist(String id);
+  Future<bool> deleteWishlist(String id);
 
-  Wishlist? addSharedUser({
+  Future<Wishlist?> addSharedUser({
     required String wishlistId,
     required String name,
     required String email,
     required String role,
   });
 
-  bool removeSharedUser({
+  Future<bool> removeSharedUser({
     required String wishlistId,
     required String userId,
   });
 
-  WishlistItem addWishlistItem({
+  Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,
     String? notes,
@@ -56,18 +56,18 @@ abstract class WishlistRepository {
     String? productUrl,
   });
 
-  Wishlist? reorderWishlistItems({
+  Future<Wishlist?> reorderWishlistItems({
     required String wishlistId,
     required List<String> orderedItemIds,
   });
 
-  WishlistItem? updateWishlistItemStatus({
+  Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
     required String status,
   });
 
-  WishlistItem? updateWishlistItem({
+  Future<WishlistItem?> updateWishlistItem({
     required String wishlistId,
     required String itemId,
     required String title,
@@ -79,7 +79,7 @@ abstract class WishlistRepository {
     String? productUrl,
   });
 
-  bool deleteWishlistItem({
+  Future<bool> deleteWishlistItem({
     required String wishlistId,
     required String itemId,
   });

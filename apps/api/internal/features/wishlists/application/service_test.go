@@ -98,6 +98,91 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 	}
 }
 
+func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing.T) {
+	originalPurchasedAt := fixedTime.Add(-6 * time.Hour)
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:          wishlistID1,
+		Title:       "Weekend Hosting",
+		Description: "Plates and candles",
+		Year:        2026,
+		CreatedAt:   fixedTime,
+		UpdatedAt:   fixedTime,
+		Items: []domain.WishlistItem{
+			{
+				ID:          itemID1,
+				Title:       "Stoneware plates",
+				Rank:        1,
+				Priority:    domain.ItemPriorityMedium,
+				Status:      domain.ItemStatusPurchased,
+				PurchasedAt: &originalPurchasedAt,
+				CreatedAt:   fixedTime,
+				UpdatedAt:   fixedTime,
+			},
+		},
+	}
+
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
+
+	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+		Status: PatchField[string]{Set: true, Value: domain.ItemStatusPurchased},
+	})
+	if err != nil {
+		t.Fatalf("PatchItem returned error: %v", err)
+	}
+	if item.PurchasedAt == nil {
+		t.Fatalf("expected purchasedAt to remain set")
+	}
+	if !item.PurchasedAt.Equal(originalPurchasedAt) {
+		t.Fatalf("expected purchasedAt to stay %v, got %v", originalPurchasedAt, *item.PurchasedAt)
+	}
+}
+
+func TestServicePatchItemPreservesPurchasedAtForUnrelatedPurchasedEdit(t *testing.T) {
+	originalPurchasedAt := fixedTime.Add(-12 * time.Hour)
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:          wishlistID1,
+		Title:       "Weekend Hosting",
+		Description: "Plates and candles",
+		Year:        2026,
+		CreatedAt:   fixedTime,
+		UpdatedAt:   fixedTime,
+		Items: []domain.WishlistItem{
+			{
+				ID:          itemID1,
+				Title:       "Stoneware plates",
+				Rank:        1,
+				Priority:    domain.ItemPriorityMedium,
+				Status:      domain.ItemStatusPurchased,
+				PurchasedAt: &originalPurchasedAt,
+				CreatedAt:   fixedTime,
+				UpdatedAt:   fixedTime,
+			},
+		},
+	}
+
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
+
+	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+		Title: PatchField[string]{Set: true, Value: "Updated plates"},
+	})
+	if err != nil {
+		t.Fatalf("PatchItem returned error: %v", err)
+	}
+	if item.Title != "Updated plates" {
+		t.Fatalf("expected title to update, got %q", item.Title)
+	}
+	if item.PurchasedAt == nil {
+		t.Fatalf("expected purchasedAt to remain set")
+	}
+	if !item.PurchasedAt.Equal(originalPurchasedAt) {
+		t.Fatalf("expected purchasedAt to stay %v, got %v", originalPurchasedAt, *item.PurchasedAt)
+	}
+}
+
 func TestServiceReorderItemsUsesFlutterSubsetOrderingRules(t *testing.T) {
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{

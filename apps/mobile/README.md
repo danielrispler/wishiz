@@ -57,6 +57,29 @@ lib/
    flutter run
    ```
 
+### Backend Base URL For Local Device Testing
+
+Backend integration is still being wired in, but the app now reserves
+`WISHIZ_API_BASE_URL` as the only local API base URL input.
+
+Pass it explicitly with `--dart-define`:
+
+```bash
+flutter run --dart-define=WISHIZ_API_BASE_URL=http://127.0.0.1:8080
+```
+
+Use these values depending on where the app runs:
+
+- iOS simulator: `http://127.0.0.1:8080`
+- Android emulator: `http://10.0.2.2:8080`
+- Physical device on LAN: `http://<YOUR_LAN_IP>:8080`
+
+Notes:
+
+- There is intentionally no default base URL in code.
+- Android debug builds allow cleartext HTTP for local development.
+- iOS transport exceptions are not added yet because the app does not call the backend yet.
+
 ## 🎨 Design System Details
 
 - **Base Surface**: `#FAF4FF` (Lavender-Smoke)

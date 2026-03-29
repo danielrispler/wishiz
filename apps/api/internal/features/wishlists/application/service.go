@@ -293,7 +293,14 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID string, itemID strin
 		params.ProductURL = normalizeOptionalString(input.ProductURL.Value)
 	}
 
-	params.PurchasedAt = purchasedAtForStatus(params.Status, s.nowFn())
+	params.PurchasedAt = cloneTime(current.PurchasedAt)
+	if params.Status == domain.ItemStatusPurchased {
+		if current.Status != domain.ItemStatusPurchased {
+			params.PurchasedAt = purchasedAtForStatus(params.Status, s.nowFn())
+		}
+	} else {
+		params.PurchasedAt = nil
+	}
 
 	item, err := s.repo.UpdateItem(ctx, params)
 	if errors.Is(err, ports.ErrNotFound) {

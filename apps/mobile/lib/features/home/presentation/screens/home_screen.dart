@@ -162,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    widget.repository.deleteWishlist(wishlist.id);
+    await widget.repository.deleteWishlist(wishlist.id);
     _showFeedback('List deleted.');
   }
 

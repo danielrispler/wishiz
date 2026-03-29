@@ -70,7 +70,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     });
   }
 
-  void _saveWishlist() {
+  Future<void> _saveWishlist() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -81,7 +81,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     final year = int.parse(_yearController.text.trim());
 
     final savedWishlist = widget.isEditing
-        ? widget.repository.updateWishlist(
+        ? await widget.repository.updateWishlist(
             id: widget.wishlist!.id,
             title: title,
             description: description,
@@ -89,7 +89,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
             coverImageUrl: coverImageUrl,
             isShared: _isShared,
           )
-        : widget.repository.createWishlist(
+        : await widget.repository.createWishlist(
             title: title,
             description: description,
             year: year,

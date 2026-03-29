@@ -66,6 +66,12 @@ class PersistentWishlistRepository implements WishlistRepository {
 
   Future<void> flush() => _pendingWrite;
 
+  Future<T> _persistAndReturn<T>(T value) async {
+    _persist();
+    await _pendingWrite;
+    return value;
+  }
+
   void _persist() {
     final snapshot = _codec.encode(_repository.getWishlists());
     _pendingWrite = _pendingWrite.then((_) => _storage.write(snapshot));
@@ -83,34 +89,33 @@ class PersistentWishlistRepository implements WishlistRepository {
   Wishlist? findById(String id) => _repository.findById(id);
 
   @override
-  Wishlist createWishlist({
+  Future<Wishlist> createWishlist({
     required String title,
     required String description,
     required int year,
     String? coverImageUrl,
     bool isShared = false,
-  }) {
-    final wishlist = _repository.createWishlist(
+  }) async {
+    final wishlist = await _repository.createWishlist(
       title: title,
       description: description,
       year: year,
       coverImageUrl: coverImageUrl,
       isShared: isShared,
     );
-    _persist();
-    return wishlist;
+    return _persistAndReturn(wishlist);
   }
 
   @override
-  Wishlist? updateWishlist({
+  Future<Wishlist?> updateWishlist({
     required String id,
     required String title,
     required String description,
     required int year,
     String? coverImageUrl,
     bool? isShared,
-  }) {
-    final wishlist = _repository.updateWishlist(
+  }) async {
+    final wishlist = await _repository.updateWishlist(
       id: id,
       title: title,
       description: description,
@@ -119,74 +124,74 @@ class PersistentWishlistRepository implements WishlistRepository {
       isShared: isShared,
     );
     if (wishlist != null) {
-      _persist();
+      return _persistAndReturn(wishlist);
     }
     return wishlist;
   }
 
   @override
-  Wishlist? archiveWishlist(String id) {
-    final wishlist = _repository.archiveWishlist(id);
+  Future<Wishlist?> archiveWishlist(String id) async {
+    final wishlist = await _repository.archiveWishlist(id);
     if (wishlist != null) {
-      _persist();
+      return _persistAndReturn(wishlist);
     }
     return wishlist;
   }
 
   @override
-  Wishlist? restoreWishlist(String id) {
-    final wishlist = _repository.restoreWishlist(id);
+  Future<Wishlist?> restoreWishlist(String id) async {
+    final wishlist = await _repository.restoreWishlist(id);
     if (wishlist != null) {
-      _persist();
+      return _persistAndReturn(wishlist);
     }
     return wishlist;
   }
 
   @override
-  bool deleteWishlist(String id) {
-    final wasDeleted = _repository.deleteWishlist(id);
+  Future<bool> deleteWishlist(String id) async {
+    final wasDeleted = await _repository.deleteWishlist(id);
     if (wasDeleted) {
-      _persist();
+      return _persistAndReturn(true);
     }
     return wasDeleted;
   }
 
   @override
-  Wishlist? addSharedUser({
+  Future<Wishlist?> addSharedUser({
     required String wishlistId,
     required String name,
     required String email,
     required String role,
-  }) {
-    final wishlist = _repository.addSharedUser(
+  }) async {
+    final wishlist = await _repository.addSharedUser(
       wishlistId: wishlistId,
       name: name,
       email: email,
       role: role,
     );
     if (wishlist != null) {
-      _persist();
+      return _persistAndReturn(wishlist);
     }
     return wishlist;
   }
 
   @override
-  bool removeSharedUser({
+  Future<bool> removeSharedUser({
     required String wishlistId,
     required String userId,
-  }) {
-    final wasRemoved = _repository.removeSharedUser(
+  }) async {
+    final wasRemoved = await _repository.removeSharedUser(
       wishlistId: wishlistId,
       userId: userId,
     );
     if (wasRemoved) {
-      _persist();
+      return _persistAndReturn(true);
     }
     return wasRemoved;
   }
 
   @override
-  WishlistItem addWishlistItem({
+  Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,
     String? notes,
@@ -195,8 +200,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     String status = 'Saved',
     String? imageUrl,
     String? productUrl,
-  }) {
-    final item = _repository.addWishlistItem(
+  }) async {
+    final item = await _repository.addWishlistItem(
       wishlistId: wishlistId,
       title: title,
       notes: notes,
@@ -206,44 +211,43 @@ class PersistentWishlistRepository implements WishlistRepository {
       imageUrl: imageUrl,
       productUrl: productUrl,
     );
-    _persist();
-    return item;
+    return _persistAndReturn(item);
   }
 
   @override
-  Wishlist? reorderWishlistItems({
+  Future<Wishlist?> reorderWishlistItems({
     required String wishlistId,
     required List<String> orderedItemIds,
-  }) {
-    final wishlist = _repository.reorderWishlistItems(
+  }) async {
+    final wishlist = await _repository.reorderWishlistItems(
       wishlistId: wishlistId,
       orderedItemIds: orderedItemIds,
     );
     if (wishlist != null) {
-      _persist();
+      return _persistAndReturn(wishlist);
     }
     return wishlist;
   }
 
   @override
-  WishlistItem? updateWishlistItemStatus({
+  Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
     required String status,
-  }) {
-    final item = _repository.updateWishlistItemStatus(
+  }) async {
+    final item = await _repository.updateWishlistItemStatus(
       wishlistId: wishlistId,
       itemId: itemId,
       status: status,
     );
     if (item != null) {
-      _persist();
+      return _persistAndReturn(item);
     }
     return item;
   }
 
   @override
-  WishlistItem? updateWishlistItem({
+  Future<WishlistItem?> updateWishlistItem({
     required String wishlistId,
     required String itemId,
     required String title,
@@ -253,8 +257,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     String status = 'Saved',
     String? imageUrl,
     String? productUrl,
-  }) {
-    final item = _repository.updateWishlistItem(
+  }) async {
+    final item = await _repository.updateWishlistItem(
       wishlistId: wishlistId,
       itemId: itemId,
       title: title,
@@ -266,22 +270,22 @@ class PersistentWishlistRepository implements WishlistRepository {
       productUrl: productUrl,
     );
     if (item != null) {
-      _persist();
+      return _persistAndReturn(item);
     }
     return item;
   }
 
   @override
-  bool deleteWishlistItem({
+  Future<bool> deleteWishlistItem({
     required String wishlistId,
     required String itemId,
-  }) {
-    final wasDeleted = _repository.deleteWishlistItem(
+  }) async {
+    final wasDeleted = await _repository.deleteWishlistItem(
       wishlistId: wishlistId,
       itemId: itemId,
     );
     if (wasDeleted) {
-      _persist();
+      return _persistAndReturn(true);
     }
     return wasDeleted;
   }

@@ -102,7 +102,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     });
   }
 
-  void _saveItem() {
+  Future<void> _saveItem() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -114,7 +114,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final productUrl = _optionalValue(_productUrlController.text);
 
     if (widget.isEditing) {
-      widget.repository.updateWishlistItem(
+      await widget.repository.updateWishlistItem(
         wishlistId: widget.wishlistId,
         itemId: widget.item!.id,
         title: title,
@@ -126,7 +126,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         productUrl: productUrl,
       );
     } else {
-      widget.repository.addWishlistItem(
+      await widget.repository.addWishlistItem(
         wishlistId: widget.wishlistId,
         title: title,
         notes: notes,

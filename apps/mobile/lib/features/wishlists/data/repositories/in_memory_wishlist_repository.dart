@@ -37,13 +37,13 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist createWishlist({
+  Future<Wishlist> createWishlist({
     required String title,
     required String description,
     required int year,
     String? coverImageUrl,
     bool isShared = false,
-  }) {
+  }) async {
     final now = DateTime.now();
     final wishlist = Wishlist(
       id: _uuid.v4(),
@@ -64,14 +64,14 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist? updateWishlist({
+  Future<Wishlist?> updateWishlist({
     required String id,
     required String title,
     required String description,
     required int year,
     String? coverImageUrl,
     bool? isShared,
-  }) {
+  }) async {
     return _replaceWishlist(
       id,
       (wishlist) => wishlist.copyWith(
@@ -86,7 +86,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist? archiveWishlist(String id) {
+  Future<Wishlist?> archiveWishlist(String id) async {
     return _replaceWishlist(
       id,
       (wishlist) => wishlist.copyWith(
@@ -97,7 +97,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist? restoreWishlist(String id) {
+  Future<Wishlist?> restoreWishlist(String id) async {
     return _replaceWishlist(
       id,
       (wishlist) => wishlist.copyWith(
@@ -108,7 +108,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  bool deleteWishlist(String id) {
+  Future<bool> deleteWishlist(String id) async {
     final previousLength = _wishlists.value.length;
     _wishlists.value = List<Wishlist>.unmodifiable(
       _wishlists.value.where((wishlist) => wishlist.id != id),
@@ -117,12 +117,12 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist? addSharedUser({
+  Future<Wishlist?> addSharedUser({
     required String wishlistId,
     required String name,
     required String email,
     required String role,
-  }) {
+  }) async {
     return _replaceWishlist(
       wishlistId,
       (wishlist) {
@@ -152,10 +152,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  bool removeSharedUser({
+  Future<bool> removeSharedUser({
     required String wishlistId,
     required String userId,
-  }) {
+  }) async {
     var wasRemoved = false;
 
     final updatedWishlist = _replaceWishlist(
@@ -178,7 +178,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  WishlistItem addWishlistItem({
+  Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,
     String? notes,
@@ -187,7 +187,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
     String status = 'Saved',
     String? imageUrl,
     String? productUrl,
-  }) {
+  }) async {
     final wishlist = findById(wishlistId);
     if (wishlist == null) {
       throw StateError('Wishlist "$wishlistId" was not found.');
@@ -224,10 +224,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Wishlist? reorderWishlistItems({
+  Future<Wishlist?> reorderWishlistItems({
     required String wishlistId,
     required List<String> orderedItemIds,
-  }) {
+  }) async {
     if (orderedItemIds.isEmpty) {
       return findById(wishlistId);
     }
@@ -264,13 +264,14 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  WishlistItem? updateWishlistItemStatus({
+  Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
     required String status,
-  }) {
+  }) async {
     WishlistItem? updatedItem;
     var didUpdate = false;
+    final now = DateTime.now();
 
     final updatedWishlist = _replaceWishlist(
       wishlistId,
@@ -280,10 +281,14 @@ class InMemoryWishlistRepository implements WishlistRepository {
             return item;
           }
 
-          final purchasedAt = status == 'Purchased' ? DateTime.now() : null;
           updatedItem = item.copyWith(
             status: status,
-            purchasedAt: purchasedAt,
+            purchasedAt: _nextPurchasedAt(
+              previousStatus: item.status,
+              nextStatus: status,
+              currentPurchasedAt: item.purchasedAt,
+              now: now,
+            ),
           );
           didUpdate = true;
           return updatedItem!;
@@ -291,7 +296,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
 
         return wishlist.copyWith(
           items: nextItems,
-          updatedAt: didUpdate ? DateTime.now() : wishlist.updatedAt,
+          updatedAt: didUpdate ? now : wishlist.updatedAt,
         );
       },
     );
@@ -304,7 +309,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  WishlistItem? updateWishlistItem({
+  Future<WishlistItem?> updateWishlistItem({
     required String wishlistId,
     required String itemId,
     required String title,
@@ -314,9 +319,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
     String status = 'Saved',
     String? imageUrl,
     String? productUrl,
-  }) {
+  }) async {
     WishlistItem? updatedItem;
     var didUpdate = false;
+    final now = DateTime.now();
 
     final updatedWishlist = _replaceWishlist(
       wishlistId,
@@ -334,7 +340,12 @@ class InMemoryWishlistRepository implements WishlistRepository {
             status: status,
             imageUrl: imageUrl,
             productUrl: productUrl,
-            purchasedAt: status == 'Purchased' ? DateTime.now() : null,
+            purchasedAt: _nextPurchasedAt(
+              previousStatus: item.status,
+              nextStatus: status,
+              currentPurchasedAt: item.purchasedAt,
+              now: now,
+            ),
           );
           didUpdate = true;
           return updatedItem!;
@@ -342,7 +353,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
 
         return wishlist.copyWith(
           items: nextItems,
-          updatedAt: didUpdate ? DateTime.now() : wishlist.updatedAt,
+          updatedAt: didUpdate ? now : wishlist.updatedAt,
         );
       },
     );
@@ -355,10 +366,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  bool deleteWishlistItem({
+  Future<bool> deleteWishlistItem({
     required String wishlistId,
     required String itemId,
-  }) {
+  }) async {
     var wasDeleted = false;
 
     final updatedWishlist = _replaceWishlist(
@@ -407,6 +418,22 @@ class InMemoryWishlistRepository implements WishlistRepository {
           (highestRank, item) => math.max(highestRank, item.rank),
         ) +
         1;
+  }
+
+  DateTime? _nextPurchasedAt({
+    required String previousStatus,
+    required String nextStatus,
+    required DateTime? currentPurchasedAt,
+    required DateTime now,
+  }) {
+    if (nextStatus != 'Purchased') {
+      return null;
+    }
+    if (previousStatus != 'Purchased') {
+      return now;
+    }
+
+    return currentPurchasedAt;
   }
 
   static List<Wishlist> seedWishlists() {

@@ -9,10 +9,10 @@ void main() {
 
   group('InMemoryWishlistRepository', () {
     test('creates a wishlist with a year and exposes it through the notifier',
-        () {
+        () async {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
 
-      final createdWishlist = repository.createWishlist(
+      final createdWishlist = await repository.createWishlist(
         title: 'Reading Corner',
         description: 'Warm textures and quieter lighting.',
         year: 2027,
@@ -32,24 +32,24 @@ void main() {
       expect(repository.watchWishlists().value.first.isShared, isTrue);
     });
 
-    test('adds items with rank order and updates purchase status', () {
+    test('adds items with rank order and updates purchase status', () async {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
-      final wishlist = repository.createWishlist(
+      final wishlist = await repository.createWishlist(
         title: 'Hosting',
         description: 'Ceramics and table details.',
         year: 2026,
       );
 
-      final firstItem = repository.addWishlistItem(
+      final firstItem = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Stoneware bowl set',
       );
-      final secondItem = repository.addWishlistItem(
+      final secondItem = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Large serving spoon',
       );
 
-      repository.updateWishlistItemStatus(
+      await repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: secondItem.id,
         status: 'Purchased',
@@ -65,23 +65,78 @@ void main() {
       expect(refreshedWishlist?.purchasedItems.first.purchasedAt, isNotNull);
     });
 
-    test('reprioritizes items by assigning sequential rank values', () {
+    test('preserves purchasedAt when a purchased item is edited', () async {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
-      final wishlist = repository.createWishlist(
+      final wishlist = await repository.createWishlist(
+        title: 'Hosting',
+        description: 'Ceramics and table details.',
+        year: 2026,
+      );
+
+      final item = await repository.addWishlistItem(
+        wishlistId: wishlist.id,
+        title: 'Stoneware bowl set',
+        status: 'Purchased',
+      );
+
+      final originalPurchasedAt = item.purchasedAt;
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+
+      final updatedItem = await repository.updateWishlistItem(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+        title: 'Stoneware bowl set, matte glaze',
+        status: 'Purchased',
+      );
+
+      expect(updatedItem?.purchasedAt, isNotNull);
+      expect(updatedItem?.purchasedAt, originalPurchasedAt);
+    });
+
+    test('preserves purchasedAt when purchased status is set again', () async {
+      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final wishlist = await repository.createWishlist(
+        title: 'Hosting',
+        description: 'Ceramics and table details.',
+        year: 2026,
+      );
+
+      final item = await repository.addWishlistItem(
+        wishlistId: wishlist.id,
+        title: 'Stoneware bowl set',
+        status: 'Purchased',
+      );
+
+      final originalPurchasedAt = item.purchasedAt;
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+
+      final updatedItem = await repository.updateWishlistItemStatus(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+        status: 'Purchased',
+      );
+
+      expect(updatedItem?.purchasedAt, isNotNull);
+      expect(updatedItem?.purchasedAt, originalPurchasedAt);
+    });
+
+    test('reprioritizes items by assigning sequential rank values', () async {
+      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final wishlist = await repository.createWishlist(
         title: 'Desk Setup',
         description: 'Work tools and upgrades.',
         year: 2026,
       );
-      final first = repository.addWishlistItem(
+      final first = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Desk lamp',
       );
-      final second = repository.addWishlistItem(
+      final second = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Monitor stand',
       );
 
-      repository.reorderWishlistItems(
+      await repository.reorderWishlistItems(
         wishlistId: wishlist.id,
         orderedItemIds: [second.id, first.id],
       );
@@ -97,23 +152,23 @@ void main() {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
 
       expect(
-        () => repository.addWishlistItem(
+        repository.addWishlistItem(
           wishlistId: 'missing-wishlist',
           title: 'Desk lamp',
         ),
-        throwsStateError,
+        throwsA(isA<StateError>()),
       );
     });
 
-    test('adds and removes collaborators on a shared wishlist', () {
+    test('adds and removes collaborators on a shared wishlist', () async {
       final repository = InMemoryWishlistRepository(initialWishlists: []);
-      final wishlist = repository.createWishlist(
+      final wishlist = await repository.createWishlist(
         title: 'Weekend Trip',
         description: 'Packing, bookings, and gift ideas.',
         year: 2026,
       );
 
-      final sharedWishlist = repository.addSharedUser(
+      final sharedWishlist = await repository.addSharedUser(
         wishlistId: wishlist.id,
         name: 'Maya',
         email: 'maya@example.com',
@@ -121,7 +176,7 @@ void main() {
       );
 
       final collaboratorId = sharedWishlist!.sharedUsers.first.id;
-      final removed = repository.removeSharedUser(
+      final removed = await repository.removeSharedUser(
         wishlistId: wishlist.id,
         userId: collaboratorId,
       );

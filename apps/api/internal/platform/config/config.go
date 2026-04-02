@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
@@ -11,6 +10,7 @@ type Config struct {
 	HTTPAddr        string
 	DatabaseURL     string
 	RunDBMigrations bool
+	ChromiumPath    string
 }
 
 func Load() (Config, error) {
@@ -19,10 +19,7 @@ func Load() (Config, error) {
 		HTTPAddr:        getEnv("HTTP_ADDR", ":8080"),
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		RunDBMigrations: getEnvBool("RUN_DB_MIGRATIONS", false),
-	}
-
-	if cfg.DatabaseURL == "" {
-		return Config{}, fmt.Errorf("DATABASE_URL is required")
+		ChromiumPath:    getEnv("CHROMIUM_PATH", ""),
 	}
 
 	return cfg, nil

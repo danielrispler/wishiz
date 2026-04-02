@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +13,10 @@ import (
 	"time"
 
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
+	scrapefastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
+	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
+	scrapehttp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/http"
+	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
 	wishlistpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/postgres"
 	wishlistapp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
@@ -38,24 +43,37 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("connect postgres: %w", err)
-	}
-	defer pool.Close()
-
-	if cfg.RunDBMigrations {
-		appLogger.Info("running database migrations (dev-only)")
-		if err := db.RunMigrations(ctx, pool); err != nil {
-			return fmt.Errorf("run database migrations: %w", err)
-		}
-	}
-
-	wishlistRepo := wishlistpostgres.NewRepository(pool)
-	wishlistService := wishlistapp.NewService(wishlistRepo)
 	mux := http.NewServeMux()
 	healthhttp.RegisterRoutes(mux)
-	wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService)
+
+	resolver := net.DefaultResolver
+	fastScraper := scrapefastpath.NewScraper(resolver)
+	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath)
+	defer headlessScraper.Close()
+
+	scrapeService := scrapeapp.NewService(appLogger, fastScraper, headlessScraper, resolver)
+	scrapehttp.RegisterRoutes(mux, appLogger, scrapeService)
+
+	if cfg.DatabaseURL != "" {
+		pool, err := db.Connect(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return fmt.Errorf("connect postgres: %w", err)
+		}
+		defer pool.Close()
+
+		if cfg.RunDBMigrations {
+			appLogger.Info("running database migrations (dev-only)")
+			if err := db.RunMigrations(ctx, pool); err != nil {
+				return fmt.Errorf("run database migrations: %w", err)
+			}
+		}
+
+		wishlistRepo := wishlistpostgres.NewRepository(pool)
+		wishlistService := wishlistapp.NewService(wishlistRepo)
+		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService)
+	} else {
+		appLogger.Info("starting api without database-backed wishlist routes")
+	}
 
 	server := httpx.NewServer(cfg.HTTPAddr, mux)
 

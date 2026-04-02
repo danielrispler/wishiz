@@ -1,0 +1,54 @@
+package application
+
+import "testing"
+
+func TestNormalizePrice(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		raw              string
+		expectedAmount   string
+		expectedCurrency string
+	}{
+		{
+			name:             "ils suffix",
+			raw:              "169.90 ₪",
+			expectedAmount:   "169.90",
+			expectedCurrency: "ILS",
+		},
+		{
+			name:             "ils prefix",
+			raw:              "₪ 599.90",
+			expectedAmount:   "599.90",
+			expectedCurrency: "ILS",
+		},
+		{
+			name:             "usd symbol",
+			raw:              "$19.90",
+			expectedAmount:   "19.90",
+			expectedCurrency: "USD",
+		},
+		{
+			name:             "usd code",
+			raw:              "USD 19.90",
+			expectedAmount:   "19.90",
+			expectedCurrency: "USD",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			amount, currency, ok := NormalizePrice(tc.raw)
+			if !ok {
+				t.Fatalf("expected price to parse")
+			}
+			if amount != tc.expectedAmount || currency != tc.expectedCurrency {
+				t.Fatalf("expected %s %s, got %s %s", tc.expectedAmount, tc.expectedCurrency, amount, currency)
+			}
+		})
+	}
+}

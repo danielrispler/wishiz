@@ -54,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _lastReminderSignature;
   String? _handledInitialWishlistId;
   String? _handledInitialSharedText;
+  bool _isImportingSharedProduct = false;
 
   @override
   void initState() {
@@ -155,46 +156,56 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted ||
         sharedText == null ||
         sharedText.isEmpty ||
-        _handledInitialSharedText == sharedText) {
+        _handledInitialSharedText == sharedText ||
+        _isImportingSharedProduct) {
       return false;
     }
 
-    _handledInitialSharedText = sharedText;
+    setState(() {
+      _handledInitialSharedText = sharedText;
+      _isImportingSharedProduct = true;
+    });
     widget.onInitialSharedTextHandled?.call();
 
-    final draft = await _resolveSharedProductDraft(sharedText);
-    if (!mounted) {
-      return true;
-    }
+    try {
+      final draft = await _resolveSharedProductDraft(sharedText);
+      if (!mounted) {
+        return true;
+      }
 
-    if (draft == null) {
-      _showFeedback('Wishiz could not find a product link in that share.');
-      return true;
-    }
+      if (draft == null) {
+        _showFeedback('Wishiz could not find a product link in that share.');
+        return true;
+      }
 
-    final wishlistId = await _selectWishlistForSharedImport();
-    if (!mounted || wishlistId == null) {
-      return true;
-    }
+      final wishlistId = await _selectWishlistForSharedImport();
+      if (!mounted || wishlistId == null) {
+        return true;
+      }
 
-    if (!draft.hasCompleteRequiredFields) {
-      final missingFields = draft.missingFieldLabels.join(', ');
-      _showFeedback(
-        'We filled what we could. Please add the missing $missingFields before saving.',
+      if (!draft.hasCompleteRequiredFields) {
+        final missingFields = draft.missingFieldLabels.join(', ');
+        _showFeedback(
+          'Sorry, we could only fill part of this product. Please add the missing $missingFields before saving.',
+        );
+      }
+
+      await _openSharedProductEditor(
+        wishlistId: wishlistId,
+        draft: draft,
       );
+      return true;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImportingSharedProduct = false;
+        });
+      }
     }
-
-    await _openSharedProductEditor(
-      wishlistId: wishlistId,
-      draft: draft,
-    );
-    return true;
   }
 
   Future<SharedProductDraft?> _resolveSharedProductDraft(
       String sharedText) async {
-    _showShareImportLoading();
-
     try {
       return await widget.sharedProductRepository.createDraftFromSharedText(
         sharedText,
@@ -209,8 +220,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
       return null;
-    } finally {
-      _hideShareImportLoading();
     }
   }
 
@@ -274,35 +283,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  void _showShareImportLoading() {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Expanded(
-                child: Text('Importing product details...'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _hideShareImportLoading() {
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.of(context, rootNavigator: true).maybePop();
   }
 
   Future<void> _openAccountScreen() {
@@ -417,6 +397,31 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_isImportingSharedProduct)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
+            padding: const EdgeInsets.all(AppConstants.cardPadding),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Importing product details...',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
         Text(
           'Create a New List',
           style: Theme.of(context).textTheme.headlineSmall,

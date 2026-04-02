@@ -22,6 +22,29 @@ paths:
                     example: ok
                 required:
                   - status
+  /scrape:
+    get:
+      summary: Scrape product details from a product URL
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+      responses:
+        '200':
+          description: Scraped product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapedProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          $ref: '#/components/responses/InternalError'
+        '504':
+          $ref: '#/components/responses/InternalError'
   /wishlists:
     get:
       summary: List wishlists
@@ -464,6 +487,26 @@ components:
             format: uuid
       required:
         - orderedItemIds
+    ScrapedProduct:
+      type: object
+      properties:
+        name:
+          type: string
+        priceAmount:
+          type: string
+        priceCurrency:
+          type: string
+        imageUrl:
+          type: string
+        source:
+          type: string
+          enum: [fast, headless]
+      required:
+        - name
+        - priceAmount
+        - priceCurrency
+        - imageUrl
+        - source
     ErrorResponse:
       type: object
       properties:

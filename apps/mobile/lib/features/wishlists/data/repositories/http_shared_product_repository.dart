@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 
+final RegExp _titleSeparatorPattern = RegExp(r'\s+\|\s+|\s+-\s+|\s+:\s+');
+
 class HttpSharedProductRepository implements SharedProductRepository {
   HttpSharedProductRepository({
     http.Client? client,
@@ -31,10 +33,18 @@ class HttpSharedProductRepository implements SharedProductRepository {
     final metadata = await _fetchProductMetadata(productUrl);
     final sharedTitle = sharedLines.isEmpty ? null : sharedLines.first;
 
+    final formattedTitle = _buildProductTitle(
+      productUrl: productUrl,
+      rawCandidates: [
+        metadata.title,
+        sharedTitle,
+        _inferTitleFromProductUri(productUrl),
+      ],
+      brandCandidate: metadata.brand,
+    );
     final title = _firstNonEmpty([
-      metadata.title,
-      sharedTitle,
-      _inferTitleFromProductUri(productUrl),
+      formattedTitle,
+      _compactTitle(_inferTitleFromProductUri(productUrl)),
     ]);
     final notes = _firstNonEmpty([
       _extractSharedNotes(sharedLines, resolvedTitle: title),
@@ -73,6 +83,7 @@ class HttpSharedProductRepository implements SharedProductRepository {
 
     return _ResolvedProductMetadata(
       title: _resolveTitle(document),
+      brand: _resolveBrand(document, uri),
       imageUrl: _resolveImageUrl(document, uri),
       priceLabel: _resolvePriceLabel(document),
       notes: _resolveDescription(document),
@@ -97,6 +108,29 @@ class HttpSharedProductRepository implements SharedProductRepository {
     ]);
   }
 
+  String? _resolveBrand(Document document, Uri pageUri) {
+    final schemaBrand = _extractSchemaValue<String>(
+      document,
+      predicate: (node) =>
+          _matchesSchemaType(node, 'Product') &&
+          _resolveSchemaBrand(node['brand']) != null,
+      value: (node) => _resolveSchemaBrand(node['brand']),
+    );
+
+    return _firstNonEmpty([
+      _metaContent(document, property: 'product:brand'),
+      _metaContent(document, name: 'brand'),
+      _attributeContent(
+        document,
+        selector: '[itemprop="brand"]',
+        attribute: 'content',
+      ),
+      _normalizeText(document.querySelector('[itemprop="brand"]')?.text),
+      schemaBrand,
+      _inferBrandFromHost(pageUri.host),
+    ]);
+  }
+
   String? _resolveImageUrl(Document document, Uri pageUri) {
     final schemaImage = _extractSchemaValue<String>(
       document,
@@ -114,6 +148,12 @@ class HttpSharedProductRepository implements SharedProductRepository {
       _attributeContent(document,
           selector: '[itemprop="image"]', attribute: 'src'),
       schemaImage,
+      _attributeContent(
+        document,
+        selector: 'link[rel="image_src"]',
+        attribute: 'href',
+      ),
+      _resolveFirstPageImage(document),
     ]);
     if (image == null) {
       return null;
@@ -156,7 +196,12 @@ class HttpSharedProductRepository implements SharedProductRepository {
       return schemaPrice;
     }
 
-    return null;
+    final visibleSelectors = _extractSelectorPrice(document);
+    if (visibleSelectors != null) {
+      return visibleSelectors;
+    }
+
+    return _extractVisiblePrice(document);
   }
 
   String? _resolveDescription(Document document) {
@@ -171,6 +216,10 @@ class HttpSharedProductRepository implements SharedProductRepository {
     final offers = node['offers'];
     final offerMaps = _collectOfferMaps(offers);
     for (final offer in offerMaps) {
+      if (_looksLikeNonPrimaryPrice(_readString(offer['name']))) {
+        continue;
+      }
+
       final amount = _readString(offer['price']);
       if (!_looksLikePrice(amount)) {
         continue;
@@ -284,10 +333,70 @@ class HttpSharedProductRepository implements SharedProductRepository {
     return null;
   }
 
+  String? _resolveSchemaBrand(Object? value) {
+    if (value is String) {
+      return _normalizeBrand(value);
+    }
+    if (value is Map<String, dynamic>) {
+      return _firstNonEmpty([
+        _normalizeBrand(_readString(value['name'])),
+        _normalizeBrand(_readString(value['brand'])),
+      ]);
+    }
+    if (value is List) {
+      for (final entry in value) {
+        final resolved = _resolveSchemaBrand(entry);
+        if (resolved != null) {
+          return resolved;
+        }
+      }
+    }
+    return null;
+  }
+
   String? _readString(Object? value) {
     if (value is String) {
       return _normalizeText(value);
     }
+    return null;
+  }
+
+  String? _resolveFirstPageImage(Document document) {
+    for (final image in document.querySelectorAll('img')) {
+      final candidate = _firstNonEmpty([
+        image.attributes['src'],
+        image.attributes['data-src'],
+        image.attributes['data-old-hires'],
+        image.attributes['data-original'],
+        image.attributes['data-image'],
+      ]);
+      if (candidate == null) {
+        continue;
+      }
+
+      final normalized = candidate.toLowerCase();
+      final looksLikeRealImage = normalized.startsWith('http') ||
+          normalized.startsWith('/') ||
+          normalized.startsWith('//');
+      final isLikelyAsset = normalized.endsWith('.jpg') ||
+          normalized.endsWith('.jpeg') ||
+          normalized.endsWith('.png') ||
+          normalized.endsWith('.webp') ||
+          normalized.contains('image') ||
+          normalized.contains('product') ||
+          normalized.contains('main');
+      final isIgnored = normalized.contains('logo') ||
+          normalized.contains('icon') ||
+          normalized.contains('sprite') ||
+          normalized.contains('avatar') ||
+          normalized.contains('placeholder') ||
+          normalized.contains('banner');
+
+      if (looksLikeRealImage && isLikelyAsset && !isIgnored) {
+        return candidate;
+      }
+    }
+
     return null;
   }
 
@@ -360,7 +469,7 @@ class HttpSharedProductRepository implements SharedProductRepository {
     }
 
     for (final segment in uri.pathSegments.reversed) {
-      final decoded = Uri.decodeComponent(segment)
+      final decoded = _decodeUriComponentSafely(segment)
           .replaceAll(RegExp(r'[-_+]'), ' ')
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
@@ -374,6 +483,14 @@ class HttpSharedProductRepository implements SharedProductRepository {
     }
 
     return null;
+  }
+
+  String _decodeUriComponentSafely(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } catch (_) {
+      return value;
+    }
   }
 
   String? _inferImportedFromNote(String productUrl) {
@@ -390,6 +507,134 @@ class HttpSharedProductRepository implements SharedProductRepository {
     return 'Imported from $host.';
   }
 
+  String? _compactTitle(String? value) {
+    final normalized = _normalizeText(value);
+    if (normalized == null) {
+      return null;
+    }
+
+    final cleaned = normalized
+        .split(_titleSeparatorPattern)
+        .first
+        .replaceAll(RegExp(r'[^\w\s&]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) {
+      return null;
+    }
+
+    final words = cleaned
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .where((word) => !_isStopWord(word))
+        .take(3)
+        .toList(growable: false);
+
+    final compact = words.isEmpty
+        ? cleaned.split(' ').where((word) => word.isNotEmpty).take(3).join(' ')
+        : words.join(' ');
+    return _toTitleCase(compact);
+  }
+
+  bool _isStopWord(String word) {
+    const stopWords = {
+      'the',
+      'and',
+      'with',
+      'for',
+      'from',
+      'new',
+      'best',
+      'official',
+      'shop',
+      'buy',
+      'sale',
+    };
+    return stopWords.contains(word.toLowerCase());
+  }
+
+  String? _extractVisiblePrice(Document document) {
+    final bodyText = _normalizeText(document.body?.text);
+    if (bodyText == null) {
+      return null;
+    }
+
+    final symbolMatch = RegExp(
+      r'([$€£₪])\s?(\d{1,3}(?:[,\s]\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)',
+    ).firstMatch(bodyText);
+    if (symbolMatch != null) {
+      final symbol = symbolMatch.group(1)!;
+      final amount = symbolMatch.group(2)!;
+      return _isLikelyCurrentPriceContext(bodyText, symbolMatch.start)
+          ? '$symbol $amount'
+          : null;
+    }
+
+    final codeMatch = RegExp(
+      r'\b(USD|EUR|GBP|ILS)\s?(\d{1,3}(?:[,\s]\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\b',
+      caseSensitive: false,
+    ).firstMatch(bodyText);
+    if (codeMatch != null) {
+      return _isLikelyCurrentPriceContext(bodyText, codeMatch.start)
+          ? '${codeMatch.group(1)!.toUpperCase()} ${codeMatch.group(2)!}'
+          : null;
+    }
+
+    return null;
+  }
+
+  String? _extractSelectorPrice(Document document) {
+    const selectors = [
+      '[data-price]',
+      '[data-product-price]',
+      '[itemprop="price"]',
+      '.price',
+      '.product-price',
+      '.sale-price',
+      '.current-price',
+      '.price-current',
+      '.price__current',
+      '.a-price .a-offscreen',
+    ];
+
+    for (final selector in selectors) {
+      for (final element in document.querySelectorAll(selector)) {
+        final rawAmount = _firstNonEmpty([
+          element.attributes['content'],
+          element.attributes['data-price'],
+          element.attributes['aria-label'],
+          _normalizeText(element.text),
+        ]);
+        if (!_looksLikePrice(rawAmount)) {
+          continue;
+        }
+
+        final context = _normalizeText(
+          '${element.className} ${element.id} ${element.attributes.values.join(' ')} ${element.text}',
+        );
+        if (_looksLikeNonPrimaryPrice(context)) {
+          continue;
+        }
+
+        final currency = _firstNonEmpty([
+          element.attributes['data-currency'],
+          element.attributes['currency'],
+          _attributeContent(
+            document,
+            selector: '[itemprop="priceCurrency"]',
+            attribute: 'content',
+          ),
+        ]);
+        return _formatPriceLabel(
+          rawAmount!,
+          currency: currency ?? _extractCurrencySymbol(rawAmount),
+        );
+      }
+    }
+
+    return null;
+  }
+
   String _toTitleCase(String value) {
     return value.split(' ').map((part) {
       if (part.isEmpty) {
@@ -397,6 +642,260 @@ class HttpSharedProductRepository implements SharedProductRepository {
       }
       return '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}';
     }).join(' ');
+  }
+
+  String? _buildProductTitle({
+    required String productUrl,
+    required List<String?> rawCandidates,
+    String? brandCandidate,
+  }) {
+    final brand = _normalizeBrand(brandCandidate) ??
+        _inferBrandFromTitle(rawCandidates) ??
+        _inferBrandFromHost(
+          Uri.tryParse(productUrl)?.host ?? '',
+        );
+
+    for (final candidate in rawCandidates) {
+      final type = _extractProductType(candidate, brand: brand);
+      if (type == null) {
+        continue;
+      }
+
+      if (brand != null) {
+        return '${_toTitleCase(type)}, $brand';
+      }
+
+      return _toTitleCase(type);
+    }
+
+    return null;
+  }
+
+  String? _extractProductType(String? rawTitle, {String? brand}) {
+    final normalized = _normalizeText(rawTitle);
+    if (normalized == null) {
+      return null;
+    }
+
+    var cleaned = normalized
+        .split(_titleSeparatorPattern)
+        .first
+        .replaceAll(RegExp(r'[^\w\s,&/]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (brand != null && brand.isNotEmpty) {
+      cleaned = cleaned
+          .replaceAll(RegExp(RegExp.escape(brand), caseSensitive: false), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+
+    final tokens = cleaned
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .where((word) => !_isStopWord(word))
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return null;
+    }
+
+    final productKeywords = <String>[];
+    var nounIndex = -1;
+    for (final token in tokens) {
+      productKeywords.add(token);
+      if (_looksLikeProductNoun(token) && productKeywords.length >= 2) {
+        nounIndex = productKeywords.length - 1;
+        break;
+      }
+      if (productKeywords.length == 3) {
+        break;
+      }
+    }
+
+    if (nounIndex != -1 &&
+        productKeywords.length < 3 &&
+        tokens.length > nounIndex + 1) {
+      final nextToken = tokens[nounIndex + 1];
+      if (_looksLikeProductDescriptor(nextToken)) {
+        productKeywords.add(nextToken);
+      }
+    }
+
+    return productKeywords.join(' ');
+  }
+
+  bool _looksLikeProductNoun(String word) {
+    const nouns = {
+      'shirt',
+      'tshirt',
+      't-shirt',
+      'tee',
+      'socks',
+      'sock',
+      'hoodie',
+      'jacket',
+      'sneakers',
+      'shoes',
+      'shoe',
+      'pants',
+      'jeans',
+      'dress',
+      'hat',
+      'cap',
+      'bag',
+      'wallet',
+      'blanket',
+      'lamp',
+      'kettle',
+      'chair',
+      'mug',
+      'bowl',
+    };
+    return nouns.contains(word.toLowerCase());
+  }
+
+  bool _looksLikeProductDescriptor(String word) {
+    const descriptors = {
+      'matte',
+      'white',
+      'black',
+      'blue',
+      'red',
+      'green',
+      'grey',
+      'gray',
+      'cotton',
+      'wool',
+      'leather',
+      'mini',
+      'max',
+      'pro',
+      'classic',
+      'crew',
+      'slim',
+      'oversized',
+    };
+    return descriptors.contains(word.toLowerCase());
+  }
+
+  String? _normalizeBrand(String? brand) {
+    final normalized = _normalizeText(brand);
+    if (normalized == null) {
+      return null;
+    }
+
+    if (normalized.toUpperCase() == normalized) {
+      return normalized;
+    }
+
+    final lower = normalized.toLowerCase();
+    if (lower == 'hm' || lower == 'h&m') {
+      return 'H&M';
+    }
+
+    return normalized
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  String? _inferBrandFromHost(String host) {
+    final normalizedHost = host.replaceFirst(RegExp(r'^www\.'), '').trim();
+    if (normalizedHost.isEmpty) {
+      return null;
+    }
+
+    if (normalizedHost == 'localhost' ||
+        normalizedHost.startsWith('127.') ||
+        RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(normalizedHost)) {
+      return null;
+    }
+
+    final primary = normalizedHost.split('.').first;
+    if (primary.isEmpty || primary.length < 2) {
+      return null;
+    }
+
+    return _normalizeBrand(primary);
+  }
+
+  String? _inferBrandFromTitle(List<String?> rawCandidates) {
+    for (final candidate in rawCandidates) {
+      final normalized = _normalizeText(candidate);
+      if (normalized == null) {
+        continue;
+      }
+
+      final cleaned = normalized
+          .split(_titleSeparatorPattern)
+          .first
+          .replaceAll(RegExp(r'[^\w\s&]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (cleaned.isEmpty) {
+        continue;
+      }
+
+      final tokens = cleaned
+          .split(' ')
+          .where((word) => word.isNotEmpty)
+          .toList(growable: false);
+      if (tokens.length < 3) {
+        continue;
+      }
+
+      final first = tokens.first;
+      final normalizedBrand = _normalizeBrand(first);
+      if (normalizedBrand == null) {
+        continue;
+      }
+
+      if (_isStopWord(first) ||
+          _looksLikeProductNoun(first) ||
+          _looksLikeProductDescriptor(first)) {
+        continue;
+      }
+
+      return normalizedBrand;
+    }
+
+    return null;
+  }
+
+  bool _looksLikeNonPrimaryPrice(String? context) {
+    final normalized = context?.toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    return normalized.contains('compare') ||
+        normalized.contains('was ') ||
+        normalized.contains('list price') ||
+        normalized.contains('save ') ||
+        normalized.contains('installment') ||
+        normalized.contains('finance') ||
+        normalized.contains('shipping');
+  }
+
+  bool _isLikelyCurrentPriceContext(String bodyText, int matchStart) {
+    final start = matchStart < 40 ? 0 : matchStart - 40;
+    final end =
+        matchStart + 60 > bodyText.length ? bodyText.length : matchStart + 60;
+    final context = bodyText.substring(start, end).toLowerCase();
+    return !_looksLikeNonPrimaryPrice(context);
+  }
+
+  String? _extractCurrencySymbol(String value) {
+    final match = RegExp(r'([$€£₪])').firstMatch(value);
+    if (match != null) {
+      return match.group(1);
+    }
+
+    final codeMatch = RegExp(r'\b(USD|EUR|GBP|ILS)\b', caseSensitive: false)
+        .firstMatch(value);
+    return codeMatch?.group(1)?.toUpperCase();
   }
 
   String? _formatPriceLabel(String amount, {String? currency}) {
@@ -454,12 +953,14 @@ class HttpSharedProductRepository implements SharedProductRepository {
 class _ResolvedProductMetadata {
   const _ResolvedProductMetadata({
     this.title,
+    this.brand,
     this.notes,
     this.priceLabel,
     this.imageUrl,
   });
 
   final String? title;
+  final String? brand;
   final String? notes;
   final String? priceLabel;
   final String? imageUrl;

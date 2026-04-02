@@ -12,7 +12,7 @@ func NewServer(addr string, handler http.Handler) *http.Server {
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      40 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 }

@@ -367,6 +367,29 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: AppConstants.itemGap),
+              _buildFieldCard(
+                context,
+                child: TextFormField(
+                  controller: _imageUrlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Image URL or local path',
+                    hintText: 'https://image.jpg or local file path',
+                    border: InputBorder.none,
+                  ),
+                  validator: _validateImageSource,
+                  onChanged: (_) {
+                    if (_showImageValidationError) {
+                      setState(() {
+                        _showImageValidationError = false;
+                      });
+                    } else {
+                      setState(() {});
+                    }
+                  },
+                ),
+              ),
               if (_showImageValidationError) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -518,6 +541,24 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     }
 
     return _validateOptionalUrl(value);
+  }
+
+  String? _validateImageSource(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (widget.isSharedImport && trimmed.isEmpty) {
+      return 'Please add an image URL for this shared item.';
+    }
+
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    final isRemote = uri != null && uri.hasScheme && uri.hasAuthority;
+    final isLocalPath = trimmed.startsWith('/') || trimmed.contains(r'\');
+    return isRemote || isLocalPath
+        ? null
+        : 'Please enter a valid image URL or file path.';
   }
 
   Widget _buildImagePreview(BuildContext context) {

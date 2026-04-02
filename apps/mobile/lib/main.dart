@@ -12,7 +12,9 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
 import 'package:wishiz/features/auth/presentation/screens/signup_screen.dart';
 import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
+import 'package:wishiz/features/wishlists/data/api/shared_product_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
+import 'package:wishiz/features/wishlists/data/repositories/api_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_repository.dart';
@@ -33,7 +35,7 @@ Future<void> main() async {
   }
 
   final authRepository = await LocalAuthRepository.create();
-  final sharedProductRepository = HttpSharedProductRepository();
+  final sharedProductRepository = _createSharedProductRepository();
 
   runApp(
     repository == null
@@ -55,6 +57,16 @@ Future<WishlistRepository> _createWishlistRepository() async {
 
   final storage = await SharedPreferencesWishlistStorage.create();
   return PersistentWishlistRepository.create(storage: storage);
+}
+
+SharedProductRepository _createSharedProductRepository() {
+  final baseUrl = ApiConfig.baseUrl;
+  if (baseUrl != null) {
+    final apiClient = SharedProductApiClient(baseUri: Uri.parse(baseUrl));
+    return ApiSharedProductRepository(apiClient: apiClient);
+  }
+
+  return HttpSharedProductRepository();
 }
 
 class WishizApp extends StatelessWidget {

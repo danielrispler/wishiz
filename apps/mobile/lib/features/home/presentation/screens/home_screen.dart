@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
+import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
@@ -162,8 +163,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await widget.repository.deleteWishlist(wishlist.id);
-    _showFeedback('List deleted.');
+    try {
+      await widget.repository.deleteWishlist(wishlist.id);
+      _showFeedback('List deleted.');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showFeedback(
+        formatErrorMessage(
+          error,
+          fallbackMessage: 'Could not delete this list.',
+        ),
+      );
+    }
   }
 
   Future<void> _shareWishlist(Wishlist wishlist) async {

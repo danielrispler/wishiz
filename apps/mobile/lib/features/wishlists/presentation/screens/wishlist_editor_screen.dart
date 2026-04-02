@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -80,22 +81,42 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     final coverImageUrl = _optionalValue(_coverImageUrlController.text);
     final year = int.parse(_yearController.text.trim());
 
-    final savedWishlist = widget.isEditing
-        ? await widget.repository.updateWishlist(
-            id: widget.wishlist!.id,
-            title: title,
-            description: description,
-            year: year,
-            coverImageUrl: coverImageUrl,
-            isShared: _isShared,
-          )
-        : await widget.repository.createWishlist(
-            title: title,
-            description: description,
-            year: year,
-            coverImageUrl: coverImageUrl,
-            isShared: _isShared,
-          );
+    final Wishlist? savedWishlist;
+    try {
+      savedWishlist = widget.isEditing
+          ? await widget.repository.updateWishlist(
+              id: widget.wishlist!.id,
+              title: title,
+              description: description,
+              year: year,
+              coverImageUrl: coverImageUrl,
+              isShared: _isShared,
+            )
+          : await widget.repository.createWishlist(
+              title: title,
+              description: description,
+              year: year,
+              coverImageUrl: coverImageUrl,
+              isShared: _isShared,
+            );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not save this list.',
+              ),
+            ),
+          ),
+        );
+      return;
+    }
 
     if (!mounted || savedWishlist == null) {
       return;

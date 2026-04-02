@@ -45,6 +45,11 @@
 	<string>Wishiz may access the microphone when capturing video for wishlist items.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Wishiz uses your photo library so you can choose images for your wishlists.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
+import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -113,29 +114,48 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final imageUrl = _optionalValue(_imageUrlController.text);
     final productUrl = _optionalValue(_productUrlController.text);
 
-    if (widget.isEditing) {
-      await widget.repository.updateWishlistItem(
-        wishlistId: widget.wishlistId,
-        itemId: widget.item!.id,
-        title: title,
-        notes: notes,
-        priceLabel: priceLabel,
-        priority: _selectedPriority,
-        status: _selectedStatus,
-        imageUrl: imageUrl,
-        productUrl: productUrl,
-      );
-    } else {
-      await widget.repository.addWishlistItem(
-        wishlistId: widget.wishlistId,
-        title: title,
-        notes: notes,
-        priceLabel: priceLabel,
-        priority: _selectedPriority,
-        status: _selectedStatus,
-        imageUrl: imageUrl,
-        productUrl: productUrl,
-      );
+    try {
+      if (widget.isEditing) {
+        await widget.repository.updateWishlistItem(
+          wishlistId: widget.wishlistId,
+          itemId: widget.item!.id,
+          title: title,
+          notes: notes,
+          priceLabel: priceLabel,
+          priority: _selectedPriority,
+          status: _selectedStatus,
+          imageUrl: imageUrl,
+          productUrl: productUrl,
+        );
+      } else {
+        await widget.repository.addWishlistItem(
+          wishlistId: widget.wishlistId,
+          title: title,
+          notes: notes,
+          priceLabel: priceLabel,
+          priority: _selectedPriority,
+          status: _selectedStatus,
+          imageUrl: imageUrl,
+          productUrl: productUrl,
+        );
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not save this item.',
+              ),
+            ),
+          ),
+        );
+      return;
     }
 
     if (!mounted) {

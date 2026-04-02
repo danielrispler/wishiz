@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
+import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
@@ -43,6 +44,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   String _selectedStatus = _allFilter;
   String _selectedPriority = _allFilter;
   String _selectedSort = _sortHighestRank;
+
+  void _showError(Object error, {required String fallbackMessage}) {
+    _showFeedback(
+      context,
+      formatErrorMessage(
+        error,
+        fallbackMessage: fallbackMessage,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,10 +138,20 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                         );
 
                         if (shouldDelete == true) {
-                          await widget.repository.deleteWishlist(wishlist.id);
-                          _showFeedback(context, 'List deleted.');
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
+                          try {
+                            await widget.repository.deleteWishlist(wishlist.id);
+                            _showFeedback(context, 'List deleted.');
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          } catch (error) {
+                            if (!context.mounted) {
+                              return;
+                            }
+                            _showError(
+                              error,
+                              fallbackMessage: 'Could not delete this list.',
+                            );
                           }
                         }
                       }
@@ -635,11 +656,22 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     final movedItem = nextItems.removeAt(oldIndex);
     nextItems.insert(newIndex, movedItem);
 
-    await widget.repository.reorderWishlistItems(
-      wishlistId: wishlist.id,
-      orderedItemIds: nextItems.map((item) => item.id).toList(growable: false),
-    );
-    _showFeedback(context, 'Item rank updated.');
+    try {
+      await widget.repository.reorderWishlistItems(
+        wishlistId: wishlist.id,
+        orderedItemIds:
+            nextItems.map((item) => item.id).toList(growable: false),
+      );
+      _showFeedback(context, 'Item rank updated.');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showError(
+        error,
+        fallbackMessage: 'Could not reorder items.',
+      );
+    }
   }
 
   Widget _buildItemCard(
@@ -679,12 +711,22 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         confirmDismiss: (direction) async {
           if (direction == DismissDirection.startToEnd &&
               !widget.showPurchasedOnly) {
-            await widget.repository.updateWishlistItemStatus(
-              wishlistId: wishlist.id,
-              itemId: item.id,
-              status: 'Purchased',
-            );
-            _showFeedback(context, 'Moved to Past Lists.');
+            try {
+              await widget.repository.updateWishlistItemStatus(
+                wishlistId: wishlist.id,
+                itemId: item.id,
+                status: 'Purchased',
+              );
+              _showFeedback(context, 'Moved to Past Lists.');
+            } catch (error) {
+              if (!context.mounted) {
+                return false;
+              }
+              _showError(
+                error,
+                fallbackMessage: 'Could not update this item.',
+              );
+            }
             return false;
           }
 
@@ -746,12 +788,25 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       }
 
                       if (action == _WishlistItemAction.moveToActive) {
-                        await widget.repository.updateWishlistItemStatus(
-                          wishlistId: wishlist.id,
-                          itemId: item.id,
-                          status: 'Saved',
-                        );
-                        _showFeedback(context, 'Moved back to active items.');
+                        try {
+                          await widget.repository.updateWishlistItemStatus(
+                            wishlistId: wishlist.id,
+                            itemId: item.id,
+                            status: 'Saved',
+                          );
+                          _showFeedback(
+                            context,
+                            'Moved back to active items.',
+                          );
+                        } catch (error) {
+                          if (!context.mounted) {
+                            return;
+                          }
+                          _showError(
+                            error,
+                            fallbackMessage: 'Could not update this item.',
+                          );
+                        }
                         return;
                       }
 
@@ -1008,21 +1063,31 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       return;
     }
 
-    final previousCount = wishlist.sharedUsers.length;
-    final updatedWishlist = await widget.repository.addSharedUser(
-      wishlistId: wishlist.id,
-      name: collaborator.name,
-      email: collaborator.email,
-      role: collaborator.role,
-    );
+    try {
+      final previousCount = wishlist.sharedUsers.length;
+      final updatedWishlist = await widget.repository.addSharedUser(
+        wishlistId: wishlist.id,
+        name: collaborator.name,
+        email: collaborator.email,
+        role: collaborator.role,
+      );
 
-    final nextCount = updatedWishlist?.sharedUsers.length ?? previousCount;
-    _showFeedback(
-      context,
-      nextCount > previousCount
-          ? 'Collaborator invited.'
-          : 'That collaborator is already on this list.',
-    );
+      final nextCount = updatedWishlist?.sharedUsers.length ?? previousCount;
+      _showFeedback(
+        context,
+        nextCount > previousCount
+            ? 'Collaborator invited.'
+            : 'That collaborator is already on this list.',
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showError(
+        error,
+        fallbackMessage: 'Could not update collaborators.',
+      );
+    }
   }
 
   Future<void> _removeCollaborator(
@@ -1030,13 +1095,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     Wishlist wishlist,
     SharedUser user,
   ) async {
-    final wasRemoved = await widget.repository.removeSharedUser(
-      wishlistId: wishlist.id,
-      userId: user.id,
-    );
+    try {
+      final wasRemoved = await widget.repository.removeSharedUser(
+        wishlistId: wishlist.id,
+        userId: user.id,
+      );
 
-    if (wasRemoved) {
-      _showFeedback(context, '${user.name} removed.');
+      if (wasRemoved) {
+        _showFeedback(context, '${user.name} removed.');
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showError(
+        error,
+        fallbackMessage: 'Could not update collaborators.',
+      );
     }
   }
 
@@ -1064,12 +1139,22 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
 
     if (shouldDelete == true) {
-      await widget.repository.deleteWishlistItem(
-        wishlistId: wishlist.id,
-        itemId: item.id,
-      );
-      _showFeedback(context, 'Item deleted.');
-      return true;
+      try {
+        await widget.repository.deleteWishlistItem(
+          wishlistId: wishlist.id,
+          itemId: item.id,
+        );
+        _showFeedback(context, 'Item deleted.');
+        return true;
+      } catch (error) {
+        if (!mounted) {
+          return false;
+        }
+        _showError(
+          error,
+          fallbackMessage: 'Could not delete this item.',
+        );
+      }
     }
 
     return false;

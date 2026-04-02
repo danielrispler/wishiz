@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/config/api_config.dart';
+import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/data/repositories/local_auth_repository.dart';
@@ -90,7 +91,7 @@ class BootstrapErrorApp extends StatelessWidget {
         body: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppConstants.pagePadding),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Column(
@@ -101,13 +102,13 @@ class BootstrapErrorApp extends StatelessWidget {
                       'Could not connect to the wishlist backend.',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppConstants.itemGap),
                     Text(
                       'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     if (error != null) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppConstants.itemGap),
                       Text(
                         formatErrorMessage(
                           error!,

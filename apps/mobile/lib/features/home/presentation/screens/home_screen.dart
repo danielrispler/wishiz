@@ -241,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'Start the next wishlist first, then browse and filter everything else below.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
-        const SizedBox(height: AppConstants.spacing4),
+        const SizedBox(height: AppConstants.sectionGap),
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -285,16 +285,16 @@ class _HomeScreenState extends State<HomeScreen> {
       bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppConstants.spacing4,
-          AppConstants.spacing6,
-          AppConstants.spacing4,
-          100,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          120,
         ),
         children: [
           _buildHeader(showName: true),
-          const SizedBox(height: AppConstants.spacing8),
+          const SizedBox(height: AppConstants.sectionGap),
           _buildTopCreateSection(),
-          const SizedBox(height: AppConstants.spacing8),
+          const SizedBox(height: AppConstants.sectionGap),
           Text(
             'My Lists',
             style: Theme.of(context).textTheme.headlineSmall,
@@ -309,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
             hintText: 'Search your lists',
             availableYears: availableYears,
           ),
-          const SizedBox(height: AppConstants.spacing4),
+          const SizedBox(height: AppConstants.sectionGap),
           if (activeWishlists.isEmpty)
             _buildEmptyState(
               title: _searchQuery.isEmpty && _selectedYear == _allYears
@@ -345,14 +345,14 @@ class _HomeScreenState extends State<HomeScreen> {
       bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppConstants.spacing4,
-          AppConstants.spacing6,
-          AppConstants.spacing4,
-          100,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          120,
         ),
         children: [
           _buildHeader(),
-          const SizedBox(height: AppConstants.spacing8),
+          const SizedBox(height: AppConstants.sectionGap),
           Text(
             title,
             style: Theme.of(context).textTheme.headlineSmall,
@@ -367,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
             hintText: 'Search $title',
             availableYears: availableYears,
           ),
-          const SizedBox(height: AppConstants.spacing4),
+          const SizedBox(height: AppConstants.sectionGap),
           if (wishlists.isEmpty)
             _buildEmptyState(
               title: _searchQuery.isEmpty && _selectedYear == _allYears
@@ -430,14 +430,14 @@ class _HomeScreenState extends State<HomeScreen> {
       bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppConstants.spacing4,
-          AppConstants.spacing6,
-          AppConstants.spacing4,
-          100,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          AppConstants.pagePadding,
+          120,
         ),
         children: [
           _buildHeader(),
-          const SizedBox(height: AppConstants.spacing8),
+          const SizedBox(height: AppConstants.sectionGap),
           Text(
             'Reminders',
             style: Theme.of(context).textTheme.headlineSmall,
@@ -454,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
             hintText: 'Search reminders',
             availableYears: availableYears,
           ),
-          const SizedBox(height: AppConstants.spacing4),
+          const SizedBox(height: AppConstants.sectionGap),
           if (!widget.currentUser.notificationsEnabled)
             _buildEmptyState(
               title: 'Reminders are turned off',
@@ -479,12 +479,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildReminderCard(_ReminderEntry reminder) {
     return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -515,10 +515,10 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ],
-          const SizedBox(height: AppConstants.spacing3),
+          const SizedBox(height: AppConstants.sectionGap),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppConstants.spacing2,
+            runSpacing: AppConstants.spacing2,
             children: [
               TextButton.icon(
                 onPressed: () => _openWishlistDetails(reminder.wishlist.id),
@@ -604,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacing4,
+            horizontal: AppConstants.cardPadding,
             vertical: 2,
           ),
           child: TextFormField(
@@ -635,14 +635,14 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ),
-        const SizedBox(height: AppConstants.spacing3),
+        const SizedBox(height: AppConstants.itemGap),
         Container(
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacing4,
+            horizontal: AppConstants.cardPadding,
             vertical: 2,
           ),
           child: DropdownButtonFormField<int>(
@@ -807,7 +807,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -815,7 +815,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppConstants.spacing2),
           Text(
             description,
             style: Theme.of(context).textTheme.bodyMedium,

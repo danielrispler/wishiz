@@ -143,7 +143,12 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.all(AppConstants.spacing4),
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.pagePadding,
+              AppConstants.pagePadding,
+              AppConstants.pagePadding,
+              120,
+            ),
             children: [
               Text(
                 widget.isEditing
@@ -151,7 +156,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                     : 'Create a list with a title, year, and gallery cover so it already feels like a real collection.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: AppConstants.spacing4),
+              const SizedBox(height: AppConstants.sectionGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -171,7 +176,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -185,7 +190,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   validator: _validateYear,
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -200,14 +205,14 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               if (_coverImageUrlController.text.isNotEmpty) ...[
                 _buildImagePreview(context),
-                const SizedBox(height: AppConstants.spacing3),
+                const SizedBox(height: AppConstants.itemGap),
               ],
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: AppConstants.spacing2,
+                runSpacing: AppConstants.spacing2,
                 children: [
                   TextButton.icon(
                     onPressed: _pickCoverImage,
@@ -225,7 +230,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -239,13 +244,13 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   validator: _validateOptionalImageSource,
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surfaceContainerLowest,
                   borderRadius: BorderRadius.circular(AppConstants.radiusXl),
                 ),
-                padding: const EdgeInsets.all(AppConstants.spacing4),
+                padding: const EdgeInsets.all(AppConstants.cardPadding),
                 child: SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -264,7 +269,7 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing6),
+              const SizedBox(height: AppConstants.sectionGap),
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -314,8 +319,8 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: AppConstants.spacing3,
+        horizontal: AppConstants.cardPadding,
+        vertical: AppConstants.itemGap,
       ),
       child: child,
     );

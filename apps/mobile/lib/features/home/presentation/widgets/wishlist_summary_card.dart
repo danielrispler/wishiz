@@ -29,7 +29,7 @@ class WishlistSummaryCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
@@ -46,7 +46,7 @@ class WishlistSummaryCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppConstants.radiusXl),
                 onTap: onTap,
                 child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacing4),
+                  padding: const EdgeInsets.all(AppConstants.cardPadding),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -64,20 +64,20 @@ class WishlistSummaryCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: AppConstants.spacing4),
+                        const SizedBox(height: AppConstants.itemGap),
                       ],
                       Text(
                         title,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppConstants.spacing1),
                       Text(
                         '$itemCount items · Updated $lastUpdated',
                         style: Theme.of(context).textTheme.labelMedium,
                       ),
                       if (supportingText != null &&
                           supportingText!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppConstants.spacing1),
                         Text(
                           supportingText!,
                           style: Theme.of(context).textTheme.bodySmall,
@@ -91,14 +91,14 @@ class WishlistSummaryCard extends StatelessWidget {
             if (actions.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                  AppConstants.spacing4,
+                  AppConstants.cardPadding,
                   0,
-                  AppConstants.spacing4,
-                  AppConstants.spacing4,
+                  AppConstants.cardPadding,
+                  AppConstants.cardPadding,
                 ),
                 child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: AppConstants.spacing2,
+                  runSpacing: AppConstants.spacing2,
                   children: actions,
                 ),
               ),

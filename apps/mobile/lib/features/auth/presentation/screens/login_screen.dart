@@ -73,7 +73,12 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: ListView(
-              padding: const EdgeInsets.all(AppConstants.spacing4),
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.pagePadding,
+                AppConstants.pagePadding,
+                AppConstants.pagePadding,
+                120,
+              ),
               children: [
                 const SizedBox(height: AppConstants.spacing8),
                 const WishizWordmark(
@@ -103,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           validator: _validateEmail,
                         ),
                       ),
-                      const SizedBox(height: AppConstants.spacing3),
+                      const SizedBox(height: AppConstants.itemGap),
                       _buildFieldCard(
                         context,
                         child: TextFormField(
@@ -119,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: AppConstants.spacing6),
+                const SizedBox(height: AppConstants.sectionGap),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -171,8 +176,8 @@ class _LoginScreenState extends State<LoginScreen> {
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: AppConstants.spacing3,
+        horizontal: AppConstants.cardPadding,
+        vertical: AppConstants.itemGap,
       ),
       child: child,
     );

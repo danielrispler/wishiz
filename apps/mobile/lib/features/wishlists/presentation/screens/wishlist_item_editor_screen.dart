@@ -191,7 +191,12 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.all(AppConstants.spacing4),
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.pagePadding,
+              AppConstants.pagePadding,
+              AppConstants.pagePadding,
+              120,
+            ),
             children: [
               Text(
                 widget.isEditing
@@ -199,7 +204,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     : 'Add a new object to this collection while keeping the same editorial feel.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: AppConstants.spacing4),
+              const SizedBox(height: AppConstants.sectionGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -219,7 +224,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -234,7 +239,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -247,7 +252,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   validator: _validateOptionalPrice,
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: DropdownButtonFormField<String>(
@@ -269,7 +274,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: DropdownButtonFormField<String>(
@@ -291,14 +296,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               if (_imageUrlController.text.isNotEmpty) ...[
                 _buildImagePreview(context),
-                const SizedBox(height: AppConstants.spacing3),
+                const SizedBox(height: AppConstants.itemGap),
               ],
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: AppConstants.spacing2,
+                runSpacing: AppConstants.spacing2,
                 children: [
                   TextButton.icon(
                     onPressed: _pickItemImage,
@@ -316,7 +321,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: TextFormField(
@@ -331,7 +336,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   onEditingComplete: _applyLinkDefaults,
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing3),
+              const SizedBox(height: AppConstants.itemGap),
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -340,7 +345,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   label: const Text('Use Link Defaults'),
                 ),
               ),
-              const SizedBox(height: AppConstants.spacing6),
+              const SizedBox(height: AppConstants.sectionGap),
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -390,8 +395,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: AppConstants.spacing3,
+        horizontal: AppConstants.cardPadding,
+        vertical: AppConstants.itemGap,
       ),
       child: child,
     );

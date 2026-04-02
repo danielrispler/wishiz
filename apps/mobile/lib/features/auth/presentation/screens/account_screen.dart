@@ -146,13 +146,18 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(AppConstants.spacing4),
+          padding: const EdgeInsets.fromLTRB(
+            AppConstants.pagePadding,
+            AppConstants.pagePadding,
+            AppConstants.pagePadding,
+            120,
+          ),
           children: [
             Text(
               'Manage your profile, default pricing currency, and reminder timing from one place.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: AppConstants.spacing4),
+            const SizedBox(height: AppConstants.sectionGap),
             Form(
               key: _formKey,
               child: Column(
@@ -168,7 +173,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       validator: _validateRequired,
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacing3),
+                  const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
                     child: TextFormField(
@@ -181,7 +186,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       validator: _validateEmail,
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacing3),
+                  const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
                     child: TextFormField(
@@ -196,7 +201,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       validator: _validateRequired,
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacing3),
+                  const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
                     child: Column(
@@ -206,12 +211,12 @@ class _AccountScreenState extends State<AccountScreen> {
                           'Password',
                           style: Theme.of(context).textTheme.labelLarge,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: AppConstants.spacing2),
                         Text(
                           'Current password is hidden for safety. Add a new password below to change it.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
-                        const SizedBox(height: AppConstants.spacing3),
+                        const SizedBox(height: AppConstants.itemGap),
                         TextFormField(
                           controller: _currentPasswordController,
                           obscureText: !_showCurrentPassword,
@@ -236,7 +241,7 @@ class _AccountScreenState extends State<AccountScreen> {
                           ),
                           validator: _validateCurrentPassword,
                         ),
-                        const SizedBox(height: AppConstants.spacing3),
+                        const SizedBox(height: AppConstants.itemGap),
                         TextFormField(
                           controller: _newPasswordController,
                           obscureText: !_showNewPassword,
@@ -264,7 +269,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacing6),
+                  const SizedBox(height: AppConstants.sectionGap),
                   _buildSectionCard(
                     context,
                     title: 'Pricing',
@@ -289,7 +294,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacing3),
+                  const SizedBox(height: AppConstants.sectionGap),
                   _buildSectionCard(
                     context,
                     title: 'Notifications',
@@ -308,7 +313,7 @@ class _AccountScreenState extends State<AccountScreen> {
                             });
                           },
                         ),
-                        const SizedBox(height: AppConstants.spacing3),
+                        const SizedBox(height: AppConstants.itemGap),
                         Row(
                           children: [
                             Expanded(
@@ -343,7 +348,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: AppConstants.spacing6),
+            const SizedBox(height: AppConstants.sectionGap),
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -371,7 +376,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: AppConstants.spacing3),
+            const SizedBox(height: AppConstants.itemGap),
             TextButton.icon(
               onPressed: _logOut,
               icon: const Icon(Icons.logout_outlined),
@@ -393,8 +398,8 @@ class _AccountScreenState extends State<AccountScreen> {
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: AppConstants.spacing3,
+        horizontal: AppConstants.cardPadding,
+        vertical: AppConstants.itemGap,
       ),
       child: child,
     );
@@ -410,7 +415,7 @@ class _AccountScreenState extends State<AccountScreen> {
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -418,7 +423,7 @@ class _AccountScreenState extends State<AccountScreen> {
             title,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: AppConstants.spacing3),
+          const SizedBox(height: AppConstants.itemGap),
           child,
         ],
       ),

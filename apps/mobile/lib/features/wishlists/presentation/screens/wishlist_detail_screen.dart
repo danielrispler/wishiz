@@ -167,12 +167,17 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               ),
               body: SafeArea(
                 child: ListView(
-                  padding: const EdgeInsets.all(AppConstants.spacing4),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppConstants.pagePadding,
+                    AppConstants.pagePadding,
+                    AppConstants.pagePadding,
+                    120,
+                  ),
                   children: [
                     _buildHeroCard(context, wishlist),
-                    const SizedBox(height: AppConstants.spacing6),
+                    const SizedBox(height: AppConstants.sectionGap),
                     _buildSharingSection(context, wishlist, currentUser),
-                    const SizedBox(height: AppConstants.spacing6),
+                    const SizedBox(height: AppConstants.sectionGap),
                     Row(
                       children: [
                         Expanded(
@@ -198,17 +203,17 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppConstants.spacing2),
                     Text(
                       widget.showPurchasedOnly
                           ? 'Past lists only show items that were marked as purchased.'
                           : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    const SizedBox(height: AppConstants.spacing4),
+                    const SizedBox(height: AppConstants.sectionGap),
                     if (sourceItems.isNotEmpty) ...[
                       _buildItemControls(context),
-                      const SizedBox(height: AppConstants.spacing4),
+                      const SizedBox(height: AppConstants.sectionGap),
                     ],
                     if (sourceItems.isEmpty)
                       _buildEmptyItemsState(context)
@@ -269,7 +274,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -286,7 +291,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             wishlist.title,
             style: Theme.of(context).textTheme.headlineSmall,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppConstants.spacing2),
           Text(
             wishlist.description.isEmpty
                 ? 'No description yet.'
@@ -295,8 +300,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           ),
           const SizedBox(height: AppConstants.spacing4),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppConstants.spacing2,
+            runSpacing: AppConstants.spacing2,
             children: [
               _buildMetadataChip(context, label: '${wishlist.year}'),
               _buildMetadataChip(
@@ -348,7 +353,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -377,7 +382,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppConstants.spacing2),
           Text(
             'Send the list link through WhatsApp, email, or messages. Members can still be tracked locally until the backend arrives.',
             style: Theme.of(context).textTheme.bodyMedium,
@@ -399,12 +404,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     SharedUser user,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Row(
         children: [
           CircleAvatar(
@@ -419,7 +424,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   user.name,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppConstants.spacing1),
                 Text(
                   '${user.role} · ${user.email}',
                   style: Theme.of(context).textTheme.bodyMedium,
@@ -446,14 +451,14 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           'Sort by rank',
           style: Theme.of(context).textTheme.labelLarge,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppConstants.spacing2),
         Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacing4,
+            horizontal: AppConstants.cardPadding,
             vertical: 2,
           ),
           child: DropdownButtonFormField<String>(
@@ -483,16 +488,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             },
           ),
         ),
-        const SizedBox(height: AppConstants.spacing3),
+        const SizedBox(height: AppConstants.itemGap),
         if (!widget.showPurchasedOnly) ...[
           Text(
             'Filter by status',
             style: Theme.of(context).textTheme.labelLarge,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppConstants.spacing2),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppConstants.spacing2,
+            runSpacing: AppConstants.spacing2,
             children: [
               _buildFilterChip(
                 label: _allFilter,
@@ -518,16 +523,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   ),
             ],
           ),
-          const SizedBox(height: AppConstants.spacing3),
+          const SizedBox(height: AppConstants.itemGap),
         ],
         Text(
           'Filter by priority',
           style: Theme.of(context).textTheme.labelLarge,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppConstants.spacing2),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: AppConstants.spacing2,
+          runSpacing: AppConstants.spacing2,
           children: [
             _buildFilterChip(
               label: _allFilter,
@@ -573,7 +578,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Text(
         widget.showPurchasedOnly
             ? 'No purchased items yet. Swipe right on an active item to move it into Past Lists.'
@@ -589,7 +594,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
-      padding: const EdgeInsets.all(AppConstants.spacing4),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -597,12 +602,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             'No items match these filters.',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppConstants.spacing2),
           Text(
             'Clear the current filters to see the rest of the ranked items again.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: AppConstants.spacing4),
+          const SizedBox(height: AppConstants.itemGap),
           TextButton(
             onPressed: () {
               setState(() {
@@ -688,7 +693,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
     return Padding(
       key: key,
-      padding: const EdgeInsets.only(bottom: AppConstants.spacing3),
+      padding: const EdgeInsets.only(bottom: AppConstants.itemGap),
       child: Dismissible(
         key: ValueKey('dismiss-${item.id}'),
         direction: widget.showPurchasedOnly
@@ -737,7 +742,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
-          padding: const EdgeInsets.all(AppConstants.spacing4),
+          padding: const EdgeInsets.all(AppConstants.cardPadding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -747,7 +752,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   imageSource: item.imageUrl!,
                   aspectRatio: 4 / 3,
                 ),
-                const SizedBox(height: AppConstants.spacing4),
+                const SizedBox(height: AppConstants.itemGap),
               ],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -756,7 +761,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     ReorderableDragStartListener(
                       index: dragIndex,
                       child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.only(right: AppConstants.spacing2),
                         child: Icon(
                           Icons.drag_indicator,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,

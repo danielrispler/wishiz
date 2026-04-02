@@ -120,7 +120,12 @@ class _SignupScreenState extends State<SignupScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: ListView(
-              padding: const EdgeInsets.all(AppConstants.spacing4),
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.pagePadding,
+                AppConstants.pagePadding,
+                AppConstants.pagePadding,
+                120,
+              ),
               children: [
                 const SizedBox(height: AppConstants.spacing8),
                 Text(
@@ -150,7 +155,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           validator: _validateRequired,
                         ),
                       ),
-                      const SizedBox(height: AppConstants.spacing3),
+                      const SizedBox(height: AppConstants.itemGap),
                       _buildFieldCard(
                         context,
                         child: TextFormField(
@@ -165,7 +170,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           validator: _validateBirthday,
                         ),
                       ),
-                      const SizedBox(height: AppConstants.spacing3),
+                      const SizedBox(height: AppConstants.itemGap),
                       _buildFieldCard(
                         context,
                         child: TextFormField(
@@ -178,7 +183,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           validator: _validateEmail,
                         ),
                       ),
-                      const SizedBox(height: AppConstants.spacing3),
+                      const SizedBox(height: AppConstants.itemGap),
                       _buildFieldCard(
                         context,
                         child: TextFormField(
@@ -191,7 +196,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           validator: _validatePassword,
                         ),
                       ),
-                      const SizedBox(height: AppConstants.spacing3),
+                      const SizedBox(height: AppConstants.itemGap),
                       _buildFieldCard(
                         context,
                         child: TextFormField(
@@ -207,7 +212,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: AppConstants.spacing6),
+                const SizedBox(height: AppConstants.sectionGap),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -259,8 +264,8 @@ class _SignupScreenState extends State<SignupScreen> {
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacing4,
-        vertical: AppConstants.spacing3,
+        horizontal: AppConstants.cardPadding,
+        vertical: AppConstants.itemGap,
       ),
       child: child,
     );

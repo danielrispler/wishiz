@@ -97,6 +97,9 @@ func TestWishlistLandingPageContainsHttpsAndCustomSchemeLinks(t *testing.T) {
 	if !strings.Contains(body, "wishiz://lists/wishlist-42") {
 		t.Fatalf("expected landing page to include custom scheme fallback, got %s", body)
 	}
+	if !strings.Contains(body, "window.location.replace('wishiz:\\/\\/lists\\/wishlist-42')") {
+		t.Fatalf("expected landing page to actively attempt app handoff, got %s", body)
+	}
 }
 
 func sampleOptions() Options {

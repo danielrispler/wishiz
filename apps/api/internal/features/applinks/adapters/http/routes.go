@@ -46,7 +46,6 @@ func RegisterRoutes(mux *http.ServeMux, options Options) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Open in Wishiz</title>
-  <meta http-equiv="refresh" content="0; url={{.CustomSchemeLink}}">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #faf7f2; color: #1f2937; }
     main { max-width: 560px; margin: 0 auto; min-height: 100vh; display: grid; place-content: center; padding: 32px; }
@@ -56,6 +55,13 @@ func RegisterRoutes(mux *http.ServeMux, options Options) {
     .button { display: inline-block; margin-top: 12px; padding: 12px 18px; border-radius: 999px; background: #111827; color: white; text-decoration: none; }
     .link { word-break: break-all; }
   </style>
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        window.location.replace('{{.CustomSchemeLink}}');
+      }, 50);
+    });
+  </script>
 </head>
 <body>
   <main>

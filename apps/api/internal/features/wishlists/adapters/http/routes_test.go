@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -106,6 +107,295 @@ func TestListWishlistsReturnsAggregateJSON(t *testing.T) {
 	}
 	if _, ok := payload[0]["sharedUsers"].([]any); !ok {
 		t.Fatalf("expected sharedUsers to be an array, got %#v", payload[0]["sharedUsers"])
+	}
+}
+
+func TestCreateWishlistReturnsCreatedJSONAndPassesInput(t *testing.T) {
+	coverImageURL := "https://example.com/cover.jpg"
+	service := &stubService{
+		createWishlist: func(_ context.Context, input application.CreateWishlistInput) (domain.Wishlist, error) {
+			if input.Title != "Weekend Hosting" {
+				t.Fatalf("expected title to be passed through, got %q", input.Title)
+			}
+			if input.Description != "Plates and flowers" {
+				t.Fatalf("expected description to be passed through, got %q", input.Description)
+			}
+			if input.Year != 2026 {
+				t.Fatalf("expected year 2026, got %d", input.Year)
+			}
+			if input.CoverImageURL == nil || *input.CoverImageURL != coverImageURL {
+				t.Fatalf("expected cover image url %q, got %#v", coverImageURL, input.CoverImageURL)
+			}
+			if !input.IsShared {
+				t.Fatalf("expected shared wishlist flag to be true")
+			}
+
+			wishlist := sampleWishlist()
+			wishlist.CoverImageURL = &coverImageURL
+			wishlist.IsShared = true
+			return wishlist, nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists", `{"title":"Weekend Hosting","description":"Plates and flowers","year":2026,"coverImageUrl":"https://example.com/cover.jpg","isShared":true}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["title"] != "Weekend Hosting" {
+		t.Fatalf("expected response title to match created wishlist, got %#v", payload["title"])
+	}
+}
+
+func TestGetWishlistReturnsAggregateJSON(t *testing.T) {
+	service := &stubService{
+		getWishlist: func(_ context.Context, id string) (domain.Wishlist, error) {
+			if id != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
+			}
+			return sampleWishlist(), nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodGet, "/wishlists/"+wishlistID, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["id"] != wishlistID {
+		t.Fatalf("expected wishlist id %s, got %#v", wishlistID, payload["id"])
+	}
+}
+
+func TestDeleteWishlistReturnsNoContent(t *testing.T) {
+	service := &stubService{
+		deleteWishlist: func(_ context.Context, id string) error {
+			if id != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
+			}
+			return nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID, "")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d with body %s", response.Code, response.Body.String())
+	}
+	if response.Body.Len() != 0 {
+		t.Fatalf("expected empty body, got %q", response.Body.String())
+	}
+}
+
+func TestArchiveWishlistReturnsUpdatedWishlist(t *testing.T) {
+	service := &stubService{
+		archive: func(_ context.Context, id string) (domain.Wishlist, error) {
+			if id != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
+			}
+			wishlist := sampleWishlist()
+			wishlist.IsArchived = true
+			return wishlist, nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/archive", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["isArchived"] != true {
+		t.Fatalf("expected archived wishlist response, got %#v", payload["isArchived"])
+	}
+}
+
+func TestRestoreWishlistReturnsUpdatedWishlist(t *testing.T) {
+	service := &stubService{
+		restore: func(_ context.Context, id string) (domain.Wishlist, error) {
+			if id != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
+			}
+			wishlist := sampleWishlist()
+			wishlist.IsArchived = false
+			return wishlist, nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/restore", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["isArchived"] != false {
+		t.Fatalf("expected restored wishlist response, got %#v", payload["isArchived"])
+	}
+}
+
+func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
+	notes := "Set of six"
+	productURL := "https://example.com/plates"
+	service := &stubService{
+		addItem: func(_ context.Context, gotWishlistID string, input application.AddItemInput) (domain.WishlistItem, error) {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if input.Title != "Stoneware plates" {
+				t.Fatalf("expected title to be passed through, got %q", input.Title)
+			}
+			if input.Notes == nil || *input.Notes != notes {
+				t.Fatalf("expected notes %q, got %#v", notes, input.Notes)
+			}
+			if input.ProductURL == nil || *input.ProductURL != productURL {
+				t.Fatalf("expected product url %q, got %#v", productURL, input.ProductURL)
+			}
+			if input.Priority != domain.ItemPriorityHigh {
+				t.Fatalf("expected priority %q, got %q", domain.ItemPriorityHigh, input.Priority)
+			}
+			if input.Status != domain.ItemStatusSaved {
+				t.Fatalf("expected status %q, got %q", domain.ItemStatusSaved, input.Status)
+			}
+
+			item := sampleWishlist().Items[0]
+			item.Notes = &notes
+			item.ProductURL = &productURL
+			return item, nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/items", `{"title":"Stoneware plates","notes":"Set of six","priority":"High","status":"Saved","productUrl":"https://example.com/plates"}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["id"] != itemID {
+		t.Fatalf("expected item id %s, got %#v", itemID, payload["id"])
+	}
+}
+
+func TestPatchItemExplicitNullPreservesPatchSemantics(t *testing.T) {
+	service := &stubService{
+		patchItem: func(_ context.Context, gotWishlistID string, gotItemID string, input application.PatchItemInput) (domain.WishlistItem, error) {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if gotItemID != itemID {
+				t.Fatalf("expected item id %s, got %s", itemID, gotItemID)
+			}
+			if !input.Notes.Set {
+				t.Fatalf("expected notes patch field to be marked as set")
+			}
+			if input.Notes.Value != nil {
+				t.Fatalf("expected explicit null notes to decode as nil, got %#v", input.Notes.Value)
+			}
+
+			return sampleWishlist().Items[0], nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPatch, "/wishlists/"+wishlistID+"/items/"+itemID, `{"notes":null}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeleteItemReturnsNoContent(t *testing.T) {
+	service := &stubService{
+		deleteItem: func(_ context.Context, gotWishlistID string, gotItemID string) error {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if gotItemID != itemID {
+				t.Fatalf("expected item id %s, got %s", itemID, gotItemID)
+			}
+			return nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID+"/items/"+itemID, "")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestReorderItemsReturnsUpdatedWishlistAndPassesOrder(t *testing.T) {
+	orderedItemIDs := []string{itemID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
+	service := &stubService{
+		reorderItems: func(_ context.Context, gotWishlistID string, gotOrderedItemIDs []string) (domain.Wishlist, error) {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if len(gotOrderedItemIDs) != len(orderedItemIDs) {
+				t.Fatalf("expected %d ordered item ids, got %d", len(orderedItemIDs), len(gotOrderedItemIDs))
+			}
+			for index, itemID := range orderedItemIDs {
+				if gotOrderedItemIDs[index] != itemID {
+					t.Fatalf("expected ordered item id %q at index %d, got %q", itemID, index, gotOrderedItemIDs[index])
+				}
+			}
+
+			return sampleWishlist(), nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/items/reorder", `{"orderedItemIds":["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["id"] != wishlistID {
+		t.Fatalf("expected wishlist id %s, got %#v", wishlistID, payload["id"])
+	}
+}
+
+func TestWishlistRoutesReturnInternalServerErrorForUnexpectedErrors(t *testing.T) {
+	service := &stubService{
+		listWishlists: func(context.Context) ([]domain.Wishlist, error) {
+			return nil, errors.New("database offline")
+		},
+	}
+
+	response := performRequest(t, service, http.MethodGet, "/wishlists", "")
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Error.Code != "internal_error" {
+		t.Fatalf("expected internal error code, got %q", payload.Error.Code)
+	}
+	if payload.Error.Message != "internal server error" {
+		t.Fatalf("expected generic internal error message, got %q", payload.Error.Message)
 	}
 }
 

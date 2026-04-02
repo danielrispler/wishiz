@@ -13,6 +13,7 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
@@ -22,12 +23,14 @@ class WishlistDetailScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.authRepository,
+    required this.sharedProductRepository,
     required this.wishlistId,
     this.showPurchasedOnly = false,
   });
 
   final WishlistRepository repository;
   final AuthRepository authRepository;
+  final SharedProductRepository sharedProductRepository;
   final String wishlistId;
   final bool showPurchasedOnly;
 
@@ -961,6 +964,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         builder: (_) => WishlistItemEditorScreen(
           repository: widget.repository,
           wishlistId: wishlistId,
+          sharedProductRepository: widget.sharedProductRepository,
           item: item,
           preferredCurrencyCode: currentUser?.preferredCurrencyCode ?? 'USD',
           preferredCurrencySymbol: currentUser?.preferredCurrencySymbol ?? '\$',

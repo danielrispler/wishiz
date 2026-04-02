@@ -113,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (_) => WishlistDetailScreen(
           repository: widget.repository,
+          sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
           wishlistId: wishlistId,
           showPurchasedOnly: showPurchasedOnly,
@@ -272,6 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => WishlistItemEditorScreen(
           repository: widget.repository,
           wishlistId: wishlistId,
+          sharedProductRepository: widget.sharedProductRepository,
           preferredCurrencyCode: widget.currentUser.preferredCurrencyCode,
           preferredCurrencySymbol: widget.currentUser.preferredCurrencySymbol,
           initialTitle: draft.title,
@@ -1069,54 +1071,94 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _scheduleReminderPrompt(reminderEntries);
 
-        return Scaffold(
-          extendBody: true,
-          body: IndexedStack(
-            index: _currentIndex,
+        return Stack(
+          children: [
+            Scaffold(
+              extendBody: true,
+              body: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  _buildHomeTab(
+                    activeWishlists: activeWishlists,
+                    availableYears: availableYears,
+                  ),
+                  _buildCollectionTab(
+                    title: 'Shared',
+                    description:
+                        'Lists that are ready to send to other members through a share link.',
+                    wishlists: sharedWishlists,
+                    emptyTitle: 'Nothing shared yet',
+                    emptyDescription:
+                        'Turn on sharing in a list and it will appear here.',
+                    availableYears: availableYears,
+                    isSharedView: true,
+                  ),
+                  _buildCollectionTab(
+                    title: 'Past Lists',
+                    description:
+                        'Purchased items are grouped here under the original list they came from.',
+                    wishlists: pastWishlists,
+                    emptyTitle: 'No purchased items yet',
+                    emptyDescription:
+                        'Swipe right on an item in an active list to move it here.',
+                    availableYears: availableYears,
+                    showPurchasedOnly: true,
+                  ),
+                  _buildRemindersTab(
+                    reminders: filteredReminders,
+                    availableYears: availableYears,
+                  ),
+                ],
+              ),
+              bottomNavigationBar: GlassmorphicBottomNav(
+                currentIndex: _currentIndex,
+                reminderCount: reminderEntries.length,
+                onTap: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+              ),
+            ),
+            if (_isImportingSharedProduct) const _SharedImportLoader(),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SharedImportLoader extends StatelessWidget {
+  const _SharedImportLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ColoredBox(
+      color: Colors.black45,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.all(AppConstants.sectionGap),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHomeTab(
-                activeWishlists: activeWishlists,
-                availableYears: availableYears,
-              ),
-              _buildCollectionTab(
-                title: 'Shared',
-                description:
-                    'Lists that are ready to send to other members through a share link.',
-                wishlists: sharedWishlists,
-                emptyTitle: 'Nothing shared yet',
-                emptyDescription:
-                    'Turn on sharing in a list and it will appear here.',
-                availableYears: availableYears,
-                isSharedView: true,
-              ),
-              _buildCollectionTab(
-                title: 'Past Lists',
-                description:
-                    'Purchased items are grouped here under the original list they came from.',
-                wishlists: pastWishlists,
-                emptyTitle: 'No purchased items yet',
-                emptyDescription:
-                    'Swipe right on an item in an active list to move it here.',
-                availableYears: availableYears,
-                showPurchasedOnly: true,
-              ),
-              _buildRemindersTab(
-                reminders: filteredReminders,
-                availableYears: availableYears,
+              const CircularProgressIndicator(),
+              const SizedBox(height: AppConstants.itemGap),
+              Text(
+                'Preparing shared item...',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
               ),
             ],
           ),
-          bottomNavigationBar: GlassmorphicBottomNav(
-            currentIndex: _currentIndex,
-            reminderCount: reminderEntries.length,
-            onTap: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-          ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 class WishlistItemEditorScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class WishlistItemEditorScreen extends StatefulWidget {
     required this.wishlistId,
     required this.preferredCurrencyCode,
     required this.preferredCurrencySymbol,
+    this.sharedProductRepository,
     this.item,
     this.initialTitle,
     this.initialNotes,
@@ -29,6 +31,7 @@ class WishlistItemEditorScreen extends StatefulWidget {
   final String wishlistId;
   final String preferredCurrencyCode;
   final String preferredCurrencySymbol;
+  final SharedProductRepository? sharedProductRepository;
   final WishlistItem? item;
   final String? initialTitle;
   final String? initialNotes;
@@ -56,6 +59,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late String _selectedPriority;
   late String _selectedStatus;
   bool _showImageValidationError = false;
+  bool _isGeneratingFromLink = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -132,6 +137,10 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   Future<void> _saveItem() async {
+    if (_isSaving || _isGeneratingFromLink) {
+      return;
+    }
+
     final formValid = _formKey.currentState!.validate();
     final missingImage =
         widget.isSharedImport && _imageUrlController.text.trim().isEmpty;
@@ -156,6 +165,10 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final priceLabel = _normalizePriceLabel(_priceController.text);
     final imageUrl = _optionalValue(_imageUrlController.text);
     final productUrl = _optionalValue(_productUrlController.text);
+
+    setState(() {
+      _isSaving = true;
+    });
 
     try {
       if (widget.isEditing) {
@@ -186,6 +199,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       if (!mounted) {
         return;
       }
+      setState(() {
+        _isSaving = false;
+      });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -205,6 +221,10 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       return;
     }
 
+    setState(() {
+      _isSaving = false;
+    });
+
     final message = widget.isEditing ? 'Item updated.' : 'Item added.';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -212,6 +232,108 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         SnackBar(content: Text(message)),
       );
     Navigator.of(context).pop();
+  }
+
+  Future<void> _generateFromProductLink() async {
+    if (_isGeneratingFromLink || _isSaving) {
+      return;
+    }
+
+    final productUrl = _optionalValue(_productUrlController.text);
+    final validationMessage = _validateProductUrl(productUrl);
+    if (validationMessage != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(validationMessage)));
+      return;
+    }
+
+    final sharedProductRepository = widget.sharedProductRepository;
+    if (sharedProductRepository == null || productUrl == null) {
+      return;
+    }
+
+    setState(() {
+      _isGeneratingFromLink = true;
+    });
+
+    try {
+      final draft = await sharedProductRepository.createDraftFromSharedText(
+        productUrl,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (draft == null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Wishiz could not find a product link there.'),
+            ),
+          );
+        return;
+      }
+
+      setState(() {
+        if (draft.title != null) {
+          _titleController.text = draft.title!;
+        }
+        _notesController.text = draft.notes ?? '';
+        _priceController.text = CurrencyUtils.convertPriceLabel(
+              draft.priceLabel,
+              targetCurrencyCode: widget.preferredCurrencyCode,
+            ) ??
+            '';
+        _imageUrlController.text = draft.imageUrl ?? '';
+        _productUrlController.text = draft.productUrl;
+        _showImageValidationError = false;
+      });
+
+      if (!draft.hasCompleteRequiredFields) {
+        final missingFields = draft.missingFieldLabels.join(', ');
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                'Sorry, we could only fill part of this product. Please add the missing $missingFields before saving.',
+              ),
+            ),
+          );
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Product details generated.')),
+        );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not generate product details yet.',
+              ),
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingFromLink = false;
+        });
+      }
+    }
   }
 
   String _normalizeExistingPrice() {
@@ -226,239 +348,293 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    final isBusy = _isGeneratingFromLink || _isSaving;
+    final busyMessage = _isGeneratingFromLink
+        ? 'Generating product details...'
+        : 'Saving item...';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Edit Item' : 'Add Item'),
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppConstants.pagePadding,
-              AppConstants.pagePadding,
-              AppConstants.pagePadding,
-              120,
-            ),
-            children: [
-              Text(
-                widget.isEditing
-                    ? 'Refresh the details of this saved piece without changing the surrounding look.'
-                    : widget.isSharedImport
-                        ? 'Wishiz imported the product link and any metadata it could find. Fill in anything still missing, then save it to this list.'
-                        : 'Add a new object to this collection while keeping the same editorial feel.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: AppConstants.sectionGap),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _titleController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Item title',
-                    hintText: 'Stoneware bowl set',
-                    border: InputBorder.none,
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please add an item title.';
-                    }
-
-                    return null;
-                  },
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.pagePadding,
+                  AppConstants.pagePadding,
+                  AppConstants.pagePadding,
+                  120,
                 ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _notesController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes',
-                    hintText:
-                        'Why it fits the collection or what to compare before buying.',
-                    border: InputBorder.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _priceController,
-                  decoration: InputDecoration(
-                    labelText: 'Price',
-                    hintText: '${widget.preferredCurrencySymbol}120',
-                    border: InputBorder.none,
-                  ),
-                  validator: _validatePrice,
-                ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedPriority,
-                  decoration: const InputDecoration(
-                    labelText: 'Priority',
-                    border: InputBorder.none,
-                  ),
-                  items: WishlistItem.priorities.map((priority) {
-                    return DropdownMenuItem(
-                      value: priority,
-                      child: Text(priority),
-                    );
-                  }).toList(growable: false),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedPriority = value ?? WishlistItem.priorities[1];
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedStatus,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    border: InputBorder.none,
-                  ),
-                  items: WishlistItem.statuses.map((status) {
-                    return DropdownMenuItem(
-                      value: status,
-                      child: Text(status),
-                    );
-                  }).toList(growable: false),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedStatus = value ?? WishlistItem.statuses.first;
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              if (_imageUrlController.text.isNotEmpty) ...[
-                _buildImagePreview(context),
-                const SizedBox(height: AppConstants.itemGap),
-              ],
-              Wrap(
-                spacing: AppConstants.spacing2,
-                runSpacing: AppConstants.spacing2,
                 children: [
-                  TextButton.icon(
-                    onPressed: _pickItemImage,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Choose From Gallery'),
+                  Text(
+                    widget.isEditing
+                        ? 'Refresh the details of this saved piece without changing the surrounding look.'
+                        : widget.isSharedImport
+                            ? 'Wishiz imported the product link and any metadata it could find. Fill in anything still missing, then save it to this list.'
+                            : 'Add a new object to this collection while keeping the same editorial feel.',
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _imageUrlController.clear();
-                        _showImageValidationError = false;
-                      });
-                    },
-                    icon: const Icon(Icons.clear_outlined),
-                    label: const Text('Clear Image'),
+                  const SizedBox(height: AppConstants.sectionGap),
+                  _buildFieldCard(
+                    context,
+                    child: TextFormField(
+                      controller: _titleController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Item title',
+                        hintText: 'Stoneware bowl set',
+                        border: InputBorder.none,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please add an item title.';
+                        }
+
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: TextFormField(
+                      controller: _notesController,
+                      minLines: 3,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes',
+                        hintText:
+                            'Why it fits the collection or what to compare before buying.',
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: TextFormField(
+                      controller: _priceController,
+                      decoration: InputDecoration(
+                        labelText: 'Price',
+                        hintText: '${widget.preferredCurrencySymbol}120',
+                        border: InputBorder.none,
+                      ),
+                      validator: _validatePrice,
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedPriority,
+                      decoration: const InputDecoration(
+                        labelText: 'Priority',
+                        border: InputBorder.none,
+                      ),
+                      items: WishlistItem.priorities.map((priority) {
+                        return DropdownMenuItem(
+                          value: priority,
+                          child: Text(priority),
+                        );
+                      }).toList(growable: false),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedPriority =
+                              value ?? WishlistItem.priorities[1];
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        border: InputBorder.none,
+                      ),
+                      items: WishlistItem.statuses.map((status) {
+                        return DropdownMenuItem(
+                          value: status,
+                          child: Text(status),
+                        );
+                      }).toList(growable: false),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedStatus =
+                              value ?? WishlistItem.statuses.first;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  if (_imageUrlController.text.isNotEmpty) ...[
+                    _buildImagePreview(context),
+                    const SizedBox(height: AppConstants.itemGap),
+                  ],
+                  Wrap(
+                    spacing: AppConstants.spacing2,
+                    runSpacing: AppConstants.spacing2,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _pickItemImage,
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Choose From Gallery'),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _imageUrlController.clear();
+                            _showImageValidationError = false;
+                          });
+                        },
+                        icon: const Icon(Icons.clear_outlined),
+                        label: const Text('Clear Image'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: TextFormField(
+                      controller: _imageUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Image URL or local path',
+                        hintText: 'https://image.jpg or local file path',
+                        border: InputBorder.none,
+                      ),
+                      validator: _validateImageSource,
+                      onChanged: (_) {
+                        if (_showImageValidationError) {
+                          setState(() {
+                            _showImageValidationError = false;
+                          });
+                        } else {
+                          setState(() {});
+                        }
+                      },
+                    ),
+                  ),
+                  if (_showImageValidationError) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please add an image before saving this shared item.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.error,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: AppConstants.itemGap),
+                  _buildFieldCard(
+                    context,
+                    child: TextFormField(
+                      controller: _productUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Product link',
+                        hintText: 'https://',
+                        border: InputBorder.none,
+                      ),
+                      validator: _validateProductUrl,
+                      onEditingComplete: _applyLinkDefaults,
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed:
+                          widget.sharedProductRepository == null || isBusy
+                              ? null
+                              : _generateFromProductLink,
+                      icon: const Icon(Icons.auto_fix_high_outlined),
+                      label: Text(
+                        _isGeneratingFromLink
+                            ? 'Generating...'
+                            : 'Generate From Link',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.sectionGap),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          colorScheme.primary,
+                          colorScheme.primaryContainer,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(AppConstants.radiusFull),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: isBusy ? null : _saveItem,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppConstants.spacing4,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppConstants.radiusFull,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        _isSaving
+                            ? 'Saving...'
+                            : widget.isEditing
+                                ? 'Save Item'
+                                : 'Add Item',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _imageUrlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Image URL or local path',
-                    hintText: 'https://image.jpg or local file path',
-                    border: InputBorder.none,
-                  ),
-                  validator: _validateImageSource,
-                  onChanged: (_) {
-                    if (_showImageValidationError) {
-                      setState(() {
-                        _showImageValidationError = false;
-                      });
-                    } else {
-                      setState(() {});
-                    }
-                  },
-                ),
-              ),
-              if (_showImageValidationError) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Please add an image before saving this shared item.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.error,
-                      ),
-                ),
-              ],
-              const SizedBox(height: AppConstants.itemGap),
-              _buildFieldCard(
-                context,
-                child: TextFormField(
-                  controller: _productUrlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Product link',
-                    hintText: 'https://',
-                    border: InputBorder.none,
-                  ),
-                  validator: _validateProductUrl,
-                  onEditingComplete: _applyLinkDefaults,
-                ),
-              ),
-              const SizedBox(height: AppConstants.itemGap),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _applyLinkDefaults,
-                  icon: const Icon(Icons.auto_fix_high_outlined),
-                  label: const Text('Use Link Defaults'),
-                ),
-              ),
-              const SizedBox(height: AppConstants.sectionGap),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      colorScheme.primary,
-                      colorScheme.primaryContainer,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusFull),
-                ),
-                child: ElevatedButton(
-                  onPressed: _saveItem,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppConstants.spacing4,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.radiusFull,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    widget.isEditing ? 'Save Item' : 'Add Item',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          if (isBusy) ...[
+            const ModalBarrier(
+              dismissible: false,
+              color: Colors.black45,
+            ),
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spacing5,
+                  vertical: AppConstants.spacing5,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: AppConstants.itemGap),
+                    Text(
+                      busyMessage,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

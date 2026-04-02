@@ -75,11 +75,13 @@ class WishizApp extends StatelessWidget {
     required this.wishlistRepository,
     required this.authRepository,
     required this.sharedProductRepository,
+    this.shareIntakeService = const ShareIntakeService(),
   });
 
   final WishlistRepository wishlistRepository;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
+  final ShareIntakeService shareIntakeService;
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +92,7 @@ class WishizApp extends StatelessWidget {
         wishlistRepository: wishlistRepository,
         authRepository: authRepository,
         sharedProductRepository: sharedProductRepository,
+        shareIntakeService: shareIntakeService,
       ),
       debugShowCheckedModeBanner: false,
     );
@@ -156,19 +159,19 @@ class _RootScreen extends StatefulWidget {
     required this.wishlistRepository,
     required this.authRepository,
     required this.sharedProductRepository,
+    required this.shareIntakeService,
   });
 
   final WishlistRepository wishlistRepository;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
+  final ShareIntakeService shareIntakeService;
 
   @override
   State<_RootScreen> createState() => _RootScreenState();
 }
 
 class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
-  static const ShareIntakeService _shareIntakeService = ShareIntakeService();
-
   bool _showSignup = false;
   String? _pendingWishlistId;
   String? _pendingSharedText;
@@ -181,10 +184,11 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     _pendingWishlistId = _extractWishlistId(
       WidgetsBinding.instance.platformDispatcher.defaultRouteName,
     );
-    _loadInitialSharedText();
-    _sharedTextSubscription = _shareIntakeService.watchSharedText().listen(
-          _storePendingSharedText,
-        );
+    _consumePendingSharedText();
+    _sharedTextSubscription =
+        widget.shareIntakeService.watchSharedText().listen(
+              _storePendingSharedText,
+            );
   }
 
   @override
@@ -222,6 +226,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     return true;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    _consumePendingSharedText();
+  }
+
   String? _extractWishlistId(String? route) {
     final value = route?.trim() ?? '';
     if (value.isEmpty || value == Navigator.defaultRouteName) {
@@ -246,8 +259,9 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     return null;
   }
 
-  Future<void> _loadInitialSharedText() async {
-    final sharedText = await _shareIntakeService.getInitialSharedText();
+  Future<void> _consumePendingSharedText() async {
+    final sharedText =
+        await widget.shareIntakeService.consumePendingSharedText();
     if (!mounted || sharedText == null) {
       return;
     }

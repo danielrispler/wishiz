@@ -21,7 +21,11 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, methodChannelName)
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 when (call.method) {
-                    "getInitialSharedText" -> result.success(latestSharedText)
+                    "consumePendingSharedText", "getInitialSharedText" -> {
+                        val pendingSharedText = latestSharedText
+                        latestSharedText = null
+                        result.success(pendingSharedText)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -44,9 +48,13 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val sharedText = extractSharedText(intent)
-        latestSharedText = sharedText
         if (!sharedText.isNullOrBlank()) {
-            eventSink?.success(sharedText)
+            if (eventSink != null) {
+                eventSink?.success(sharedText)
+                latestSharedText = null
+            } else {
+                latestSharedText = sharedText
+            }
         }
     }
 
@@ -64,6 +72,23 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        return pieces.joinToString(separator = "\n")
+        return normalizeSharedText(pieces)
+    }
+
+    private fun normalizeSharedText(pieces: List<String>): String? {
+        if (pieces.isEmpty()) {
+            return null
+        }
+
+        val lines = linkedSetOf<String>()
+        for (piece in pieces) {
+            piece
+                .split(Regex("\\r?\\n"))
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { lines.add(it) }
+        }
+
+        return if (lines.isEmpty()) null else lines.joinToString(separator = "\n")
     }
 }

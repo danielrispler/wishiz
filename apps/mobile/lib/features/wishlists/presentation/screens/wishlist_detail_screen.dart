@@ -51,10 +51,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   void _showError(Object error, {required String fallbackMessage}) {
     _showFeedback(
       context,
-      formatErrorMessage(
-        error,
-        fallbackMessage: fallbackMessage,
-      ),
+      formatErrorMessage(error, fallbackMessage: fallbackMessage),
     );
   }
 
@@ -84,7 +81,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 ? wishlist.purchasedItems
                 : wishlist.activeItems;
             final visibleItems = _applyFilters(sourceItems);
-            final canReorder = !widget.showPurchasedOnly &&
+            final canReorder =
+                !widget.showPurchasedOnly &&
                 _selectedStatus == _allFilter &&
                 _selectedPriority == _allFilter &&
                 _selectedSort == _sortHighestRank &&
@@ -93,7 +91,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             return Scaffold(
               appBar: AppBar(
                 title: Text(
-                    widget.showPurchasedOnly ? 'Past List' : 'List Details'),
+                  widget.showPurchasedOnly ? 'Past List' : 'List Details',
+                ),
                 actions: [
                   IconButton(
                     tooltip: 'Share list',
@@ -207,10 +206,22 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           ),
                       ],
                     ),
+                    if (widget.showPurchasedOnly &&
+                        wishlist.purchasedItems.isNotEmpty) ...[
+                      const SizedBox(height: AppConstants.spacing2),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.icon(
+                          onPressed: () => _restoreAllItems(wishlist),
+                          icon: const Icon(Icons.restore_outlined),
+                          label: const Text('Restore All'),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: AppConstants.spacing2),
                     Text(
                       widget.showPurchasedOnly
-                          ? 'Past lists only show items that were marked as purchased.'
+                          ? 'Swipe right to restore an item to the active list, or swipe left to delete it.'
                           : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -325,10 +336,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  Widget _buildMetadataChip(
-    BuildContext context, {
-    required String label,
-  }) {
+  Widget _buildMetadataChip(BuildContext context, {required String label}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -340,10 +348,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         horizontal: AppConstants.spacing3,
         vertical: 10,
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium,
-      ),
+      child: Text(label, style: Theme.of(context).textTheme.labelMedium),
     );
   }
 
@@ -424,10 +429,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  user.name,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text(user.name, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: AppConstants.spacing1),
                 Text(
                   '${user.role} · ${user.email}',
@@ -451,10 +453,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Sort by rank',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
+        Text('Sort by rank', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: AppConstants.spacing2),
         Container(
           decoration: BoxDecoration(
@@ -627,14 +626,17 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem> items) {
-    final filteredItems = items.where((item) {
-      final statusMatches = widget.showPurchasedOnly
-          ? true
-          : _selectedStatus == _allFilter || item.status == _selectedStatus;
-      final priorityMatches =
-          _selectedPriority == _allFilter || item.priority == _selectedPriority;
-      return statusMatches && priorityMatches;
-    }).toList(growable: false);
+    final filteredItems = items
+        .where((item) {
+          final statusMatches = widget.showPurchasedOnly
+              ? true
+              : _selectedStatus == _allFilter || item.status == _selectedStatus;
+          final priorityMatches =
+              _selectedPriority == _allFilter ||
+              item.priority == _selectedPriority;
+          return statusMatches && priorityMatches;
+        })
+        .toList(growable: false);
 
     filteredItems.sort((left, right) {
       switch (_selectedSort) {
@@ -670,25 +672,21 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     try {
       await widget.repository.reorderWishlistItems(
         wishlistId: wishlist.id,
-        orderedItemIds:
-            nextItems.map((item) => item.id).toList(growable: false),
+        orderedItemIds: nextItems
+            .map((item) => item.id)
+            .toList(growable: false),
       );
       if (!mounted) {
         return;
       }
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Item rank updated.')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Item rank updated.')));
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      _showError(
-        error,
-        fallbackMessage: 'Could not reorder items.',
-      );
+      _showError(error, fallbackMessage: 'Could not reorder items.');
     }
   }
 
@@ -701,23 +699,27 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     bool showDragHandle = false,
     int? dragIndex,
   }) {
-    final displayedPriceLabel =
-        _formatPriceLabelForUser(item.priceLabel, currentUser);
+    final displayedPriceLabel = _formatPriceLabelForUser(
+      item.priceLabel,
+      currentUser,
+    );
 
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: AppConstants.itemGap),
       child: Dismissible(
         key: ValueKey('dismiss-${item.id}'),
-        direction: widget.showPurchasedOnly
-            ? DismissDirection.endToStart
-            : DismissDirection.horizontal,
+        direction: DismissDirection.horizontal,
         background: _buildSwipeBackground(
           context,
-          color: Colors.green.shade600,
+          color: widget.showPurchasedOnly
+              ? Colors.blue.shade600
+              : Colors.green.shade600,
           alignment: Alignment.centerLeft,
-          icon: Icons.check_circle_outline,
-          label: 'Purchased',
+          icon: widget.showPurchasedOnly
+              ? Icons.restore_outlined
+              : Icons.check_circle_outline,
+          label: widget.showPurchasedOnly ? 'Restore' : 'Purchased',
         ),
         secondaryBackground: _buildSwipeBackground(
           context,
@@ -727,26 +729,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           label: 'Delete',
         ),
         confirmDismiss: (direction) async {
-          if (direction == DismissDirection.startToEnd &&
-              !widget.showPurchasedOnly) {
-            try {
-              await widget.repository.updateWishlistItemStatus(
-                wishlistId: wishlist.id,
-                itemId: item.id,
-                status: 'Purchased',
-              );
-              if (!context.mounted) {
-                return false;
-              }
-              _showFeedback(context, 'Moved to Past Lists.');
-            } catch (error) {
-              if (!context.mounted) {
-                return false;
-              }
-              _showError(
-                error,
-                fallbackMessage: 'Could not update this item.',
-              );
+          if (direction == DismissDirection.startToEnd) {
+            if (widget.showPurchasedOnly) {
+              await _restoreItemToActive(wishlist: wishlist, item: item);
+            } else {
+              await _moveItemToPastList(wishlist: wishlist, item: item);
             }
             return false;
           }
@@ -777,8 +764,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     ReorderableDragStartListener(
                       index: dragIndex,
                       child: Padding(
-                        padding:
-                            const EdgeInsets.only(right: AppConstants.spacing2),
+                        padding: const EdgeInsets.only(
+                          right: AppConstants.spacing2,
+                        ),
                         child: Icon(
                           Icons.drag_indicator,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -819,10 +807,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           if (!context.mounted) {
                             return;
                           }
-                          _showFeedback(
-                            context,
-                            'Moved back to active items.',
-                          );
+                          _showFeedback(context, 'Moved back to active items.');
                         } catch (error) {
                           if (!context.mounted) {
                             return;
@@ -876,8 +861,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 children: [
                   _buildMetadataChip(context, label: 'Rank #${item.rank}'),
                   _buildMetadataChip(context, label: item.status),
-                  _buildMetadataChip(context,
-                      label: '${item.priority} priority'),
+                  _buildMetadataChip(
+                    context,
+                    label: '${item.priority} priority',
+                  ),
                 ],
               ),
               if (item.notes != null && item.notes!.isNotEmpty) ...[
@@ -944,9 +931,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           const SizedBox(height: 6),
           Text(
             label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Colors.white,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: Colors.white),
           ),
         ],
       ),
@@ -1097,10 +1084,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       if (!mounted) {
         return;
       }
-      _showError(
-        error,
-        fallbackMessage: 'Could not update collaborators.',
-      );
+      _showError(error, fallbackMessage: 'Could not update collaborators.');
     }
   }
 
@@ -1125,10 +1109,129 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       if (!mounted) {
         return;
       }
-      _showError(
-        error,
-        fallbackMessage: 'Could not update collaborators.',
+      _showError(error, fallbackMessage: 'Could not update collaborators.');
+    }
+  }
+
+  Future<void> _moveItemToPastList({
+    required Wishlist wishlist,
+    required WishlistItem item,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await widget.repository.updateWishlistItemStatus(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+        status: 'Purchased',
       );
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Moved to Past Lists.')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not update this item.',
+              ),
+            ),
+          ),
+        );
+    }
+  }
+
+  Future<void> _restoreItemToActive({
+    required Wishlist wishlist,
+    required WishlistItem item,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await widget.repository.updateWishlistItemStatus(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+        status: 'Saved',
+      );
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Moved back to active items.')),
+        );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not update this item.',
+              ),
+            ),
+          ),
+        );
+    }
+  }
+
+  Future<void> _restoreAllItems(Wishlist wishlist) async {
+    final purchasedItems = wishlist.purchasedItems;
+    final messenger = ScaffoldMessenger.of(context);
+    if (purchasedItems.isEmpty) {
+      return;
+    }
+
+    try {
+      await Future.wait(
+        purchasedItems.map(
+          (item) => widget.repository.updateWishlistItemStatus(
+            wishlistId: wishlist.id,
+            itemId: item.id,
+            status: 'Saved',
+          ),
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('All items moved back to active items.'),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not restore this list.',
+              ),
+            ),
+          ),
+        );
     }
   }
 
@@ -1170,10 +1273,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         if (!mounted) {
           return false;
         }
-        _showError(
-          error,
-          fallbackMessage: 'Could not delete this item.',
-        );
+        _showError(error, fallbackMessage: 'Could not delete this item.');
       }
     }
 
@@ -1201,8 +1301,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
     for (final item in wishlist.activeItems.take(5)) {
       lines.add('- ${item.title}');
-      final displayedPriceLabel =
-          _formatPriceLabelForUser(item.priceLabel, currentUser);
+      final displayedPriceLabel = _formatPriceLabelForUser(
+        item.priceLabel,
+        currentUser,
+      );
       if (displayedPriceLabel != null) {
         lines.add('Price: $displayedPriceLabel');
       }
@@ -1221,8 +1323,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       'Rank: #${item.rank}',
     ];
 
-    final displayedPriceLabel =
-        _formatPriceLabelForUser(item.priceLabel, currentUser);
+    final displayedPriceLabel = _formatPriceLabelForUser(
+      item.priceLabel,
+      currentUser,
+    );
     if (displayedPriceLabel != null) {
       lines.add('Price: $displayedPriceLabel');
     }
@@ -1256,9 +1360,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     }
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Product link copied.')),
-      );
+      ..showSnackBar(const SnackBar(content: Text('Product link copied.')));
   }
 
   Future<void> _openProductLink(WishlistItem item) async {
@@ -1275,8 +1377,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
     final didLaunch = await launchUrl(
       uri,
-      mode:
-          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+      mode: kIsWeb
+          ? LaunchMode.platformDefault
+          : LaunchMode.externalApplication,
     );
 
     if (!didLaunch && mounted) {
@@ -1287,9 +1390,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   void _showFeedback(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildImage(
@@ -1299,7 +1400,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final uri = Uri.tryParse(imageSource);
-    final isRemote = uri != null &&
+    final isRemote =
+        uri != null &&
         (uri.scheme == 'http' ||
             uri.scheme == 'https' ||
             uri.scheme == 'blob' ||
@@ -1308,10 +1410,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     final fallback = Container(
       color: colorScheme.surfaceContainerHigh,
       alignment: Alignment.center,
-      child: Icon(
-        Icons.image_outlined,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
     );
 
     final image = kIsWeb || isRemote
@@ -1331,17 +1430,15 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
-        child: AspectRatio(
-          aspectRatio: aspectRatio,
-          child: image,
-        ),
+        child: AspectRatio(aspectRatio: aspectRatio, child: image),
       ),
     );
   }
 
   Future<void> _openImageViewer(BuildContext context, String imageSource) {
     final uri = Uri.tryParse(imageSource);
-    final isRemote = uri != null &&
+    final isRemote =
+        uri != null &&
         (uri.scheme == 'http' ||
             uri.scheme == 'https' ||
             uri.scheme == 'blob' ||
@@ -1359,14 +1456,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   minScale: 0.8,
                   maxScale: 4,
                   child: kIsWeb || isRemote
-                      ? Image.network(
-                          imageSource,
-                          fit: BoxFit.contain,
-                        )
-                      : Image.file(
-                          File(imageSource),
-                          fit: BoxFit.contain,
-                        ),
+                      ? Image.network(imageSource, fit: BoxFit.contain)
+                      : Image.file(File(imageSource), fit: BoxFit.contain),
                 ),
               ),
             ),
@@ -1387,15 +1478,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 }
 
-enum _WishlistAction {
-  delete,
-}
+enum _WishlistAction { delete }
 
-enum _WishlistItemAction {
-  edit,
-  moveToActive,
-  delete,
-}
+enum _WishlistItemAction { edit, moveToActive, delete }
 
 class _InviteCollaboratorResult {
   const _InviteCollaboratorResult({

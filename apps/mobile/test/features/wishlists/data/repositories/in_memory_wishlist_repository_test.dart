@@ -9,36 +9,38 @@ void main() {
   );
 
   group('InMemoryWishlistRepository', () {
-    test('creates a wishlist with a year and exposes it through the notifier',
-        () async {
-      final repository = InMemoryWishlistRepository(
-        ownerUserId: ownerUserId,
-        initialWishlists: [],
-      );
+    test(
+      'creates a wishlist with a year and exposes it through the notifier',
+      () async {
+        final repository = InMemoryWishlistRepository(
+          ownerUserId: ownerUserId,
+          initialWishlists: [],
+        );
 
-      final createdWishlist = await repository.createWishlist(
-        title: 'Reading Corner',
-        description: 'Warm textures and quieter lighting.',
-        year: 2027,
-        coverImageUrl: 'https://example.com/cover.jpg',
-        isShared: true,
-      );
+        final createdWishlist = await repository.createWishlist(
+          title: 'Reading Corner',
+          description: 'Warm textures and quieter lighting.',
+          year: 2027,
+          coverImageUrl: 'https://example.com/cover.jpg',
+          isShared: true,
+        );
 
-      expect(repository.getWishlists(), hasLength(1));
-      expect(createdWishlist.id, matches(uuidPattern));
-      expect(repository.getWishlists().first.title, 'Reading Corner');
-      expect(repository.getWishlists().first.year, 2027);
-      expect(repository.watchWishlists().value.first.id, createdWishlist.id);
-      expect(
-        repository.watchWishlists().value.first.coverImageUrl,
-        'https://example.com/cover.jpg',
-      );
-      expect(repository.watchWishlists().value.first.isShared, isTrue);
-      expect(
-        repository.watchWishlists().value.first.ownerUserId,
-        ownerUserId,
-      );
-    });
+        expect(repository.getWishlists(), hasLength(1));
+        expect(createdWishlist.id, matches(uuidPattern));
+        expect(repository.getWishlists().first.title, 'Reading Corner');
+        expect(repository.getWishlists().first.year, 2027);
+        expect(repository.watchWishlists().value.first.id, createdWishlist.id);
+        expect(
+          repository.watchWishlists().value.first.coverImageUrl,
+          'https://example.com/cover.jpg',
+        );
+        expect(repository.watchWishlists().value.first.isShared, isTrue);
+        expect(
+          repository.watchWishlists().value.first.ownerUserId,
+          ownerUserId,
+        );
+      },
+    );
 
     test('adds items with rank order and updates purchase status', () async {
       final repository = InMemoryWishlistRepository(
@@ -135,6 +137,38 @@ void main() {
 
       expect(updatedItem?.purchasedAt, isNotNull);
       expect(updatedItem?.purchasedAt, originalPurchasedAt);
+    });
+
+    test('moves a purchased item back to active items when restored', () async {
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
+      final wishlist = await repository.createWishlist(
+        title: 'Hosting',
+        description: 'Ceramics and table details.',
+        year: 2026,
+      );
+
+      final item = await repository.addWishlistItem(
+        wishlistId: wishlist.id,
+        title: 'Stoneware bowl set',
+        status: 'Purchased',
+      );
+
+      final restoredItem = await repository.updateWishlistItemStatus(
+        wishlistId: wishlist.id,
+        itemId: item.id,
+        status: 'Saved',
+      );
+
+      final refreshedWishlist = repository.findById(wishlist.id);
+      expect(restoredItem?.status, 'Saved');
+      expect(restoredItem?.purchasedAt, isNull);
+      expect(refreshedWishlist?.purchasedItems, isEmpty);
+      expect(refreshedWishlist?.activeItems.map((entry) => entry.id), [
+        item.id,
+      ]);
     });
 
     test('reprioritizes items by assigning sequential rank values', () async {

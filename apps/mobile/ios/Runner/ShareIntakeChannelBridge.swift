@@ -9,9 +9,9 @@ final class ShareIntakeChannelBridge {
     self.storeProvider = storeProvider
   }
 
-  func register(with messenger: NSObject<FlutterBinaryMessenger>) {
+  func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: methodChannelName, binaryMessenger: messenger)
-    channel.setMethodCallHandler { [storeProvider] call, result in
+    channel.setMethodCallHandler { [storeProvider] (call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
       case "consumePendingSharedText", "getInitialSharedText":
         result(storeProvider()?.consumePendingSharedText())

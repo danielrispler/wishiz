@@ -76,7 +76,8 @@ Use these values depending on where the app runs:
 
 Notes:
 
-- There is intentionally no default base URL in code.
+- Default base URL in code: `http://34.78.227.223:8080`
+- `--dart-define` still overrides the default when needed.
 - Android debug builds allow cleartext HTTP for local development.
 - iOS transport exceptions are not added yet because the app does not call the backend yet.
 

@@ -893,21 +893,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               ],
               if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                InkWell(
-                  onTap: () => _openProductLink(item),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusFull),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text(
-                      item.productUrl!,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.primary,
-                            decoration: TextDecoration.underline,
-                          ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -1337,11 +1322,62 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             errorBuilder: (context, error, stackTrace) => fallback,
           );
 
-    return ClipRRect(
+    return InkWell(
+      onTap: () => _openImageViewer(context, imageSource),
       borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: image,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
+        child: AspectRatio(
+          aspectRatio: aspectRatio,
+          child: image,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openImageViewer(BuildContext context, String imageSource) {
+    final uri = Uri.tryParse(imageSource);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    return showDialog<void>(
+      context: context,
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: kIsWeb || isRemote
+                      ? Image.network(
+                          imageSource,
+                          fit: BoxFit.contain,
+                        )
+                      : Image.file(
+                          File(imageSource),
+                          fit: BoxFit.contain,
+                        ),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

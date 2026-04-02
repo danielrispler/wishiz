@@ -587,11 +587,15 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
             ),
           );
 
-    return ClipRRect(
+    return InkWell(
+      onTap: () => _openImageViewer(context, source),
       borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: image,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: image,
+        ),
       ),
     );
   }
@@ -603,6 +607,53 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       child: Icon(
         Icons.image_outlined,
         color: colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  Future<void> _openImageViewer(BuildContext context, String imageSource) {
+    final uri = Uri.tryParse(imageSource);
+    final isRemote = uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
+
+    return showDialog<void>(
+      context: context,
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: kIsWeb || isRemote
+                      ? Image.network(
+                          imageSource,
+                          fit: BoxFit.contain,
+                        )
+                      : Image.file(
+                          File(imageSource),
+                          fit: BoxFit.contain,
+                        ),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

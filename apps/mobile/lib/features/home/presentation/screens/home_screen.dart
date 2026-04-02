@@ -294,6 +294,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openRemindersTab() {
+    setState(() {
+      _currentIndex = 3;
+    });
+  }
+
   void _showFeedback(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -353,7 +359,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return WishizAppLink.wishlistLink(wishlist.id);
   }
 
-  Widget _buildHeader({bool showName = false}) {
+  Widget _buildHeader({
+    bool showName = false,
+    required int reminderCount,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -377,6 +388,44 @@ class _HomeScreenState extends State<HomeScreen> {
                   offset: const Offset(-8, 0),
                   child: const WishizWordmark(height: 44),
                 ),
+        ),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              tooltip: 'Reminders',
+              onPressed: _openRemindersTab,
+              visualDensity: VisualDensity.compact,
+              color: _currentIndex == 3
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+              icon: const Icon(Icons.notifications_outlined),
+            ),
+            if (reminderCount > 0)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.radiusFull,
+                    ),
+                  ),
+                  child: Text(
+                    reminderCount > 9 ? '9+' : '$reminderCount',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ),
+          ],
         ),
         IconButton(
           tooltip: 'Account',
@@ -464,6 +513,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeTab({
     required List<Wishlist> activeWishlists,
     required List<int> availableYears,
+    required int reminderCount,
   }) {
     return SafeArea(
       bottom: false,
@@ -475,7 +525,7 @@ class _HomeScreenState extends State<HomeScreen> {
           120,
         ),
         children: [
-          _buildHeader(showName: true),
+          _buildHeader(showName: true, reminderCount: reminderCount),
           const SizedBox(height: AppConstants.sectionGap),
           _buildTopCreateSection(),
           const SizedBox(height: AppConstants.sectionGap),
@@ -519,6 +569,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String emptyTitle,
     required String emptyDescription,
     required List<int> availableYears,
+    required int reminderCount,
     bool showPurchasedOnly = false,
     bool isSharedView = false,
   }) {
@@ -532,7 +583,7 @@ class _HomeScreenState extends State<HomeScreen> {
           120,
         ),
         children: [
-          _buildHeader(),
+          _buildHeader(reminderCount: reminderCount),
           const SizedBox(height: AppConstants.sectionGap),
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
@@ -600,6 +651,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildRemindersTab({
     required List<_ReminderEntry> reminders,
     required List<int> availableYears,
+    required int reminderCount,
   }) {
     return SafeArea(
       bottom: false,
@@ -611,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
           120,
         ),
         children: [
-          _buildHeader(),
+          _buildHeader(reminderCount: reminderCount),
           const SizedBox(height: AppConstants.sectionGap),
           Text('Reminders', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
@@ -1057,6 +1109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildHomeTab(
                     activeWishlists: activeWishlists,
                     availableYears: availableYears,
+                    reminderCount: reminderEntries.length,
                   ),
                   _buildCollectionTab(
                     title: 'Shared',
@@ -1067,6 +1120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     emptyDescription:
                         'Turn on sharing in a list and it will appear here.',
                     availableYears: availableYears,
+                    reminderCount: reminderEntries.length,
                     isSharedView: true,
                   ),
                   _buildCollectionTab(
@@ -1078,17 +1132,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     emptyDescription:
                         'Swipe right on an item in an active list to move it here.',
                     availableYears: availableYears,
+                    reminderCount: reminderEntries.length,
                     showPurchasedOnly: true,
                   ),
                   _buildRemindersTab(
                     reminders: filteredReminders,
                     availableYears: availableYears,
+                    reminderCount: reminderEntries.length,
                   ),
                 ],
               ),
               bottomNavigationBar: GlassmorphicBottomNav(
                 currentIndex: _currentIndex,
-                reminderCount: reminderEntries.length,
                 onTap: (index) {
                   setState(() {
                     _currentIndex = index;

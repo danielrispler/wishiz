@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgres://wishiz:WishizPg_2026_7x9kLq@postgres:5432/wishiz?sslmode=disable
       RUN_DB_MIGRATIONS: "true"
     ports:
-      - "80:8080"
+      - "8080:8080"
 
 volumes:
   postgres_data:

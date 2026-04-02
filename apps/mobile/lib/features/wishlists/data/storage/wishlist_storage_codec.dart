@@ -27,6 +27,7 @@ class WishlistStorageCodec {
   Map<String, Object?> _wishlistToJson(Wishlist wishlist) {
     return {
       'id': wishlist.id,
+      'ownerUserId': wishlist.ownerUserId,
       'title': wishlist.title,
       'description': wishlist.description,
       'year': wishlist.year,
@@ -44,6 +45,7 @@ class WishlistStorageCodec {
   Wishlist _wishlistFromJson(Map<String, dynamic> json) {
     return Wishlist(
       id: json['id'] as String,
+      ownerUserId: json['ownerUserId'] as String? ?? '',
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       year: json['year'] as int? ?? DateTime.now().year,

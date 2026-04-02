@@ -5,6 +5,7 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 class WishlistDto {
   const WishlistDto({
     required this.id,
+    required this.ownerUserId,
     required this.title,
     required this.description,
     required this.year,
@@ -20,6 +21,7 @@ class WishlistDto {
   factory WishlistDto.fromJson(Map<String, dynamic> json) {
     return WishlistDto(
       id: json['id'] as String,
+      ownerUserId: json['ownerUserId'] as String? ?? '',
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       year: json['year'] as int,
@@ -39,6 +41,7 @@ class WishlistDto {
   }
 
   final String id;
+  final String ownerUserId;
   final String title;
   final String description;
   final int year;
@@ -50,12 +53,17 @@ class WishlistDto {
   final List<SharedUserDto> sharedUsers;
   final List<WishlistItemDto> items;
 
-  Wishlist toEntity() {
+  Wishlist toEntity({
+    String? fallbackOwnerUserId,
+  }) {
     final sortedItems = [...items]
       ..sort((left, right) => left.rank.compareTo(right.rank));
+    final resolvedOwnerUserId =
+        ownerUserId.isEmpty ? (fallbackOwnerUserId ?? '') : ownerUserId;
 
     return Wishlist(
       id: id,
+      ownerUserId: resolvedOwnerUserId,
       title: title,
       description: description,
       year: year,

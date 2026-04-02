@@ -12,6 +12,7 @@ import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_r
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/main.dart';
 
 void main() {
@@ -104,6 +105,67 @@ void main() {
         ['https://example.com/products/lamp'],
       );
     });
+
+    testWidgets('switches to the signed in user repository', (tester) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final shareIntakeService = FakeShareIntakeService();
+      final secondUser = sampleUser.copyWith(
+        id: 'user-2',
+        email: 'dana@example.com',
+        fullName: 'Dana Rios',
+      );
+
+      final repositoriesByUser = <String, WishlistRepository>{
+        sampleUser.id: InMemoryWishlistRepository(
+          ownerUserId: sampleUser.id,
+          initialWishlists: [
+            Wishlist(
+              id: 'wishlist-1',
+              ownerUserId: sampleUser.id,
+              title: 'Maya Birthday Ideas',
+              description: 'Family gifts',
+              year: 2026,
+              createdAt: DateTime(2026),
+              updatedAt: DateTime(2026),
+            ),
+          ],
+        ),
+        secondUser.id: InMemoryWishlistRepository(
+          ownerUserId: secondUser.id,
+          initialWishlists: [
+            Wishlist(
+              id: 'wishlist-2',
+              ownerUserId: secondUser.id,
+              title: 'Dana Travel List',
+              description: 'Carry-on upgrades',
+              year: 2026,
+              createdAt: DateTime(2026),
+              updatedAt: DateTime(2026),
+            ),
+          ],
+        ),
+      };
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          shareIntakeService: shareIntakeService,
+          wishlistRepositoryLoader: (user) async => repositoriesByUser[user.id]!,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Maya Birthday Ideas'), findsOneWidget);
+      expect(find.text('Dana Travel List'), findsNothing);
+
+      authRepository.setCurrentUser(secondUser);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dana Travel List'), findsOneWidget);
+      expect(find.text('Maya Birthday Ideas'), findsNothing);
+    });
   });
 }
 
@@ -111,11 +173,14 @@ Widget buildTestApp({
   required FakeAuthRepository authRepository,
   required FakeSharedProductRepository sharedProductRepository,
   required FakeShareIntakeService shareIntakeService,
+  Future<WishlistRepository> Function(AppUser user)? wishlistRepositoryLoader,
 }) {
   final repository = InMemoryWishlistRepository(
+    ownerUserId: sampleUser.id,
     initialWishlists: [
       Wishlist(
         id: 'wishlist-1',
+        ownerUserId: sampleUser.id,
         title: 'Birthdays',
         description: 'Family gifts',
         year: 2026,
@@ -126,7 +191,8 @@ Widget buildTestApp({
   );
 
   return WishizApp(
-    wishlistRepository: repository,
+    wishlistRepositoryLoader:
+        wishlistRepositoryLoader ?? (_) async => repository,
     authRepository: authRepository,
     sharedProductRepository: sharedProductRepository,
     shareIntakeService: shareIntakeService,

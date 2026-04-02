@@ -9,26 +9,39 @@ import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repositor
 class HttpWishlistRepository implements WishlistRepository {
   HttpWishlistRepository._({
     required WishlistApiClient apiClient,
-  }) : _apiClient = apiClient;
+    required String currentUserId,
+  })  : _apiClient = apiClient,
+        _currentUserId = currentUserId;
 
   static const Uuid _uuid = Uuid();
 
   static Future<HttpWishlistRepository> create({
     required WishlistApiClient apiClient,
+    required String currentUserId,
   }) async {
-    final repository = HttpWishlistRepository._(apiClient: apiClient);
+    final repository = HttpWishlistRepository._(
+      apiClient: apiClient,
+      currentUserId: currentUserId,
+    );
     await repository.refresh();
     return repository;
   }
 
   final WishlistApiClient _apiClient;
+  final String _currentUserId;
   final ValueNotifier<List<Wishlist>> _wishlists =
       ValueNotifier<List<Wishlist>>(const []);
 
   Future<void> refresh() async {
     final wishlists = await _apiClient.listWishlists();
     _wishlists.value = List<Wishlist>.unmodifiable(
-      wishlists.map((wishlist) => wishlist.toEntity()).toList(growable: false),
+      wishlists
+          .map(
+            (wishlist) => wishlist.toEntity(
+              fallbackOwnerUserId: _currentUserId,
+            ),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -65,7 +78,7 @@ class HttpWishlistRepository implements WishlistRepository {
       isShared: isShared,
     );
 
-    final wishlist = created.toEntity();
+    final wishlist = created.toEntity(fallbackOwnerUserId: _currentUserId);
     _wishlists.value = List<Wishlist>.unmodifiable([
       wishlist,
       ..._wishlists.value.where((entry) => entry.id != wishlist.id),
@@ -91,7 +104,7 @@ class HttpWishlistRepository implements WishlistRepository {
       isShared: isShared ?? findById(id)?.isShared ?? false,
     );
 
-    final wishlist = updated.toEntity();
+    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -99,7 +112,7 @@ class HttpWishlistRepository implements WishlistRepository {
   @override
   Future<Wishlist?> archiveWishlist(String id) async {
     final updated = await _apiClient.archiveWishlist(id);
-    final wishlist = updated.toEntity();
+    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -107,7 +120,7 @@ class HttpWishlistRepository implements WishlistRepository {
   @override
   Future<Wishlist?> restoreWishlist(String id) async {
     final updated = await _apiClient.restoreWishlist(id);
-    final wishlist = updated.toEntity();
+    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -212,12 +225,22 @@ class HttpWishlistRepository implements WishlistRepository {
       productUrl: productUrl,
     );
 
-    final wishlist = await _refreshWishlist(wishlistId);
+    final updatedWishlist = _patchWishlist(
+      wishlistId,
+      (wishlist) => wishlist.copyWith(
+        items: [...wishlist.items, createdItem.toEntity()],
+        updatedAt: createdItem.updatedAt,
+      ),
+    );
+    if (updatedWishlist == null) {
+      throw StateError('Wishlist "$wishlistId" was not found.');
+    }
+
     return _findWishlistItem(
-      wishlist: wishlist,
+      wishlist: updatedWishlist,
       itemId: createdItem.id,
       notFoundMessage:
-          'Wishlist item "${createdItem.id}" was created but not returned by the refreshed wishlist.',
+          'Wishlist item "${createdItem.id}" was created but not added to the local cache.',
     );
   }
 
@@ -231,7 +254,7 @@ class HttpWishlistRepository implements WishlistRepository {
       orderedItemIds: orderedItemIds,
     );
 
-    final wishlist = updated.toEntity();
+    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -250,12 +273,24 @@ class HttpWishlistRepository implements WishlistRepository {
       },
     );
 
-    final wishlist = await _refreshWishlist(wishlistId);
+    final updatedWishlist = _patchWishlist(
+      wishlistId,
+      (wishlist) => wishlist.copyWith(
+        items: wishlist.items
+            .map((item) => item.id == itemId ? updatedItem.toEntity() : item)
+            .toList(growable: false),
+        updatedAt: updatedItem.updatedAt,
+      ),
+    );
+    if (updatedWishlist == null) {
+      return null;
+    }
+
     return _findWishlistItem(
-      wishlist: wishlist,
+      wishlist: updatedWishlist,
       itemId: updatedItem.id,
       notFoundMessage:
-          'Wishlist item "${updatedItem.id}" was updated but not returned by the refreshed wishlist.',
+          'Wishlist item "${updatedItem.id}" was updated but not written to the local cache.',
     );
   }
 
@@ -285,12 +320,24 @@ class HttpWishlistRepository implements WishlistRepository {
       },
     );
 
-    final wishlist = await _refreshWishlist(wishlistId);
+    final updatedWishlist = _patchWishlist(
+      wishlistId,
+      (wishlist) => wishlist.copyWith(
+        items: wishlist.items
+            .map((item) => item.id == itemId ? updatedItem.toEntity() : item)
+            .toList(growable: false),
+        updatedAt: updatedItem.updatedAt,
+      ),
+    );
+    if (updatedWishlist == null) {
+      return null;
+    }
+
     return _findWishlistItem(
-      wishlist: wishlist,
+      wishlist: updatedWishlist,
       itemId: updatedItem.id,
       notFoundMessage:
-          'Wishlist item "${updatedItem.id}" was updated but not returned by the refreshed wishlist.',
+          'Wishlist item "${updatedItem.id}" was updated but not written to the local cache.',
     );
   }
 
@@ -304,13 +351,21 @@ class HttpWishlistRepository implements WishlistRepository {
       itemId: itemId,
     );
 
-    await _refreshWishlist(wishlistId);
-    return true;
+    final updatedWishlist = _patchWishlist(
+      wishlistId,
+      (wishlist) => wishlist.copyWith(
+        items: wishlist.items
+            .where((item) => item.id != itemId)
+            .toList(growable: false),
+        updatedAt: DateTime.now(),
+      ),
+    );
+    return updatedWishlist != null;
   }
 
   Future<Wishlist> _refreshWishlist(String wishlistId) async {
     final refreshed = await _apiClient.getWishlist(wishlistId);
-    final wishlist = refreshed.toEntity();
+    final wishlist = refreshed.toEntity(fallbackOwnerUserId: _currentUserId);
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -342,5 +397,27 @@ class HttpWishlistRepository implements WishlistRepository {
     _wishlists.value = List<Wishlist>.unmodifiable(
       wasPresent ? nextWishlists : [...nextWishlists, wishlist],
     );
+  }
+
+  Wishlist? _patchWishlist(
+    String wishlistId,
+    Wishlist Function(Wishlist wishlist) update,
+  ) {
+    Wishlist? updatedWishlist;
+    final nextWishlists = _wishlists.value.map((wishlist) {
+      if (wishlist.id != wishlistId) {
+        return wishlist;
+      }
+
+      updatedWishlist = update(wishlist);
+      return updatedWishlist!;
+    }).toList(growable: false);
+
+    if (updatedWishlist == null) {
+      return null;
+    }
+
+    _wishlists.value = List<Wishlist>.unmodifiable(nextWishlists);
+    return updatedWishlist;
   }
 }

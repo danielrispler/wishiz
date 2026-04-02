@@ -2,15 +2,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wishiz/features/wishlists/data/storage/wishlist_storage.dart';
 
 class SharedPreferencesWishlistStorage implements WishlistStorage {
-  SharedPreferencesWishlistStorage._(this._preferences);
+  SharedPreferencesWishlistStorage._({
+    required SharedPreferences preferences,
+    required String storageKey,
+  })  : _preferences = preferences,
+        _storageKey = storageKey;
 
-  static const String _storageKey = 'wishiz.wishlists';
+  static const String _storageKeyPrefix = 'wishiz.wishlists.';
+  static const String _legacyStorageKey = 'wishiz.wishlists';
 
   final SharedPreferences _preferences;
+  final String _storageKey;
 
-  static Future<SharedPreferencesWishlistStorage> create() async {
+  static Future<SharedPreferencesWishlistStorage> create({
+    required String userId,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
-    return SharedPreferencesWishlistStorage._(preferences);
+    await preferences.remove(_legacyStorageKey);
+    return SharedPreferencesWishlistStorage._(
+      preferences: preferences,
+      storageKey: '$_storageKeyPrefix$userId',
+    );
   }
 
   @override

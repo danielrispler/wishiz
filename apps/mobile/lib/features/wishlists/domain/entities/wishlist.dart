@@ -4,6 +4,7 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 class Wishlist {
   Wishlist({
     required this.id,
+    required this.ownerUserId,
     required this.title,
     required this.description,
     required this.year,
@@ -18,6 +19,7 @@ class Wishlist {
         items = List.unmodifiable(items);
 
   final String id;
+  final String ownerUserId;
   final String title;
   final String description;
   final int year;
@@ -41,6 +43,7 @@ class Wishlist {
 
   Wishlist copyWith({
     String? id,
+    String? ownerUserId,
     String? title,
     String? description,
     int? year,
@@ -54,6 +57,7 @@ class Wishlist {
   }) {
     return Wishlist(
       id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       title: title ?? this.title,
       description: description ?? this.description,
       year: year ?? this.year,

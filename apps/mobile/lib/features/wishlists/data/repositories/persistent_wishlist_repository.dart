@@ -25,19 +25,23 @@ class PersistentWishlistRepository implements WishlistRepository {
 
   static Future<PersistentWishlistRepository> create({
     required WishlistStorage storage,
+    required String ownerUserId,
     WishlistStorageCodec codec = const WishlistStorageCodec(),
   }) async {
     final source = await storage.read();
     final shouldPersistInitialState = source == null || source.trim().isEmpty;
     final initialWishlists = _decodeInitialWishlists(
+      ownerUserId: ownerUserId,
       source: source,
       codec: codec,
     );
 
     final repository = PersistentWishlistRepository._(
       storage: storage,
-      repository:
-          InMemoryWishlistRepository(initialWishlists: initialWishlists),
+      repository: InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: initialWishlists,
+      ),
       codec: codec,
     );
 
@@ -50,17 +54,18 @@ class PersistentWishlistRepository implements WishlistRepository {
   }
 
   static List<Wishlist> _decodeInitialWishlists({
+    required String ownerUserId,
     required String? source,
     required WishlistStorageCodec codec,
   }) {
     if (source == null || source.trim().isEmpty) {
-      return InMemoryWishlistRepository.seedWishlists();
+      return InMemoryWishlistRepository.seedWishlists(ownerUserId: ownerUserId);
     }
 
     try {
       return codec.decode(source);
     } on FormatException {
-      return InMemoryWishlistRepository.seedWishlists();
+      return InMemoryWishlistRepository.seedWishlists(ownerUserId: ownerUserId);
     }
   }
 

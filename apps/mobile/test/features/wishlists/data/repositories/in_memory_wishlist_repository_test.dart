@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 
 void main() {
+  const ownerUserId = 'user-dana';
   final uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     caseSensitive: false,
@@ -10,7 +11,10 @@ void main() {
   group('InMemoryWishlistRepository', () {
     test('creates a wishlist with a year and exposes it through the notifier',
         () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
 
       final createdWishlist = await repository.createWishlist(
         title: 'Reading Corner',
@@ -30,10 +34,17 @@ void main() {
         'https://example.com/cover.jpg',
       );
       expect(repository.watchWishlists().value.first.isShared, isTrue);
+      expect(
+        repository.watchWishlists().value.first.ownerUserId,
+        ownerUserId,
+      );
     });
 
     test('adds items with rank order and updates purchase status', () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
       final wishlist = await repository.createWishlist(
         title: 'Hosting',
         description: 'Ceramics and table details.',
@@ -66,7 +77,10 @@ void main() {
     });
 
     test('preserves purchasedAt when a purchased item is edited', () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
       final wishlist = await repository.createWishlist(
         title: 'Hosting',
         description: 'Ceramics and table details.',
@@ -94,7 +108,10 @@ void main() {
     });
 
     test('preserves purchasedAt when purchased status is set again', () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
       final wishlist = await repository.createWishlist(
         title: 'Hosting',
         description: 'Ceramics and table details.',
@@ -121,7 +138,10 @@ void main() {
     });
 
     test('reprioritizes items by assigning sequential rank values', () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
       final wishlist = await repository.createWishlist(
         title: 'Desk Setup',
         description: 'Work tools and upgrades.',
@@ -149,7 +169,10 @@ void main() {
     });
 
     test('throws when adding an item to a missing wishlist', () {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
 
       expect(
         repository.addWishlistItem(
@@ -161,7 +184,10 @@ void main() {
     });
 
     test('adds and removes collaborators on a shared wishlist', () async {
-      final repository = InMemoryWishlistRepository(initialWishlists: []);
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: ownerUserId,
+        initialWishlists: [],
+      );
       final wishlist = await repository.createWishlist(
         title: 'Weekend Trip',
         description: 'Packing, bookings, and gift ideas.',
@@ -182,6 +208,7 @@ void main() {
       );
 
       expect(sharedWishlist.isShared, isTrue);
+      expect(sharedWishlist.ownerUserId, ownerUserId);
       expect(sharedWishlist.sharedUsers, hasLength(1));
       expect(sharedWishlist.sharedUsers.first.email, 'maya@example.com');
       expect(removed, isTrue);

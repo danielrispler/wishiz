@@ -24,39 +24,41 @@ import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repositor
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  WishlistRepository? repository;
-  Object? bootstrapError;
-
-  try {
-    repository = await _createWishlistRepository();
-  } catch (error) {
-    bootstrapError = error;
-  }
-
   final authRepository = await LocalAuthRepository.create();
   final sharedProductRepository = _createSharedProductRepository();
 
   runApp(
-    repository == null
-        ? BootstrapErrorApp(error: bootstrapError)
-        : WishizApp(
-            wishlistRepository: repository,
-            authRepository: authRepository,
-            sharedProductRepository: sharedProductRepository,
-          ),
+    WishizApp(
+      wishlistRepositoryLoader: _createWishlistRepositoryLoader(),
+      authRepository: authRepository,
+      sharedProductRepository: sharedProductRepository,
+    ),
   );
 }
 
-Future<WishlistRepository> _createWishlistRepository() async {
+typedef WishlistRepositoryLoader = Future<WishlistRepository> Function(
+  AppUser user,
+);
+
+WishlistRepositoryLoader _createWishlistRepositoryLoader() {
   final baseUrl = ApiConfig.baseUrl;
   if (baseUrl != null) {
     final apiClient = WishlistApiClient(baseUri: Uri.parse(baseUrl));
-    return HttpWishlistRepository.create(apiClient: apiClient);
+    return (user) => HttpWishlistRepository.create(
+          apiClient: apiClient,
+          currentUserId: user.id,
+        );
   }
 
-  final storage = await SharedPreferencesWishlistStorage.create();
-  return PersistentWishlistRepository.create(storage: storage);
+  return (user) async {
+    final storage = await SharedPreferencesWishlistStorage.create(
+      userId: user.id,
+    );
+    return PersistentWishlistRepository.create(
+      storage: storage,
+      ownerUserId: user.id,
+    );
+  };
 }
 
 SharedProductRepository _createSharedProductRepository() {
@@ -72,13 +74,13 @@ SharedProductRepository _createSharedProductRepository() {
 class WishizApp extends StatelessWidget {
   const WishizApp({
     super.key,
-    required this.wishlistRepository,
+    required this.wishlistRepositoryLoader,
     required this.authRepository,
     required this.sharedProductRepository,
     this.shareIntakeService = const ShareIntakeService(),
   });
 
-  final WishlistRepository wishlistRepository;
+  final WishlistRepositoryLoader wishlistRepositoryLoader;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -89,7 +91,7 @@ class WishizApp extends StatelessWidget {
       title: 'Wishiz',
       theme: AppTheme.lightTheme,
       home: _RootScreen(
-        wishlistRepository: wishlistRepository,
+        wishlistRepositoryLoader: wishlistRepositoryLoader,
         authRepository: authRepository,
         sharedProductRepository: sharedProductRepository,
         shareIntakeService: shareIntakeService,
@@ -109,60 +111,55 @@ class BootstrapErrorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Wishiz',
-      theme: AppTheme.lightTheme,
-      home: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppConstants.pagePadding),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Could not connect to the wishlist backend.',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.pagePadding),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Could not connect to the wishlist backend.',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: AppConstants.itemGap),
+                  Text(
+                    'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  if (error != null) ...[
                     const SizedBox(height: AppConstants.itemGap),
                     Text(
-                      'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: AppConstants.itemGap),
-                      Text(
-                        formatErrorMessage(
-                          error!,
-                          fallbackMessage: 'Startup failed.',
-                        ),
-                        style: Theme.of(context).textTheme.bodySmall,
+                      formatErrorMessage(
+                        error!,
+                        fallbackMessage: 'Startup failed.',
                       ),
-                    ],
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
         ),
       ),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class _RootScreen extends StatefulWidget {
   const _RootScreen({
-    required this.wishlistRepository,
+    required this.wishlistRepositoryLoader,
     required this.authRepository,
     required this.sharedProductRepository,
     required this.shareIntakeService,
   });
 
-  final WishlistRepository wishlistRepository;
+  final WishlistRepositoryLoader wishlistRepositoryLoader;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -176,11 +173,17 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   String? _pendingWishlistId;
   String? _pendingSharedText;
   StreamSubscription<String>? _sharedTextSubscription;
+  WishlistRepository? _wishlistRepository;
+  Object? _wishlistRepositoryError;
+  String? _wishlistRepositoryUserId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.authRepository.watchCurrentUser().addListener(
+          _handleCurrentUserChanged,
+        );
     _pendingWishlistId = _extractWishlistId(
       WidgetsBinding.instance.platformDispatcher.defaultRouteName,
     );
@@ -189,11 +192,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
         widget.shareIntakeService.watchSharedText().listen(
               _storePendingSharedText,
             );
+    _handleCurrentUserChanged();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.authRepository.watchCurrentUser().removeListener(
+          _handleCurrentUserChanged,
+        );
     _sharedTextSubscription?.cancel();
     super.dispose();
   }
@@ -280,6 +287,50 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _handleCurrentUserChanged() {
+    final user = widget.authRepository.getCurrentUser();
+    if (user == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _wishlistRepository = null;
+        _wishlistRepositoryError = null;
+        _wishlistRepositoryUserId = null;
+      });
+      return;
+    }
+
+    if (_wishlistRepositoryUserId == user.id && _wishlistRepository != null) {
+      return;
+    }
+
+    final requestedUserId = user.id;
+    setState(() {
+      _wishlistRepository = null;
+      _wishlistRepositoryError = null;
+      _wishlistRepositoryUserId = requestedUserId;
+    });
+
+    widget.wishlistRepositoryLoader(user).then((repository) {
+      if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
+        return;
+      }
+
+      setState(() {
+        _wishlistRepository = repository;
+      });
+    }).catchError((error) {
+      if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
+        return;
+      }
+
+      setState(() {
+        _wishlistRepositoryError = error;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AppUser?>(
@@ -307,8 +358,23 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
           );
         }
 
+        if (_wishlistRepositoryError != null) {
+          return BootstrapErrorApp(error: _wishlistRepositoryError);
+        }
+
+        final repository = _wishlistRepository;
+        if (repository == null) {
+          return const Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
         return HomeScreen(
-          repository: widget.wishlistRepository,
+          repository: repository,
           sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
           currentUser: user,

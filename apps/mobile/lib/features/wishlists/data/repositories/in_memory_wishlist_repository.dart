@@ -8,15 +8,21 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 class InMemoryWishlistRepository implements WishlistRepository {
-  InMemoryWishlistRepository({List<Wishlist>? initialWishlists})
+  InMemoryWishlistRepository({
+    required this.ownerUserId,
+    List<Wishlist>? initialWishlists,
+  })
       : _wishlists = ValueNotifier<List<Wishlist>>(
-          List<Wishlist>.unmodifiable(initialWishlists ?? seedWishlists()),
+          List<Wishlist>.unmodifiable(
+            initialWishlists ?? seedWishlists(ownerUserId: ownerUserId),
+          ),
         );
 
   static final InMemoryWishlistRepository instance =
-      InMemoryWishlistRepository();
+      InMemoryWishlistRepository(ownerUserId: 'demo-user');
   static const Uuid _uuid = Uuid();
 
+  final String ownerUserId;
   final ValueNotifier<List<Wishlist>> _wishlists;
 
   @override
@@ -47,6 +53,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
     final now = DateTime.now();
     final wishlist = Wishlist(
       id: _uuid.v4(),
+      ownerUserId: ownerUserId,
       title: title,
       description: description,
       year: year,
@@ -436,12 +443,15 @@ class InMemoryWishlistRepository implements WishlistRepository {
     return currentPurchasedAt;
   }
 
-  static List<Wishlist> seedWishlists() {
+  static List<Wishlist> seedWishlists({
+    required String ownerUserId,
+  }) {
     final now = DateTime.now();
 
     return [
       Wishlist(
         id: 'home-decor',
+        ownerUserId: ownerUserId,
         title: 'Home Decor',
         description:
             'Soft lighting, sculptural objects, and pieces for a calmer living room.',
@@ -487,6 +497,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       ),
       Wishlist(
         id: 'tech-gear',
+        ownerUserId: ownerUserId,
         title: 'Tech Gear 2024',
         description:
             'Portable tools and desk upgrades for daily work and travel.',
@@ -521,6 +532,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       ),
       Wishlist(
         id: 'shared-weekend',
+        ownerUserId: ownerUserId,
         title: 'Weekend Hosting',
         description:
             'A collaborative list for pieces we both want before the next dinner party.',
@@ -571,6 +583,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       ),
       Wishlist(
         id: 'archived-registry',
+        ownerUserId: ownerUserId,
         title: 'Summer Registry',
         description: 'An older collection we have already wrapped up.',
         year: 2025,

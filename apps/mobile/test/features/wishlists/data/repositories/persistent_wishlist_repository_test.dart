@@ -5,15 +5,19 @@ import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_
 import 'package:wishiz/features/wishlists/data/storage/wishlist_storage.dart';
 
 void main() {
+  const ownerUserId = 'user-dana';
+
   group('PersistentWishlistRepository', () {
     test('persists seeded data on first launch', () async {
       final storage = _FakeWishlistStorage();
 
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
 
       expect(repository.getWishlists(), isNotEmpty);
+      expect(repository.getWishlists().first.ownerUserId, ownerUserId);
       expect(storage.value, isNotNull);
       expect(storage.value, contains('Home Decor'));
     });
@@ -22,6 +26,7 @@ void main() {
       final storage = _FakeWishlistStorage();
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
 
       final wishlist = await repository.createWishlist(
@@ -42,10 +47,12 @@ void main() {
 
       final reloadedRepository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
       final reloadedWishlist = reloadedRepository.findById(wishlist.id);
 
       expect(reloadedWishlist, isNotNull);
+      expect(reloadedWishlist?.ownerUserId, ownerUserId);
       expect(reloadedWishlist?.year, 2027);
       expect(reloadedWishlist?.coverImageUrl, 'https://example.com/travel.jpg');
       expect(reloadedWishlist?.items, hasLength(1));
@@ -65,6 +72,7 @@ void main() {
       final storage = _FakeWishlistStorage();
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
 
       final wishlist = await repository.createWishlist(
@@ -82,10 +90,12 @@ void main() {
 
       final reloadedRepository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
       final reloadedWishlist = reloadedRepository.findById(wishlist.id);
 
       expect(reloadedWishlist?.isShared, isTrue);
+      expect(reloadedWishlist?.ownerUserId, ownerUserId);
       expect(reloadedWishlist?.sharedUsers, hasLength(1));
       expect(reloadedWishlist?.sharedUsers.first.name, 'Maya');
       expect(reloadedWishlist?.sharedUsers.first.role, 'Editor');
@@ -96,6 +106,7 @@ void main() {
       final storage = _FakeWishlistStorage();
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
+        ownerUserId: ownerUserId,
       );
 
       final writeCompleter = Completer<void>();

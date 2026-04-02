@@ -69,98 +69,116 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppConstants.pagePadding,
-                AppConstants.pagePadding,
-                AppConstants.pagePadding,
-                120,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.pagePadding,
               ),
-              children: [
-                const SizedBox(height: AppConstants.spacing8),
-                const WishizWordmark(
-                  height: 92,
-                  alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-                const SizedBox(height: AppConstants.spacing4),
-                Text(
-                  'Log in to manage your lists, purchased history, and shared links.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppConstants.spacing8),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateEmail,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.itemGap),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validatePassword,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppConstants.sectionGap),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        colorScheme.primary,
-                        colorScheme.primaryContainer,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.radiusFull),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
+                child: IntrinsicHeight(
+                  child: Center(
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        vertical: AppConstants.spacing4,
+                        vertical: AppConstants.pagePadding,
                       ),
-                    ),
-                    child: Text(
-                      _isSubmitting ? 'Logging In...' : 'Log In',
-                      style: Theme.of(context).textTheme.titleSmall,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: AppConstants.spacing8),
+                            const WishizWordmark(
+                              height: 92,
+                              alignment: Alignment.center,
+                            ),
+                            const SizedBox(height: AppConstants.spacing4),
+                            Text(
+                              'Log in to manage your lists, purchased history, and shared links.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: AppConstants.spacing8),
+                            Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _emailController,
+                                      keyboardType: TextInputType.emailAddress,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Email',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validateEmail,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppConstants.itemGap),
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _passwordController,
+                                      obscureText: true,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Password',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validatePassword,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.sectionGap),
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    colorScheme.primary,
+                                    colorScheme.primaryContainer,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius:
+                                    BorderRadius.circular(AppConstants.radiusFull),
+                              ),
+                              child: ElevatedButton(
+                                onPressed: _isSubmitting ? null : _submit,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppConstants.spacing4,
+                                  ),
+                                ),
+                                child: Text(
+                                  _isSubmitting ? 'Logging In...' : 'Log In',
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.spacing4),
+                            TextButton(
+                              onPressed: widget.onShowSignUp,
+                              child: const Text('Need an account? Sign up'),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: AppConstants.spacing4),
-                TextButton(
-                  onPressed: widget.onShowSignUp,
-                  child: const Text('Need an account? Sign up'),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

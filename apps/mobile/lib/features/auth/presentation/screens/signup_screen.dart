@@ -116,139 +116,157 @@ class _SignupScreenState extends State<SignupScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppConstants.pagePadding,
-                AppConstants.pagePadding,
-                AppConstants.pagePadding,
-                120,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.pagePadding,
               ),
-              children: [
-                const SizedBox(height: AppConstants.spacing8),
-                Text(
-                  'Create Account',
-                  style: Theme.of(context).textTheme.displaySmall,
-                  textAlign: TextAlign.center,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-                const SizedBox(height: AppConstants.spacing4),
-                Text(
-                  'Sign up once and keep using the app offline until the backend arrives.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppConstants.spacing8),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _fullNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Full name',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateRequired,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.itemGap),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _birthdayController,
-                          readOnly: true,
-                          onTap: _selectBirthday,
-                          decoration: const InputDecoration(
-                            labelText: 'Birthday',
-                            suffixIcon: Icon(Icons.calendar_today_outlined),
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateBirthday,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.itemGap),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateEmail,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.itemGap),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validatePassword,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.itemGap),
-                      _buildFieldCard(
-                        context,
-                        child: TextFormField(
-                          controller: _confirmPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Confirm password',
-                            border: InputBorder.none,
-                          ),
-                          validator: _validateConfirmPassword,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppConstants.sectionGap),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        colorScheme.primary,
-                        colorScheme.primaryContainer,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.radiusFull),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
+                child: IntrinsicHeight(
+                  child: Center(
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        vertical: AppConstants.spacing4,
+                        vertical: AppConstants.pagePadding,
                       ),
-                    ),
-                    child: Text(
-                      _isSubmitting ? 'Creating Account...' : 'Sign Up',
-                      style: Theme.of(context).textTheme.titleSmall,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: AppConstants.spacing4),
+                            Text(
+                              'Create Account',
+                              style: Theme.of(context).textTheme.displaySmall,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: AppConstants.spacing4),
+                            Text(
+                              'Sign up once and keep using the app offline until the backend arrives.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: AppConstants.spacing8),
+                            Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _fullNameController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Full name',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validateRequired,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppConstants.itemGap),
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _birthdayController,
+                                      readOnly: true,
+                                      onTap: _selectBirthday,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Birthday',
+                                        suffixIcon: Icon(Icons.calendar_today_outlined),
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validateBirthday,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppConstants.itemGap),
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _emailController,
+                                      keyboardType: TextInputType.emailAddress,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Email',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validateEmail,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppConstants.itemGap),
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _passwordController,
+                                      obscureText: true,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Password',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validatePassword,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppConstants.itemGap),
+                                  _buildFieldCard(
+                                    context,
+                                    child: TextFormField(
+                                      controller: _confirmPasswordController,
+                                      obscureText: true,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Confirm password',
+                                        border: InputBorder.none,
+                                      ),
+                                      validator: _validateConfirmPassword,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.sectionGap),
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    colorScheme.primary,
+                                    colorScheme.primaryContainer,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius:
+                                    BorderRadius.circular(AppConstants.radiusFull),
+                              ),
+                              child: ElevatedButton(
+                                onPressed: _isSubmitting ? null : _submit,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppConstants.spacing4,
+                                  ),
+                                ),
+                                child: Text(
+                                  _isSubmitting ? 'Creating Account...' : 'Sign Up',
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.spacing4),
+                            TextButton(
+                              onPressed: widget.onShowLogin,
+                              child: const Text('Already have an account? Log in'),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: AppConstants.spacing4),
-                TextButton(
-                  onPressed: widget.onShowLogin,
-                  child: const Text('Already have an account? Log in'),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
-import 'package:wishiz/core/navigation/wishiz_app_link.dart';
+import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
@@ -348,21 +348,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _shareWishlist(Wishlist wishlist) async {
-    final link = _buildWishlistLink(wishlist);
     await Share.share(
-      'Open this Wishiz list in the app:\n$link\n\nJoin my Wishiz list "${wishlist.title}" for ${wishlist.year}.',
+      WishizShareText.buildWishlistShareText(wishlist: wishlist),
       subject: wishlist.title,
     );
   }
 
-  String _buildWishlistLink(Wishlist wishlist) {
-    return WishizAppLink.wishlistLink(wishlist.id);
-  }
-
-  Widget _buildHeader({
-    bool showName = false,
-    required int reminderCount,
-  }) {
+  Widget _buildHeader({bool showName = false, required int reminderCount}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Row(
@@ -419,9 +411,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     reminderCount > 9 ? '9+' : '$reminderCount',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: colorScheme.onPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),

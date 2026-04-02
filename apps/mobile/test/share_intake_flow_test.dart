@@ -111,8 +111,8 @@ void main() {
         final sharedProductRepository = FakeSharedProductRepository();
         final shareIntakeService = FakeShareIntakeService(
           pendingResponses: [
-            'Open this Wishiz list in the app:\n'
-                'wishiz://lists/wishlist-1\n\n'
+            'https://wishiz.app/lists/wishlist-1\n\n'
+                'Open this Wishiz list in the app.\n'
                 'Join my Wishiz list "Birthdays" for 2026.',
           ],
         );

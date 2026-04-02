@@ -59,36 +59,15 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun extractSharedText(intent: Intent?): String? {
-        if (intent == null || intent.action != Intent.ACTION_SEND) {
+        if (intent == null) {
             return null
         }
 
-        val pieces = listOfNotNull(
-            intent.getStringExtra(Intent.EXTRA_SUBJECT)?.trim(),
-            intent.getStringExtra(Intent.EXTRA_TEXT)?.trim(),
-        ).filter { it.isNotEmpty() }
-
-        if (pieces.isEmpty()) {
-            return null
-        }
-
-        return normalizeSharedText(pieces)
-    }
-
-    private fun normalizeSharedText(pieces: List<String>): String? {
-        if (pieces.isEmpty()) {
-            return null
-        }
-
-        val lines = linkedSetOf<String>()
-        for (piece in pieces) {
-            piece
-                .split(Regex("\\r?\\n"))
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .forEach { lines.add(it) }
-        }
-
-        return if (lines.isEmpty()) null else lines.joinToString(separator = "\n")
+        return WishizIncomingLinkParser.extractPendingValue(
+            action = intent.action,
+            dataString = intent.dataString,
+            subject = intent.getStringExtra(Intent.EXTRA_SUBJECT),
+            text = intent.getStringExtra(Intent.EXTRA_TEXT),
+        )
     }
 }

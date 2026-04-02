@@ -16,10 +16,7 @@ import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
 import 'package:wishiz/features/wishlists/data/api/shared_product_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/api_shared_product_repository.dart';
-import 'package:wishiz/features/wishlists/data/repositories/http_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
-import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_repository.dart';
-import 'package:wishiz/features/wishlists/data/storage/shared_preferences_wishlist_storage.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -42,33 +39,17 @@ typedef WishlistRepositoryLoader =
 
 WishlistRepositoryLoader _createWishlistRepositoryLoader() {
   final baseUrl = ApiConfig.baseUrl;
-  if (baseUrl != null) {
-    final apiClient = WishlistApiClient(baseUri: Uri.parse(baseUrl));
-    return (user) => HttpWishlistRepository.create(
-      apiClient: apiClient,
-      currentUserId: user.id,
-    );
-  }
-
-  return (user) async {
-    final storage = await SharedPreferencesWishlistStorage.create(
-      userId: user.id,
-    );
-    return PersistentWishlistRepository.create(
-      storage: storage,
-      ownerUserId: user.id,
-    );
-  };
+  final apiClient = WishlistApiClient(baseUri: Uri.parse(baseUrl));
+  return (user) => HttpWishlistRepository.create(
+    apiClient: apiClient,
+    currentUserId: user.id,
+  );
 }
 
 SharedProductRepository _createSharedProductRepository() {
   final baseUrl = ApiConfig.baseUrl;
-  if (baseUrl != null) {
-    final apiClient = SharedProductApiClient(baseUri: Uri.parse(baseUrl));
-    return ApiSharedProductRepository(apiClient: apiClient);
-  }
-
-  return HttpSharedProductRepository();
+  final apiClient = SharedProductApiClient(baseUri: Uri.parse(baseUrl));
+  return ApiSharedProductRepository(apiClient: apiClient);
 }
 
 class WishizApp extends StatelessWidget {

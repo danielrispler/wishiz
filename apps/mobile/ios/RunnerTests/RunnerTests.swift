@@ -37,6 +37,33 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testNormalizerPreservesHttpsWishizListLinkPayload() {
+    let payload = WishizSharePayloadNormalizer.normalize(
+      rawSegments: ["https://wishiz.app/lists/wishlist-42", "Open this list in Wishiz"]
+    )
+
+    XCTAssertEqual(
+      payload,
+      "Open this list in Wishiz\nhttps://wishiz.app/lists/wishlist-42"
+    )
+  }
+
+  func testIncomingLinkHandlerStoresCustomSchemeLinks() {
+    let store = makeStore()
+    let handler = WishizIncomingLinkHandler(storeProvider: { store })
+
+    XCTAssertTrue(handler.handle(url: URL(string: "wishiz://lists/wishlist-42")))
+    XCTAssertEqual(store.consumePendingSharedText(), "wishiz://lists/wishlist-42")
+  }
+
+  func testIncomingLinkHandlerStoresUniversalLinks() {
+    let store = makeStore()
+    let handler = WishizIncomingLinkHandler(storeProvider: { store })
+
+    XCTAssertTrue(handler.handle(webpageURL: URL(string: "https://wishiz.app/lists/wishlist-42")))
+    XCTAssertEqual(store.consumePendingSharedText(), "https://wishiz.app/lists/wishlist-42")
+  }
+
   func testStoreOverwritesOlderPendingPayload() {
     let store = makeStore()
 

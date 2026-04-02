@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	applinkshttp "github.com/danielrispler/wishiz/apps/api/internal/features/applinks/adapters/http"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
 	scrapefastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
 	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
@@ -44,6 +45,12 @@ func run() error {
 	defer stop()
 
 	mux := http.NewServeMux()
+	applinkshttp.RegisterRoutes(mux, applinkshttp.Options{
+		ShareBaseURL:                 cfg.ShareBaseURL,
+		AndroidPackageName:           "com.example.wishiz",
+		AndroidSHA256CertFingerprint: cfg.AndroidAppLinkSHA256CertFingerprint,
+		IOSAppID:                     "P46VR4C98R.com.wishiz.beta",
+	})
 	healthhttp.RegisterRoutes(mux)
 
 	resolver := net.DefaultResolver

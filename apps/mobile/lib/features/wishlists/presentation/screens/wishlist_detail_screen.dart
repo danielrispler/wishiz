@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
-import 'package:wishiz/core/navigation/wishiz_app_link.dart';
+import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
@@ -1296,26 +1296,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   String _buildWishlistShareText(Wishlist wishlist, AppUser? currentUser) {
-    final appLink = WishizAppLink.wishlistLink(wishlist.id);
-    final lines = <String>[
-      'Open this Wishiz list in the app:',
-      appLink,
-      '',
-      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}.',
-    ];
+    final previewLines = <String>[];
 
     for (final item in wishlist.activeItems.take(5)) {
-      lines.add('- ${item.title}');
+      previewLines.add('- ${item.title}');
       final displayedPriceLabel = _formatPriceLabelForUser(
         item.priceLabel,
         currentUser,
       );
       if (displayedPriceLabel != null) {
-        lines.add('Price: $displayedPriceLabel');
+        previewLines.add('Price: $displayedPriceLabel');
       }
     }
 
-    return lines.join('\n');
+    return WishizShareText.buildWishlistShareText(
+      wishlist: wishlist,
+      previewLines: previewLines,
+    );
   }
 
   String _buildShareText(
@@ -1323,29 +1320,27 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     WishlistItem item,
     AppUser? currentUser,
   ) {
-    final appLink = WishizAppLink.wishlistLink(wishlist.id);
-    final lines = <String>[
-      '${item.title} from ${wishlist.title}',
-      'Rank: #${item.rank}',
-      'Open this list in Wishiz:',
-      appLink,
-    ];
+    final extraLines = <String>[];
 
     final displayedPriceLabel = _formatPriceLabelForUser(
       item.priceLabel,
       currentUser,
     );
     if (displayedPriceLabel != null) {
-      lines.add('Price: $displayedPriceLabel');
+      extraLines.add('Price: $displayedPriceLabel');
     }
     if (item.notes != null && item.notes!.isNotEmpty) {
-      lines.add(item.notes!);
+      extraLines.add(item.notes!);
     }
     if (item.productUrl != null && item.productUrl!.isNotEmpty) {
-      lines.add(item.productUrl!);
+      extraLines.add(item.productUrl!);
     }
 
-    return lines.join('\n');
+    return WishizShareText.buildWishlistItemShareText(
+      wishlist: wishlist,
+      item: item,
+      extraLines: extraLines,
+    );
   }
 
   String? _formatPriceLabelForUser(String? priceLabel, AppUser? currentUser) {

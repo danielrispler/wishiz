@@ -6,11 +6,13 @@ import (
 )
 
 type Config struct {
-	AppEnv          string
-	HTTPAddr        string
-	DatabaseURL     string
-	RunDBMigrations bool
-	ChromiumPath    string
+	AppEnv                              string
+	HTTPAddr                            string
+	DatabaseURL                         string
+	RunDBMigrations                     bool
+	ChromiumPath                        string
+	ShareBaseURL                        string
+	AndroidAppLinkSHA256CertFingerprint string
 }
 
 func Load() (Config, error) {
@@ -20,6 +22,11 @@ func Load() (Config, error) {
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
 		RunDBMigrations: getEnvBool("RUN_DB_MIGRATIONS", false),
 		ChromiumPath:    getEnv("CHROMIUM_PATH", ""),
+		ShareBaseURL:    getEnv("SHARE_BASE_URL", "https://wishiz.app"),
+		AndroidAppLinkSHA256CertFingerprint: getEnv(
+			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
+			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",
+		),
 	}
 
 	return cfg, nil

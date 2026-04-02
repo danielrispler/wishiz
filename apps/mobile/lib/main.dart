@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/config/api_config.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/navigation/wishiz_app_link.dart';
 import 'package:wishiz/core/services/share_intake_service.dart';
 import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
@@ -36,18 +37,17 @@ Future<void> main() async {
   );
 }
 
-typedef WishlistRepositoryLoader = Future<WishlistRepository> Function(
-  AppUser user,
-);
+typedef WishlistRepositoryLoader =
+    Future<WishlistRepository> Function(AppUser user);
 
 WishlistRepositoryLoader _createWishlistRepositoryLoader() {
   final baseUrl = ApiConfig.baseUrl;
   if (baseUrl != null) {
     final apiClient = WishlistApiClient(baseUri: Uri.parse(baseUrl));
     return (user) => HttpWishlistRepository.create(
-          apiClient: apiClient,
-          currentUserId: user.id,
-        );
+      apiClient: apiClient,
+      currentUserId: user.id,
+    );
   }
 
   return (user) async {
@@ -102,10 +102,7 @@ class WishizApp extends StatelessWidget {
 }
 
 class BootstrapErrorApp extends StatelessWidget {
-  const BootstrapErrorApp({
-    super.key,
-    this.error,
-  });
+  const BootstrapErrorApp({super.key, this.error});
 
   final Object? error;
 
@@ -182,16 +179,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.authRepository.watchCurrentUser().addListener(
-          _handleCurrentUserChanged,
-        );
+      _handleCurrentUserChanged,
+    );
     _pendingWishlistId = _extractWishlistId(
       WidgetsBinding.instance.platformDispatcher.defaultRouteName,
     );
     _consumePendingSharedText();
-    _sharedTextSubscription =
-        widget.shareIntakeService.watchSharedText().listen(
-              _storePendingSharedText,
-            );
+    _sharedTextSubscription = widget.shareIntakeService
+        .watchSharedText()
+        .listen(_storePendingSharedText);
     _handleCurrentUserChanged();
   }
 
@@ -199,8 +195,8 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.authRepository.watchCurrentUser().removeListener(
-          _handleCurrentUserChanged,
-        );
+      _handleCurrentUserChanged,
+    );
     _sharedTextSubscription?.cancel();
     super.dispose();
   }
@@ -220,7 +216,8 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
   @override
   Future<bool> didPushRouteInformation(
-      RouteInformation routeInformation) async {
+    RouteInformation routeInformation,
+  ) async {
     final location = routeInformation.uri.toString();
     final wishlistId = _extractWishlistId(location);
     if (wishlistId == null) {
@@ -243,32 +240,12 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   }
 
   String? _extractWishlistId(String? route) {
-    final value = route?.trim() ?? '';
-    if (value.isEmpty || value == Navigator.defaultRouteName) {
-      return null;
-    }
-
-    final uri = Uri.tryParse(value);
-    if (uri == null) {
-      return null;
-    }
-
-    if (uri.scheme == 'wishiz' &&
-        uri.host == 'lists' &&
-        uri.pathSegments.isNotEmpty) {
-      return uri.pathSegments.first;
-    }
-
-    if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'lists') {
-      return uri.pathSegments[1];
-    }
-
-    return null;
+    return WishizAppLink.extractWishlistId(route);
   }
 
   Future<void> _consumePendingSharedText() async {
-    final sharedText =
-        await widget.shareIntakeService.consumePendingSharedText();
+    final sharedText = await widget.shareIntakeService
+        .consumePendingSharedText();
     if (!mounted || sharedText == null) {
       return;
     }
@@ -282,7 +259,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       return;
     }
 
+    final wishlistId = _extractWishlistId(normalized);
+
     setState(() {
+      if (wishlistId != null) {
+        _pendingWishlistId = wishlistId;
+        _pendingSharedText = null;
+        return;
+      }
+
       _pendingSharedText = normalized;
     });
   }
@@ -312,23 +297,26 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       _wishlistRepositoryUserId = requestedUserId;
     });
 
-    widget.wishlistRepositoryLoader(user).then((repository) {
-      if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
-        return;
-      }
+    widget
+        .wishlistRepositoryLoader(user)
+        .then((repository) {
+          if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
+            return;
+          }
 
-      setState(() {
-        _wishlistRepository = repository;
-      });
-    }).catchError((error) {
-      if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
-        return;
-      }
+          setState(() {
+            _wishlistRepository = repository;
+          });
+        })
+        .catchError((error) {
+          if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
+            return;
+          }
 
-      setState(() {
-        _wishlistRepositoryError = error;
-      });
-    });
+          setState(() {
+            _wishlistRepositoryError = error;
+          });
+        });
   }
 
   @override
@@ -365,11 +353,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
         final repository = _wishlistRepository;
         if (repository == null) {
           return const Scaffold(
-            body: SafeArea(
-              child: Center(
-                child: CircularProgressIndicator(),
-              ),
-            ),
+            body: SafeArea(child: Center(child: CircularProgressIndicator())),
           );
         }
 

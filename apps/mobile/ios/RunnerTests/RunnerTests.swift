@@ -26,6 +26,17 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(payload)
   }
 
+  func testNormalizerPreservesWishizListLinkPayload() {
+    let payload = WishizSharePayloadNormalizer.normalize(
+      rawSegments: ["Open this list in Wishiz", "wishiz://lists/wishlist-42"]
+    )
+
+    XCTAssertEqual(
+      payload,
+      "Open this list in Wishiz\nwishiz://lists/wishlist-42"
+    )
+  }
+
   func testStoreOverwritesOlderPendingPayload() {
     let store = makeStore()
 

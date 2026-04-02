@@ -35,15 +35,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        sharedProductRepository.requestedSharedTexts,
-        ['https://example.com/products/mug'],
-      );
+      expect(sharedProductRepository.requestedSharedTexts, [
+        'https://example.com/products/mug',
+      ]);
       expect(find.text('Imported mug'), findsOneWidget);
     });
 
-    testWidgets('imports a newly pending link after the app resumes',
-        (tester) async {
+    testWidgets('imports a newly pending link after the app resumes', (
+      tester,
+    ) async {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
       final sharedProductRepository = FakeSharedProductRepository();
       final shareIntakeService = FakeShareIntakeService(
@@ -64,22 +64,21 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
-      expect(
-        sharedProductRepository.requestedSharedTexts,
-        ['https://example.com/products/chair'],
-      );
+      expect(sharedProductRepository.requestedSharedTexts, [
+        'https://example.com/products/chair',
+      ]);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
-      expect(
-        sharedProductRepository.requestedSharedTexts,
-        ['https://example.com/products/chair'],
-      );
+      expect(sharedProductRepository.requestedSharedTexts, [
+        'https://example.com/products/chair',
+      ]);
     });
 
-    testWidgets('preserves a pending shared link until the user logs in',
-        (tester) async {
+    testWidgets('preserves a pending shared link until the user logs in', (
+      tester,
+    ) async {
       final authRepository = FakeAuthRepository();
       final sharedProductRepository = FakeSharedProductRepository();
       final shareIntakeService = FakeShareIntakeService(
@@ -100,11 +99,38 @@ void main() {
       authRepository.setCurrentUser(sampleUser);
       await tester.pumpAndSettle();
 
-      expect(
-        sharedProductRepository.requestedSharedTexts,
-        ['https://example.com/products/lamp'],
-      );
+      expect(sharedProductRepository.requestedSharedTexts, [
+        'https://example.com/products/lamp',
+      ]);
     });
+
+    testWidgets(
+      'opens a shared wishlist link instead of importing it as a product',
+      (tester) async {
+        final authRepository = FakeAuthRepository(currentUser: sampleUser);
+        final sharedProductRepository = FakeSharedProductRepository();
+        final shareIntakeService = FakeShareIntakeService(
+          pendingResponses: [
+            'Open this Wishiz list in the app:\n'
+                'wishiz://lists/wishlist-1\n\n'
+                'Join my Wishiz list "Birthdays" for 2026.',
+          ],
+        );
+
+        await tester.pumpWidget(
+          buildTestApp(
+            authRepository: authRepository,
+            sharedProductRepository: sharedProductRepository,
+            shareIntakeService: shareIntakeService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+        expect(find.text('List Details'), findsOneWidget);
+        expect(find.text('Birthdays'), findsOneWidget);
+      },
+    );
 
     testWidgets('switches to the signed in user repository', (tester) async {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
@@ -152,7 +178,8 @@ void main() {
           authRepository: authRepository,
           sharedProductRepository: sharedProductRepository,
           shareIntakeService: shareIntakeService,
-          wishlistRepositoryLoader: (user) async => repositoriesByUser[user.id]!,
+          wishlistRepositoryLoader: (user) async =>
+              repositoriesByUser[user.id]!,
         ),
       );
       await tester.pumpAndSettle();
@@ -201,7 +228,7 @@ Widget buildTestApp({
 
 class FakeShareIntakeService extends ShareIntakeService {
   FakeShareIntakeService({List<String?> pendingResponses = const []})
-      : _pendingResponses = Queue<String?>.from(pendingResponses);
+    : _pendingResponses = Queue<String?>.from(pendingResponses);
 
   final Queue<String?> _pendingResponses;
   final StreamController<String> _controller =
@@ -224,7 +251,8 @@ class FakeSharedProductRepository implements SharedProductRepository {
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-      String sharedText) async {
+    String sharedText,
+  ) async {
     requestedSharedTexts.add(sharedText);
     return SharedProductDraft(
       productUrl: sharedText,
@@ -239,7 +267,7 @@ class FakeSharedProductRepository implements SharedProductRepository {
 
 class FakeAuthRepository implements AuthRepository {
   FakeAuthRepository({AppUser? currentUser})
-      : _currentUser = ValueNotifier<AppUser?>(currentUser);
+    : _currentUser = ValueNotifier<AppUser?>(currentUser);
 
   final ValueNotifier<AppUser?> _currentUser;
 

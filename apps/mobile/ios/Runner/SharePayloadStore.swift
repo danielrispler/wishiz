@@ -7,7 +7,7 @@ enum WishizSharePayloadConfiguration {
 
 struct WishizSharePayloadNormalizer {
   private static let urlPattern = try! NSRegularExpression(
-    pattern: #"https?://[^\s]+"#,
+    pattern: #"(?:https?://|wishiz://)[^\s]+"#,
     options: [.caseInsensitive]
   )
 
@@ -58,9 +58,15 @@ struct WishizSharePayloadNormalizer {
     }
 
     let candidate = String(text[swiftRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let url = URL(string: candidate), let scheme = url.scheme?.lowercased(),
-      (scheme == "http" || scheme == "https"), url.host?.isEmpty == false
-    else {
+    guard let url = URL(string: candidate), let scheme = url.scheme?.lowercased() else {
+      return nil
+    }
+
+    if scheme == "wishiz", url.host?.lowercased() == "lists", url.path.isEmpty == false {
+      return candidate
+    }
+
+    guard (scheme == "http" || scheme == "https"), url.host?.isEmpty == false else {
       return nil
     }
 

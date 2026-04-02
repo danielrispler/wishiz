@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/navigation/wishiz_app_link.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
@@ -1295,8 +1296,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   String _buildWishlistShareText(Wishlist wishlist, AppUser? currentUser) {
+    final appLink = WishizAppLink.wishlistLink(wishlist.id);
     final lines = <String>[
-      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: wishiz://lists/${wishlist.id}',
+      'Open this Wishiz list in the app:',
+      appLink,
+      '',
+      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}.',
     ];
 
     for (final item in wishlist.activeItems.take(5)) {
@@ -1318,9 +1323,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     WishlistItem item,
     AppUser? currentUser,
   ) {
+    final appLink = WishizAppLink.wishlistLink(wishlist.id);
     final lines = <String>[
       '${item.title} from ${wishlist.title}',
       'Rank: #${item.rank}',
+      'Open this list in Wishiz:',
+      appLink,
     ];
 
     final displayedPriceLabel = _formatPriceLabelForUser(

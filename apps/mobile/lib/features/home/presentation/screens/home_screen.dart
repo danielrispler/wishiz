@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/navigation/wishiz_app_link.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
@@ -191,10 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      await _openSharedProductEditor(
-        wishlistId: wishlistId,
-        draft: draft,
-      );
+      await _openSharedProductEditor(wishlistId: wishlistId, draft: draft);
       return true;
     } finally {
       if (mounted) {
@@ -206,7 +204,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<SharedProductDraft?> _resolveSharedProductDraft(
-      String sharedText) async {
+    String sharedText,
+  ) async {
     try {
       return await widget.sharedProductRepository.createDraftFromSharedText(
         sharedText,
@@ -290,9 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openAccountScreen() {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => AccountScreen(
-          authRepository: widget.authRepository,
-        ),
+        builder: (_) => AccountScreen(authRepository: widget.authRepository),
       ),
     );
   }
@@ -300,9 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showFeedback(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _confirmDeleteWishlist(Wishlist wishlist) async {
@@ -349,13 +344,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _shareWishlist(Wishlist wishlist) async {
     final link = _buildWishlistLink(wishlist);
     await Share.share(
-      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}: $link',
+      'Open this Wishiz list in the app:\n$link\n\nJoin my Wishiz list "${wishlist.title}" for ${wishlist.year}.',
       subject: wishlist.title,
     );
   }
 
   String _buildWishlistLink(Wishlist wishlist) {
-    return 'wishiz://lists/${wishlist.id}';
+    return WishizAppLink.wishlistLink(wishlist.id);
   }
 
   Widget _buildHeader({bool showName = false}) {
@@ -438,10 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                colorScheme.primary,
-                colorScheme.primaryContainer,
-              ],
+              colors: [colorScheme.primary, colorScheme.primaryContainer],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -487,10 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: AppConstants.sectionGap),
           _buildTopCreateSection(),
           const SizedBox(height: AppConstants.sectionGap),
-          Text(
-            'My Lists',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          Text('My Lists', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
             'Search by name, narrow by year, and open only the active items you still want.',
@@ -545,15 +534,9 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildHeader(),
           const SizedBox(height: AppConstants.sectionGap),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          Text(description, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: AppConstants.spacing4),
           _buildSearchAndFilters(
             hintText: 'Search $title',
@@ -630,10 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildHeader(),
           const SizedBox(height: AppConstants.sectionGap),
-          Text(
-            'Reminders',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          Text('Reminders', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
             widget.currentUser.notificationsEnabled
@@ -849,10 +829,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text('All years'),
               ),
               ...availableYears.map(
-                (year) => DropdownMenuItem(
-                  value: year,
-                  child: Text(year.toString()),
-                ),
+                (year) =>
+                    DropdownMenuItem(value: year, child: Text(year.toString())),
               ),
             ],
             onChanged: (value) {
@@ -869,13 +847,15 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Wishlist> _filterWishlists(List<Wishlist> wishlists) {
     final query = _searchQuery.toLowerCase();
 
-    return wishlists.where((wishlist) {
-      final matchesQuery =
-          query.isEmpty || wishlist.title.toLowerCase().contains(query);
-      final matchesYear =
-          _selectedYear == _allYears || wishlist.year == _selectedYear;
-      return matchesQuery && matchesYear;
-    }).toList(growable: false);
+    return wishlists
+        .where((wishlist) {
+          final matchesQuery =
+              query.isEmpty || wishlist.title.toLowerCase().contains(query);
+          final matchesYear =
+              _selectedYear == _allYears || wishlist.year == _selectedYear;
+          return matchesQuery && matchesYear;
+        })
+        .toList(growable: false);
   }
 
   List<_ReminderEntry> _buildReminderEntries(List<Wishlist> wishlists) {
@@ -918,14 +898,18 @@ class _HomeScreenState extends State<HomeScreen> {
   List<_ReminderEntry> _filterReminders(List<_ReminderEntry> reminders) {
     final query = _searchQuery.toLowerCase();
 
-    return reminders.where((reminder) {
-      final matchesQuery = query.isEmpty ||
-          reminder.item.title.toLowerCase().contains(query) ||
-          reminder.wishlist.title.toLowerCase().contains(query);
-      final matchesYear =
-          _selectedYear == _allYears || reminder.wishlist.year == _selectedYear;
-      return matchesQuery && matchesYear;
-    }).toList(growable: false);
+    return reminders
+        .where((reminder) {
+          final matchesQuery =
+              query.isEmpty ||
+              reminder.item.title.toLowerCase().contains(query) ||
+              reminder.wishlist.title.toLowerCase().contains(query);
+          final matchesYear =
+              _selectedYear == _allYears ||
+              reminder.wishlist.year == _selectedYear;
+          return matchesQuery && matchesYear;
+        })
+        .toList(growable: false);
   }
 
   void _scheduleReminderPrompt(List<_ReminderEntry> reminders) {
@@ -977,9 +961,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Wishlist wishlist, {
     required bool showPurchasedOnly,
   }) {
-    final segments = <String>[
-      wishlist.year.toString(),
-    ];
+    final segments = <String>[wishlist.year.toString()];
 
     if (showPurchasedOnly) {
       segments.add('${wishlist.purchasedItemCount} purchased');
@@ -1003,15 +985,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppConstants.spacing2),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          Text(description, style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
     );

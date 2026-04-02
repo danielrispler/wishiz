@@ -140,10 +140,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                         if (shouldDelete == true) {
                           try {
                             await widget.repository.deleteWishlist(wishlist.id);
-                            _showFeedback(context, 'List deleted.');
-                            if (context.mounted) {
-                              Navigator.of(context).pop();
+                            if (!context.mounted) {
+                              return;
                             }
+                            _showFeedback(context, 'List deleted.');
+                            Navigator.of(context).pop();
                           } catch (error) {
                             if (!context.mounted) {
                               return;
@@ -462,7 +463,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             vertical: 2,
           ),
           child: DropdownButtonFormField<String>(
-            value: _selectedSort,
+            initialValue: _selectedSort,
             decoration: const InputDecoration(
               border: InputBorder.none,
               labelText: 'Order',
@@ -653,6 +654,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     required int oldIndex,
     required int newIndex,
   }) async {
+    final messenger = ScaffoldMessenger.of(context);
+
     if (newIndex > oldIndex) {
       newIndex -= 1;
     }
@@ -667,9 +670,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         orderedItemIds:
             nextItems.map((item) => item.id).toList(growable: false),
       );
-      _showFeedback(context, 'Item rank updated.');
-    } catch (error) {
       if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Item rank updated.')),
+        );
+    } catch (error) {
+      if (!context.mounted) {
         return;
       }
       _showError(
@@ -722,6 +732,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 itemId: item.id,
                 status: 'Purchased',
               );
+              if (!context.mounted) {
+                return false;
+              }
               _showFeedback(context, 'Moved to Past Lists.');
             } catch (error) {
               if (!context.mounted) {
@@ -761,7 +774,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     ReorderableDragStartListener(
                       index: dragIndex,
                       child: Padding(
-                        padding: const EdgeInsets.only(right: AppConstants.spacing2),
+                        padding:
+                            const EdgeInsets.only(right: AppConstants.spacing2),
                         child: Icon(
                           Icons.drag_indicator,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -799,6 +813,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                             itemId: item.id,
                             status: 'Saved',
                           );
+                          if (!context.mounted) {
+                            return;
+                          }
                           _showFeedback(
                             context,
                             'Moved back to active items.',
@@ -1012,7 +1029,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     ),
                     const SizedBox(height: AppConstants.spacing3),
                     DropdownButtonFormField<String>(
-                      value: role,
+                      initialValue: role,
                       decoration: const InputDecoration(labelText: 'Role'),
                       items: const [
                         DropdownMenuItem(
@@ -1078,6 +1095,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       );
 
       final nextCount = updatedWishlist?.sharedUsers.length ?? previousCount;
+      if (!context.mounted) {
+        return;
+      }
       _showFeedback(
         context,
         nextCount > previousCount
@@ -1107,7 +1127,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       );
 
       if (wasRemoved) {
-        _showFeedback(context, '${user.name} removed.');
+        if (!mounted) {
+          return;
+        }
+        _showFeedback(this.context, '${user.name} removed.');
       }
     } catch (error) {
       if (!mounted) {
@@ -1149,6 +1172,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           wishlistId: wishlist.id,
           itemId: item.id,
         );
+        if (!context.mounted) {
+          return false;
+        }
         _showFeedback(context, 'Item deleted.');
         return true;
       } catch (error) {
@@ -1234,8 +1260,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       return;
     }
 
+    final messenger = ScaffoldMessenger.of(context);
     await Clipboard.setData(ClipboardData(text: productUrl));
-    _showFeedback(context, 'Product link copied.');
+    if (!mounted) {
+      return;
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('Product link copied.')),
+      );
   }
 
   Future<void> _openProductLink(WishlistItem item) async {

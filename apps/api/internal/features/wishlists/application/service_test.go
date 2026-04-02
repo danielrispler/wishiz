@@ -11,6 +11,7 @@ import (
 )
 
 func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *testing.T) {
+	t.Parallel()
 	repo := newFakeRepository()
 	cover := "https://example.com/original.jpg"
 	repo.wishlists[wishlistID1] = domain.Wishlist{
@@ -26,7 +27,7 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 
 	service := NewService(repo)
 
-	wishlist, err := service.Patch(context.Background(), wishlistID1, PatchWishlistInput{
+	wishlist, err := service.Patch(context.Background(), wishlistID1, &PatchWishlistInput{
 		Title:         PatchField[string]{Set: true, Value: "  Updated Title  "},
 		CoverImageURL: PatchField[*string]{Set: true, Value: nil},
 		IsShared:      PatchField[bool]{Set: true, Value: true},
@@ -50,6 +51,7 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 }
 
 func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
+	t.Parallel()
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
 		ID:          wishlistID1,
@@ -74,7 +76,7 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
 
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusPurchased},
 	})
 	if err != nil {
@@ -87,7 +89,7 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 		t.Fatalf("expected purchasedAt to match service clock, got %v", item.PurchasedAt)
 	}
 
-	item, err = service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+	item, err = service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusSaved},
 	})
 	if err != nil {
@@ -99,6 +101,7 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 }
 
 func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing.T) {
+	t.Parallel()
 	originalPurchasedAt := fixedTime.Add(-6 * time.Hour)
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
@@ -125,7 +128,7 @@ func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
 
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusPurchased},
 	})
 	if err != nil {
@@ -140,6 +143,7 @@ func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing
 }
 
 func TestServicePatchItemPreservesPurchasedAtForUnrelatedPurchasedEdit(t *testing.T) {
+	t.Parallel()
 	originalPurchasedAt := fixedTime.Add(-12 * time.Hour)
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
@@ -166,7 +170,7 @@ func TestServicePatchItemPreservesPurchasedAtForUnrelatedPurchasedEdit(t *testin
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
 
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
 		Title: PatchField[string]{Set: true, Value: "Updated plates"},
 	})
 	if err != nil {
@@ -184,6 +188,7 @@ func TestServicePatchItemPreservesPurchasedAtForUnrelatedPurchasedEdit(t *testin
 }
 
 func TestServiceReorderItemsUsesFlutterSubsetOrderingRules(t *testing.T) {
+	t.Parallel()
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
 		ID:          wishlistID1,
@@ -221,6 +226,7 @@ func TestServiceReorderItemsUsesFlutterSubsetOrderingRules(t *testing.T) {
 }
 
 func TestServicePatchItemReturnsItemNotFound(t *testing.T) {
+	t.Parallel()
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
 		ID:          wishlistID1,
@@ -234,7 +240,7 @@ func TestServicePatchItemReturnsItemNotFound(t *testing.T) {
 
 	service := NewService(repo)
 
-	_, err := service.PatchItem(context.Background(), wishlistID1, itemID1, PatchItemInput{
+	_, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
 		Title: PatchField[string]{Set: true, Value: "Bag"},
 	})
 	if err == nil {
@@ -251,9 +257,10 @@ func TestServicePatchItemReturnsItemNotFound(t *testing.T) {
 }
 
 func TestServiceCreateValidatesYear(t *testing.T) {
+	t.Parallel()
 	service := NewService(newFakeRepository())
 
-	_, err := service.Create(context.Background(), CreateWishlistInput{
+	_, err := service.Create(context.Background(), &CreateWishlistInput{
 		Title: "Reading Corner",
 		Year:  1999,
 	})
@@ -267,6 +274,117 @@ func TestServiceCreateValidatesYear(t *testing.T) {
 	}
 	if appErr.Code != ErrorCodeValidation || appErr.Field != "year" {
 		t.Fatalf("expected year validation error, got %+v", appErr)
+	}
+}
+
+func TestServiceCreateRejectsNilInput(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRepository())
+
+	_, err := service.Create(context.Background(), nil)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	appErr, ok := AsError(err)
+	if !ok {
+		t.Fatalf("expected application error, got %T", err)
+	}
+	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
+		t.Fatalf("expected input validation error, got %+v", appErr)
+	}
+}
+
+func TestServicePatchRejectsNilInput(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		Title:     "Travel",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+	}
+
+	service := NewService(repo)
+
+	_, err := service.Patch(context.Background(), wishlistID1, nil)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	appErr, ok := AsError(err)
+	if !ok {
+		t.Fatalf("expected application error, got %T", err)
+	}
+	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
+		t.Fatalf("expected input validation error, got %+v", appErr)
+	}
+}
+
+func TestServiceAddItemRejectsNilInput(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		Title:     "Travel",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Items:     []domain.WishlistItem{},
+	}
+
+	service := NewService(repo)
+
+	_, err := service.AddItem(context.Background(), wishlistID1, nil)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	appErr, ok := AsError(err)
+	if !ok {
+		t.Fatalf("expected application error, got %T", err)
+	}
+	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
+		t.Fatalf("expected input validation error, got %+v", appErr)
+	}
+}
+
+func TestServicePatchItemRejectsNilInput(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		Title:     "Travel",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Items: []domain.WishlistItem{
+			{
+				ID:        itemID1,
+				Title:     "Bag",
+				Rank:      1,
+				Priority:  domain.ItemPriorityMedium,
+				Status:    domain.ItemStatusSaved,
+				CreatedAt: fixedTime,
+				UpdatedAt: fixedTime,
+			},
+		},
+	}
+
+	service := NewService(repo)
+
+	_, err := service.PatchItem(context.Background(), wishlistID1, itemID1, nil)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	appErr, ok := AsError(err)
+	if !ok {
+		t.Fatalf("expected application error, got %T", err)
+	}
+	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
+		t.Fatalf("expected input validation error, got %+v", appErr)
 	}
 }
 

@@ -274,7 +274,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     context,
                     title: 'Pricing',
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCurrencyCode,
+                      initialValue: _selectedCurrencyCode,
                       decoration: const InputDecoration(
                         labelText: 'Default currency for item prices',
                         border: InputBorder.none,

@@ -29,5 +29,17 @@ services:
     ports:
       - "8080:8080"
 
+  api-dev:
+    image: golang:1.23-alpine
+    working_dir: /workspace
+    volumes:
+      - ./apps/api:/workspace
+
+  api-lint:
+    image: golangci/golangci-lint:v1.64.8
+    working_dir: /workspace
+    volumes:
+      - ./apps/api:/workspace
+
 volumes:
   postgres_data:

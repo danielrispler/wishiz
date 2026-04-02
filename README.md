@@ -22,6 +22,14 @@ flutter test
 ### API
 
 ```bash
+cd apps/api
+make lint
+make test
+```
+
+Or run the API with Docker:
+
+```bash
 docker compose up --build
 curl http://localhost:8080/health
 ```

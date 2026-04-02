@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/config/api_config.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/services/share_intake_service.dart';
 import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/data/repositories/local_auth_repository.dart';
@@ -10,9 +13,11 @@ import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
 import 'package:wishiz/features/auth/presentation/screens/signup_screen.dart';
 import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
+import 'package:wishiz/features/wishlists/data/repositories/http_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/data/storage/shared_preferences_wishlist_storage.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 Future<void> main() async {
@@ -28,6 +33,7 @@ Future<void> main() async {
   }
 
   final authRepository = await LocalAuthRepository.create();
+  final sharedProductRepository = HttpSharedProductRepository();
 
   runApp(
     repository == null
@@ -35,6 +41,7 @@ Future<void> main() async {
         : WishizApp(
             wishlistRepository: repository,
             authRepository: authRepository,
+            sharedProductRepository: sharedProductRepository,
           ),
   );
 }
@@ -55,10 +62,12 @@ class WishizApp extends StatelessWidget {
     super.key,
     required this.wishlistRepository,
     required this.authRepository,
+    required this.sharedProductRepository,
   });
 
   final WishlistRepository wishlistRepository;
   final AuthRepository authRepository;
+  final SharedProductRepository sharedProductRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +77,7 @@ class WishizApp extends StatelessWidget {
       home: _RootScreen(
         wishlistRepository: wishlistRepository,
         authRepository: authRepository,
+        sharedProductRepository: sharedProductRepository,
       ),
       debugShowCheckedModeBanner: false,
     );
@@ -133,18 +143,24 @@ class _RootScreen extends StatefulWidget {
   const _RootScreen({
     required this.wishlistRepository,
     required this.authRepository,
+    required this.sharedProductRepository,
   });
 
   final WishlistRepository wishlistRepository;
   final AuthRepository authRepository;
+  final SharedProductRepository sharedProductRepository;
 
   @override
   State<_RootScreen> createState() => _RootScreenState();
 }
 
 class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
+  static const ShareIntakeService _shareIntakeService = ShareIntakeService();
+
   bool _showSignup = false;
   String? _pendingWishlistId;
+  String? _pendingSharedText;
+  StreamSubscription<String>? _sharedTextSubscription;
 
   @override
   void initState() {
@@ -153,11 +169,16 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     _pendingWishlistId = _extractWishlistId(
       WidgetsBinding.instance.platformDispatcher.defaultRouteName,
     );
+    _loadInitialSharedText();
+    _sharedTextSubscription = _shareIntakeService.watchSharedText().listen(
+          _storePendingSharedText,
+        );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sharedTextSubscription?.cancel();
     super.dispose();
   }
 
@@ -213,6 +234,26 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     return null;
   }
 
+  Future<void> _loadInitialSharedText() async {
+    final sharedText = await _shareIntakeService.getInitialSharedText();
+    if (!mounted || sharedText == null) {
+      return;
+    }
+
+    _storePendingSharedText(sharedText);
+  }
+
+  void _storePendingSharedText(String sharedText) {
+    final normalized = sharedText.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _pendingSharedText = normalized;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AppUser?>(
@@ -242,15 +283,25 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
         return HomeScreen(
           repository: widget.wishlistRepository,
+          sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
           currentUser: user,
           initialWishlistId: _pendingWishlistId,
+          initialSharedText: _pendingSharedText,
           onInitialWishlistHandled: () {
             if (_pendingWishlistId == null) {
               return;
             }
             setState(() {
               _pendingWishlistId = null;
+            });
+          },
+          onInitialSharedTextHandled: () {
+            if (_pendingSharedText == null) {
+              return;
+            }
+            setState(() {
+              _pendingSharedText = null;
             });
           },
         );

@@ -8,10 +8,11 @@ import (
 )
 
 func TestHealthRouteReturnsOK(t *testing.T) {
+	t.Parallel()
 	mux := http.NewServeMux()
 	RegisterRoutes(mux)
 
-	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, request)
 

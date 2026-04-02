@@ -11,8 +11,7 @@ void main() {
       final result = await repository.signUp(
         email: 'first@example.com',
         password: 'password123',
-        firstName: 'First',
-        lastName: 'User',
+        fullName: 'First User',
         birthday: DateTime(1990, 1, 1),
       );
 
@@ -27,8 +26,7 @@ void main() {
       final result = await repository.signUp(
         email: 'dana@example.com',
         password: 'password123',
-        firstName: 'Dana',
-        lastName: 'Rios',
+        fullName: 'Dana Rios',
         birthday: DateTime(1995, 5, 9),
       );
 
@@ -49,8 +47,7 @@ void main() {
       await repository.signUp(
         email: 'dana@example.com',
         password: 'password123',
-        firstName: 'Dana',
-        lastName: 'Rios',
+        fullName: 'Dana Rios',
         birthday: DateTime(1995, 5, 9),
       );
 
@@ -71,25 +68,24 @@ void main() {
       await repository.signUp(
         email: 'dana@example.com',
         password: 'password123',
-        firstName: 'Dana',
-        lastName: 'Rios',
+        fullName: 'Dana Rios',
         birthday: DateTime(1995, 5, 9),
       );
 
       final result = await repository.updateCurrentUser(
         email: 'daniela@example.com',
-        firstName: 'Daniela',
-        lastName: 'Rios',
+        fullName: 'Daniela Rios',
         birthday: DateTime(1994, 8, 14),
         preferredCurrencyCode: 'ILS',
         notificationsEnabled: false,
         reminderDays: 21,
+        currentPassword: 'password123',
         newPassword: 'newpassword123',
       );
 
       expect(result.isSuccess, isTrue);
       expect(repository.getCurrentUser()?.email, 'daniela@example.com');
-      expect(repository.getCurrentUser()?.firstName, 'Daniela');
+      expect(repository.getCurrentUser()?.fullName, 'Daniela Rios');
       expect(repository.getCurrentUser()?.birthday, DateTime(1994, 8, 14));
       expect(repository.getCurrentUser()?.preferredCurrencyCode, 'ILS');
       expect(repository.getCurrentUser()?.notificationsEnabled, isFalse);
@@ -123,23 +119,20 @@ void main() {
       await repository.signUp(
         email: 'first@example.com',
         password: 'password123',
-        firstName: 'First',
-        lastName: 'User',
+        fullName: 'First User',
         birthday: DateTime(1990, 1, 1),
       );
       await repository.logOut();
       await repository.signUp(
         email: 'second@example.com',
         password: 'password123',
-        firstName: 'Second',
-        lastName: 'User',
+        fullName: 'Second User',
         birthday: DateTime(1991, 2, 2),
       );
 
       final result = await repository.updateCurrentUser(
         email: 'first@example.com',
-        firstName: 'Second',
-        lastName: 'User',
+        fullName: 'Second User',
         birthday: DateTime(1991, 2, 2),
         preferredCurrencyCode: 'USD',
         notificationsEnabled: true,
@@ -162,8 +155,7 @@ void main() {
       final result = await repository.signUp(
         email: 'dana@example.com',
         password: 'password123',
-        firstName: 'Dana',
-        lastName: 'Rios',
+        fullName: 'Dana Rios',
         birthday: DateTime(1995, 5, 9),
       );
 

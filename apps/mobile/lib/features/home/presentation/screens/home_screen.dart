@@ -9,27 +9,36 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/account_screen.dart';
 import 'package:wishiz/features/home/presentation/widgets/glassmorphic_bottom_nav.dart';
 import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
+import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
+import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.repository,
+    required this.sharedProductRepository,
     required this.authRepository,
     required this.currentUser,
     this.initialWishlistId,
+    this.initialSharedText,
     this.onInitialWishlistHandled,
+    this.onInitialSharedTextHandled,
   });
 
   final WishlistRepository repository;
+  final SharedProductRepository sharedProductRepository;
   final AuthRepository authRepository;
   final AppUser currentUser;
   final String? initialWishlistId;
+  final String? initialSharedText;
   final VoidCallback? onInitialWishlistHandled;
+  final VoidCallback? onInitialSharedTextHandled;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -44,12 +53,13 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedYear = _allYears;
   String? _lastReminderSignature;
   String? _handledInitialWishlistId;
+  String? _handledInitialSharedText;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _openInitialWishlistIfNeeded();
+      _handlePendingEntryPoints();
     });
   }
 
@@ -59,14 +69,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.initialWishlistId == null) {
       _handledInitialWishlistId = null;
     }
-    if (oldWidget.initialWishlistId != widget.initialWishlistId) {
+    if (widget.initialSharedText == null) {
+      _handledInitialSharedText = null;
+    }
+    if (oldWidget.initialWishlistId != widget.initialWishlistId ||
+        oldWidget.initialSharedText != widget.initialSharedText) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openInitialWishlistIfNeeded();
+        _handlePendingEntryPoints();
       });
     }
   }
 
-  Future<void> _openWishlistEditor({Wishlist? wishlist}) async {
+  Future<String?> _openWishlistEditor({
+    Wishlist? wishlist,
+    bool openDetailsOnCreate = true,
+  }) async {
     final wishlistId = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => WishlistEditorScreen(
@@ -76,11 +93,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (!mounted || wishlistId == null || wishlist != null) {
-      return;
+    if (!mounted || wishlistId == null) {
+      return wishlistId;
     }
 
-    await _openWishlistDetails(wishlistId);
+    if (wishlist == null && openDetailsOnCreate) {
+      await _openWishlistDetails(wishlistId);
+    }
+
+    return wishlistId;
   }
 
   Future<void> _openWishlistDetails(
@@ -97,6 +118,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _handlePendingEntryPoints() async {
+    final handledSharedImport = await _openInitialSharedImportIfNeeded();
+    if (handledSharedImport) {
+      return;
+    }
+
+    await _openInitialWishlistIfNeeded();
   }
 
   Future<void> _openInitialWishlistIfNeeded() async {
@@ -118,6 +148,161 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _openWishlistDetails(wishlistId);
+  }
+
+  Future<bool> _openInitialSharedImportIfNeeded() async {
+    final sharedText = widget.initialSharedText;
+    if (!mounted ||
+        sharedText == null ||
+        sharedText.isEmpty ||
+        _handledInitialSharedText == sharedText) {
+      return false;
+    }
+
+    _handledInitialSharedText = sharedText;
+    widget.onInitialSharedTextHandled?.call();
+
+    final draft = await _resolveSharedProductDraft(sharedText);
+    if (!mounted) {
+      return true;
+    }
+
+    if (draft == null) {
+      _showFeedback('Wishiz could not find a product link in that share.');
+      return true;
+    }
+
+    final wishlistId = await _selectWishlistForSharedImport();
+    if (!mounted || wishlistId == null) {
+      return true;
+    }
+
+    if (!draft.hasCompleteRequiredFields) {
+      final missingFields = draft.missingFieldLabels.join(', ');
+      _showFeedback(
+        'We filled what we could. Please add the missing $missingFields before saving.',
+      );
+    }
+
+    await _openSharedProductEditor(
+      wishlistId: wishlistId,
+      draft: draft,
+    );
+    return true;
+  }
+
+  Future<SharedProductDraft?> _resolveSharedProductDraft(
+      String sharedText) async {
+    _showShareImportLoading();
+
+    try {
+      return await widget.sharedProductRepository.createDraftFromSharedText(
+        sharedText,
+      );
+    } catch (error) {
+      if (mounted) {
+        _showFeedback(
+          formatErrorMessage(
+            error,
+            fallbackMessage: 'Could not import that shared product yet.',
+          ),
+        );
+      }
+      return null;
+    } finally {
+      _hideShareImportLoading();
+    }
+  }
+
+  Future<String?> _selectWishlistForSharedImport() async {
+    final wishlists = widget.repository
+        .getWishlists()
+        .where((wishlist) => !wishlist.isArchived)
+        .toList(growable: false);
+
+    if (wishlists.isEmpty) {
+      _showFeedback('Create a wishlist first so Wishiz can save this product.');
+      return _openWishlistEditor(openDetailsOnCreate: false);
+    }
+
+    if (wishlists.length == 1) {
+      return wishlists.single.id;
+    }
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose a wishlist'),
+        children: [
+          for (final wishlist in wishlists)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(wishlist.id),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(wishlist.title),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${wishlist.year} · ${wishlist.activeItemCount} active items',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openSharedProductEditor({
+    required String wishlistId,
+    required SharedProductDraft draft,
+  }) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WishlistItemEditorScreen(
+          repository: widget.repository,
+          wishlistId: wishlistId,
+          preferredCurrencyCode: widget.currentUser.preferredCurrencyCode,
+          preferredCurrencySymbol: widget.currentUser.preferredCurrencySymbol,
+          initialTitle: draft.title,
+          initialNotes: draft.notes,
+          initialPriceLabel: draft.priceLabel,
+          initialImageUrl: draft.imageUrl,
+          initialProductUrl: draft.productUrl,
+          isSharedImport: true,
+        ),
+      ),
+    );
+  }
+
+  void _showShareImportLoading() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Expanded(
+                child: Text('Importing product details...'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _hideShareImportLoading() {
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context, rootNavigator: true).maybePop();
   }
 
   Future<void> _openAccountScreen() {
@@ -646,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
             vertical: 2,
           ),
           child: DropdownButtonFormField<int>(
-            value: _selectedYear,
+            initialValue: _selectedYear,
             decoration: const InputDecoration(
               labelText: 'Filter by year',
               border: InputBorder.none,

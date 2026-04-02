@@ -53,8 +53,7 @@ class _FakeAuthRepository implements AuthRepository {
     final user = AppUser(
       id: 'user-1',
       email: email,
-      firstName: 'Dana',
-      lastName: 'Rios',
+      fullName: 'Dana Rios',
       birthday: DateTime(1995, 5, 9),
     );
     _currentUser.value = user;
@@ -68,8 +67,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AuthResult> signUp({
     required String email,
     required String password,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
   }) async {
     return const AuthResult.failure('Not implemented in test.');
@@ -78,12 +76,12 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<AuthResult> updateCurrentUser({
     required String email,
-    required String firstName,
-    required String lastName,
+    required String fullName,
     required DateTime birthday,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
+    String? currentPassword,
     String? newPassword,
   }) async {
     return const AuthResult.failure('Not implemented in test.');

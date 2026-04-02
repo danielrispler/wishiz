@@ -15,7 +15,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
 
   static final InMemoryWishlistRepository instance =
       InMemoryWishlistRepository();
-  static final Uuid _uuid = Uuid();
+  static const Uuid _uuid = Uuid();
 
   final ValueNotifier<List<Wishlist>> _wishlists;
 

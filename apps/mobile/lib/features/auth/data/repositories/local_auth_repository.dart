@@ -13,7 +13,7 @@ class LocalAuthRepository implements AuthRepository {
   LocalAuthRepository._(this._storage, this._storedUsers, this._currentUser)
       : _currentUserNotifier = ValueNotifier<AppUser?>(_currentUser);
 
-  static final Uuid _uuid = Uuid();
+  static const Uuid _uuid = Uuid();
   static const String _devDanielLogin = 'daniel';
   static const String _devDanielEmail = 'daniel@wishiz.local';
 
@@ -250,7 +250,7 @@ class LocalAuthRepository implements AuthRepository {
 
   static _AuthPayload _decode(String? source) {
     if (source == null || source.trim().isEmpty) {
-      return _AuthPayload(
+      return const _AuthPayload(
         currentUserId: null,
         users: <_StoredUser>[],
       );
@@ -266,12 +266,12 @@ class LocalAuthRepository implements AuthRepository {
         users: users,
       );
     } on FormatException {
-      return _AuthPayload(
+      return const _AuthPayload(
         currentUserId: null,
         users: <_StoredUser>[],
       );
     } catch (_) {
-      return _AuthPayload(
+      return const _AuthPayload(
         currentUserId: null,
         users: <_StoredUser>[],
       );

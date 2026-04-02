@@ -14,13 +14,13 @@ import (
 type Service interface {
 	List(ctx context.Context) ([]domain.Wishlist, error)
 	GetByID(ctx context.Context, id string) (domain.Wishlist, error)
-	Create(ctx context.Context, input application.CreateWishlistInput) (domain.Wishlist, error)
-	Patch(ctx context.Context, id string, input application.PatchWishlistInput) (domain.Wishlist, error)
+	Create(ctx context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error)
+	Patch(ctx context.Context, id string, input *application.PatchWishlistInput) (domain.Wishlist, error)
 	Delete(ctx context.Context, id string) error
 	Archive(ctx context.Context, id string) (domain.Wishlist, error)
 	Restore(ctx context.Context, id string) (domain.Wishlist, error)
-	AddItem(ctx context.Context, wishlistID string, input application.AddItemInput) (domain.WishlistItem, error)
-	PatchItem(ctx context.Context, wishlistID string, itemID string, input application.PatchItemInput) (domain.WishlistItem, error)
+	AddItem(ctx context.Context, wishlistID string, input *application.AddItemInput) (domain.WishlistItem, error)
+	PatchItem(ctx context.Context, wishlistID, itemID string, input *application.PatchItemInput) (domain.WishlistItem, error)
 	DeleteItem(ctx context.Context, wishlistID string, itemID string) error
 	ReorderItems(ctx context.Context, wishlistID string, orderedItemIDs []string) (domain.Wishlist, error)
 }
@@ -147,7 +147,7 @@ func (h handler) createWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wishlist, err := h.service.Create(r.Context(), application.CreateWishlistInput{
+	wishlist, err := h.service.Create(r.Context(), &application.CreateWishlistInput{
 		Title:         request.Title,
 		Description:   request.Description,
 		Year:          request.Year,
@@ -179,7 +179,7 @@ func (h handler) patchWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wishlist, err := h.service.Patch(r.Context(), r.PathValue("id"), application.PatchWishlistInput{
+	wishlist, err := h.service.Patch(r.Context(), r.PathValue("id"), &application.PatchWishlistInput{
 		Title:         request.Title,
 		Description:   request.Description,
 		Year:          request.Year,
@@ -230,7 +230,7 @@ func (h handler) addItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.AddItem(r.Context(), r.PathValue("id"), application.AddItemInput{
+	item, err := h.service.AddItem(r.Context(), r.PathValue("id"), &application.AddItemInput{
 		Title:      request.Title,
 		Notes:      request.Notes,
 		PriceLabel: request.PriceLabel,
@@ -258,7 +258,7 @@ func (h handler) patchItem(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		r.PathValue("id"),
 		r.PathValue("itemId"),
-		application.PatchItemInput{
+		&application.PatchItemInput{
 			Title:      request.Title,
 			Notes:      request.Notes,
 			PriceLabel: request.PriceLabel,

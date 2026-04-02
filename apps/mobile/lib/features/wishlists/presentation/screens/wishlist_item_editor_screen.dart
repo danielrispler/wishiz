@@ -17,6 +17,12 @@ class WishlistItemEditorScreen extends StatefulWidget {
     required this.preferredCurrencyCode,
     required this.preferredCurrencySymbol,
     this.item,
+    this.initialTitle,
+    this.initialNotes,
+    this.initialPriceLabel,
+    this.initialImageUrl,
+    this.initialProductUrl,
+    this.isSharedImport = false,
   });
 
   final WishlistRepository repository;
@@ -24,6 +30,12 @@ class WishlistItemEditorScreen extends StatefulWidget {
   final String preferredCurrencyCode;
   final String preferredCurrencySymbol;
   final WishlistItem? item;
+  final String? initialTitle;
+  final String? initialNotes;
+  final String? initialPriceLabel;
+  final String? initialImageUrl;
+  final String? initialProductUrl;
+  final bool isSharedImport;
 
   bool get isEditing => item != null;
 
@@ -43,19 +55,34 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late final TextEditingController _productUrlController;
   late String _selectedPriority;
   late String _selectedStatus;
+  bool _showImageValidationError = false;
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.item?.title ?? '');
-    _notesController = TextEditingController(text: widget.item?.notes ?? '');
+    _titleController = TextEditingController(
+      text: widget.item?.title ?? widget.initialTitle ?? '',
+    );
+    _notesController = TextEditingController(
+      text: widget.item?.notes ?? widget.initialNotes ?? '',
+    );
     _priceController = TextEditingController(text: _normalizeExistingPrice());
-    _imageUrlController =
-        TextEditingController(text: widget.item?.imageUrl ?? '');
-    _productUrlController =
-        TextEditingController(text: widget.item?.productUrl ?? '');
+    _imageUrlController = TextEditingController(
+      text: widget.item?.imageUrl ?? widget.initialImageUrl ?? '',
+    );
+    _productUrlController = TextEditingController(
+      text: widget.item?.productUrl ?? widget.initialProductUrl ?? '',
+    );
     _selectedPriority = widget.item?.priority ?? WishlistItem.priorities[1];
     _selectedStatus = widget.item?.status ?? WishlistItem.statuses.first;
+
+    if (!widget.isEditing && _productUrlController.text.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _applyLinkDefaults();
+        }
+      });
+    }
   }
 
   @override
@@ -76,6 +103,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
 
     setState(() {
       _imageUrlController.text = image.path;
+      _showImageValidationError = false;
     });
   }
 
@@ -104,8 +132,23 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   Future<void> _saveItem() async {
-    if (!_formKey.currentState!.validate()) {
+    final formValid = _formKey.currentState!.validate();
+    final missingImage =
+        widget.isSharedImport && _imageUrlController.text.trim().isEmpty;
+
+    if (!formValid || missingImage) {
+      if (_showImageValidationError != missingImage) {
+        setState(() {
+          _showImageValidationError = missingImage;
+        });
+      }
       return;
+    }
+
+    if (_showImageValidationError) {
+      setState(() {
+        _showImageValidationError = false;
+      });
     }
 
     final title = _titleController.text.trim();
@@ -173,7 +216,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
 
   String _normalizeExistingPrice() {
     return CurrencyUtils.convertPriceLabel(
-          widget.item?.priceLabel,
+          widget.item?.priceLabel ?? widget.initialPriceLabel,
           targetCurrencyCode: widget.preferredCurrencyCode,
         ) ??
         '';
@@ -201,7 +244,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
               Text(
                 widget.isEditing
                     ? 'Refresh the details of this saved piece without changing the surrounding look.'
-                    : 'Add a new object to this collection while keeping the same editorial feel.',
+                    : widget.isSharedImport
+                        ? 'Wishiz imported the product link and any metadata it could find. Fill in anything still missing, then save it to this list.'
+                        : 'Add a new object to this collection while keeping the same editorial feel.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: AppConstants.sectionGap),
@@ -249,14 +294,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     hintText: '${widget.preferredCurrencySymbol}120',
                     border: InputBorder.none,
                   ),
-                  validator: _validateOptionalPrice,
+                  validator: _validatePrice,
                 ),
               ),
               const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
                 child: DropdownButtonFormField<String>(
-                  value: _selectedPriority,
+                  initialValue: _selectedPriority,
                   decoration: const InputDecoration(
                     labelText: 'Priority',
                     border: InputBorder.none,
@@ -278,7 +323,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
               _buildFieldCard(
                 context,
                 child: DropdownButtonFormField<String>(
-                  value: _selectedStatus,
+                  initialValue: _selectedStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: InputBorder.none,
@@ -314,6 +359,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     onPressed: () {
                       setState(() {
                         _imageUrlController.clear();
+                        _showImageValidationError = false;
                       });
                     },
                     icon: const Icon(Icons.clear_outlined),
@@ -321,6 +367,15 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   ),
                 ],
               ),
+              if (_showImageValidationError) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Please add an image before saving this shared item.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.error,
+                      ),
+                ),
+              ],
               const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
@@ -332,7 +387,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     hintText: 'https://',
                     border: InputBorder.none,
                   ),
-                  validator: _validateOptionalUrl,
+                  validator: _validateProductUrl,
                   onEditingComplete: _applyLinkDefaults,
                 ),
               ),
@@ -436,6 +491,15 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     return isValid ? null : 'Use a valid amount like 120 or 120.00.';
   }
 
+  String? _validatePrice(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (widget.isSharedImport && trimmed.isEmpty) {
+      return 'Please add a price for this shared item.';
+    }
+
+    return _validateOptionalPrice(value);
+  }
+
   String? _validateOptionalUrl(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) {
@@ -445,6 +509,15 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final uri = Uri.tryParse(trimmed);
     final isValid = uri != null && uri.hasScheme && uri.hasAuthority;
     return isValid ? null : 'Please enter a valid URL.';
+  }
+
+  String? _validateProductUrl(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (widget.isSharedImport && trimmed.isEmpty) {
+      return 'Please add the product URL.';
+    }
+
+    return _validateOptionalUrl(value);
   }
 
   Widget _buildImagePreview(BuildContext context) {

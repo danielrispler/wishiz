@@ -49,15 +49,15 @@ func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
 	indexByID := make(map[string]int)
 
 	for rows.Next() {
-		wishlist, err := scanWishlist(rows)
-		if err != nil {
-			return nil, err
+		wishlist, scanErr := scanWishlist(rows)
+		if scanErr != nil {
+			return nil, scanErr
 		}
 
 		indexByID[wishlist.ID] = len(wishlists)
 		wishlists = append(wishlists, wishlist)
 	}
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate wishlists: %w", err)
 	}
 	if len(wishlists) == 0 {
@@ -88,9 +88,9 @@ func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
 	defer itemRows.Close()
 
 	for itemRows.Next() {
-		wishlistID, item, err := scanWishlistItem(itemRows)
-		if err != nil {
-			return nil, err
+		wishlistID, item, scanErr := scanWishlistItem(itemRows)
+		if scanErr != nil {
+			return nil, scanErr
 		}
 
 		index, ok := indexByID[wishlistID]
@@ -100,7 +100,7 @@ func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
 
 		wishlists[index].Items = append(wishlists[index].Items, item)
 	}
-	if err := itemRows.Err(); err != nil {
+	if err = itemRows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate wishlist items: %w", err)
 	}
 
@@ -229,25 +229,29 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 	if err != nil {
 		return domain.WishlistItem{}, fmt.Errorf("begin add wishlist item transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	var lockedID string
-	if err := tx.QueryRow(
+	err = tx.QueryRow(
 		ctx,
 		`SELECT id::text FROM wishlists WHERE id = $1::uuid FOR UPDATE`,
 		params.WishlistID,
-	).Scan(&lockedID); errors.Is(err, pgx.ErrNoRows) {
+	).Scan(&lockedID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.WishlistItem{}, ports.ErrNotFound
 	} else if err != nil {
 		return domain.WishlistItem{}, fmt.Errorf("lock wishlist %s before add item: %w", params.WishlistID, err)
 	}
 
 	var nextRank int
-	if err := tx.QueryRow(
+	err = tx.QueryRow(
 		ctx,
 		`SELECT COALESCE(MAX(rank), 0) + 1 FROM wishlist_items WHERE wishlist_id = $1::uuid`,
 		params.WishlistID,
-	).Scan(&nextRank); err != nil {
+	).Scan(&nextRank)
+	if err != nil {
 		return domain.WishlistItem{}, fmt.Errorf("get next item rank for wishlist %s: %w", params.WishlistID, err)
 	}
 
@@ -304,7 +308,9 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 	if err != nil {
 		return domain.WishlistItem{}, fmt.Errorf("begin update wishlist item transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	row := tx.QueryRow(ctx, `
 		UPDATE wishlist_items
@@ -360,7 +366,9 @@ func (r *Repository) DeleteItem(ctx context.Context, wishlistID string, itemID s
 	if err != nil {
 		return fmt.Errorf("begin delete wishlist item transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	commandTag, err := tx.Exec(
 		ctx,
@@ -390,7 +398,9 @@ func (r *Repository) ReorderItems(ctx context.Context, wishlistID string, ordere
 	if err != nil {
 		return fmt.Errorf("begin reorder items transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	var lockedID string
 	if err := tx.QueryRow(

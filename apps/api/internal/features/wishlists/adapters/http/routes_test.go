@@ -17,10 +17,14 @@ import (
 )
 
 func TestPatchWishlistExplicitNullPreservesPatchSemantics(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
-		patchWishlist: func(_ context.Context, id string, input application.PatchWishlistInput) (domain.Wishlist, error) {
+		patchWishlist: func(_ context.Context, id string, input *application.PatchWishlistInput) (domain.Wishlist, error) {
 			if id != wishlistID {
 				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
+			}
+			if input == nil {
+				t.Fatalf("expected input to be non-nil")
 			}
 			if !input.CoverImageURL.Set {
 				t.Fatalf("expected coverImageUrl patch field to be marked as set")
@@ -40,6 +44,7 @@ func TestPatchWishlistExplicitNullPreservesPatchSemantics(t *testing.T) {
 }
 
 func TestGetWishlistNotFoundReturns404(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		getWishlist: func(context.Context, string) (domain.Wishlist, error) {
 			return domain.Wishlist{}, application.WishlistNotFound()
@@ -61,8 +66,9 @@ func TestGetWishlistNotFoundReturns404(t *testing.T) {
 }
 
 func TestCreateWishlistValidationReturns400(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
-		createWishlist: func(context.Context, application.CreateWishlistInput) (domain.Wishlist, error) {
+		createWishlist: func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error) {
 			return domain.Wishlist{}, application.ValidationError("title", "title is required")
 		},
 	}
@@ -87,6 +93,7 @@ func TestCreateWishlistValidationReturns400(t *testing.T) {
 }
 
 func TestListWishlistsReturnsAggregateJSON(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		listWishlists: func(context.Context) ([]domain.Wishlist, error) {
 			return []domain.Wishlist{sampleWishlist()}, nil
@@ -111,9 +118,13 @@ func TestListWishlistsReturnsAggregateJSON(t *testing.T) {
 }
 
 func TestCreateWishlistReturnsCreatedJSONAndPassesInput(t *testing.T) {
+	t.Parallel()
 	coverImageURL := "https://example.com/cover.jpg"
 	service := &stubService{
-		createWishlist: func(_ context.Context, input application.CreateWishlistInput) (domain.Wishlist, error) {
+		createWishlist: func(_ context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error) {
+			if input == nil {
+				t.Fatalf("expected input to be non-nil")
+			}
 			if input.Title != "Weekend Hosting" {
 				t.Fatalf("expected title to be passed through, got %q", input.Title)
 			}
@@ -152,6 +163,7 @@ func TestCreateWishlistReturnsCreatedJSONAndPassesInput(t *testing.T) {
 }
 
 func TestGetWishlistReturnsAggregateJSON(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		getWishlist: func(_ context.Context, id string) (domain.Wishlist, error) {
 			if id != wishlistID {
@@ -176,6 +188,7 @@ func TestGetWishlistReturnsAggregateJSON(t *testing.T) {
 }
 
 func TestDeleteWishlistReturnsNoContent(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		deleteWishlist: func(_ context.Context, id string) error {
 			if id != wishlistID {
@@ -195,6 +208,7 @@ func TestDeleteWishlistReturnsNoContent(t *testing.T) {
 }
 
 func TestArchiveWishlistReturnsUpdatedWishlist(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		archive: func(_ context.Context, id string) (domain.Wishlist, error) {
 			if id != wishlistID {
@@ -221,6 +235,7 @@ func TestArchiveWishlistReturnsUpdatedWishlist(t *testing.T) {
 }
 
 func TestRestoreWishlistReturnsUpdatedWishlist(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		restore: func(_ context.Context, id string) (domain.Wishlist, error) {
 			if id != wishlistID {
@@ -247,12 +262,16 @@ func TestRestoreWishlistReturnsUpdatedWishlist(t *testing.T) {
 }
 
 func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
+	t.Parallel()
 	notes := "Set of six"
 	productURL := "https://example.com/plates"
 	service := &stubService{
-		addItem: func(_ context.Context, gotWishlistID string, input application.AddItemInput) (domain.WishlistItem, error) {
+		addItem: func(_ context.Context, gotWishlistID string, input *application.AddItemInput) (domain.WishlistItem, error) {
 			if gotWishlistID != wishlistID {
 				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if input == nil {
+				t.Fatalf("expected input to be non-nil")
 			}
 			if input.Title != "Stoneware plates" {
 				t.Fatalf("expected title to be passed through, got %q", input.Title)
@@ -292,13 +311,17 @@ func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
 }
 
 func TestPatchItemExplicitNullPreservesPatchSemantics(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
-		patchItem: func(_ context.Context, gotWishlistID string, gotItemID string, input application.PatchItemInput) (domain.WishlistItem, error) {
+		patchItem: func(_ context.Context, gotWishlistID string, gotItemID string, input *application.PatchItemInput) (domain.WishlistItem, error) {
 			if gotWishlistID != wishlistID {
 				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
 			}
 			if gotItemID != itemID {
 				t.Fatalf("expected item id %s, got %s", itemID, gotItemID)
+			}
+			if input == nil {
+				t.Fatalf("expected input to be non-nil")
 			}
 			if !input.Notes.Set {
 				t.Fatalf("expected notes patch field to be marked as set")
@@ -318,6 +341,7 @@ func TestPatchItemExplicitNullPreservesPatchSemantics(t *testing.T) {
 }
 
 func TestDeleteItemReturnsNoContent(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		deleteItem: func(_ context.Context, gotWishlistID string, gotItemID string) error {
 			if gotWishlistID != wishlistID {
@@ -337,6 +361,7 @@ func TestDeleteItemReturnsNoContent(t *testing.T) {
 }
 
 func TestReorderItemsReturnsUpdatedWishlistAndPassesOrder(t *testing.T) {
+	t.Parallel()
 	orderedItemIDs := []string{itemID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
 	service := &stubService{
 		reorderItems: func(_ context.Context, gotWishlistID string, gotOrderedItemIDs []string) (domain.Wishlist, error) {
@@ -371,6 +396,7 @@ func TestReorderItemsReturnsUpdatedWishlistAndPassesOrder(t *testing.T) {
 }
 
 func TestWishlistRoutesReturnInternalServerErrorForUnexpectedErrors(t *testing.T) {
+	t.Parallel()
 	service := &stubService{
 		listWishlists: func(context.Context) ([]domain.Wishlist, error) {
 			return nil, errors.New("database offline")
@@ -399,7 +425,7 @@ func TestWishlistRoutesReturnInternalServerErrorForUnexpectedErrors(t *testing.T
 	}
 }
 
-func performRequest(t *testing.T, service Service, method string, path string, body string) *httptest.ResponseRecorder {
+func performRequest(t *testing.T, service Service, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -446,13 +472,13 @@ const (
 type stubService struct {
 	listWishlists  func(context.Context) ([]domain.Wishlist, error)
 	getWishlist    func(context.Context, string) (domain.Wishlist, error)
-	createWishlist func(context.Context, application.CreateWishlistInput) (domain.Wishlist, error)
-	patchWishlist  func(context.Context, string, application.PatchWishlistInput) (domain.Wishlist, error)
+	createWishlist func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
+	patchWishlist  func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
 	deleteWishlist func(context.Context, string) error
 	archive        func(context.Context, string) (domain.Wishlist, error)
 	restore        func(context.Context, string) (domain.Wishlist, error)
-	addItem        func(context.Context, string, application.AddItemInput) (domain.WishlistItem, error)
-	patchItem      func(context.Context, string, string, application.PatchItemInput) (domain.WishlistItem, error)
+	addItem        func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
+	patchItem      func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
 	deleteItem     func(context.Context, string, string) error
 	reorderItems   func(context.Context, string, []string) (domain.Wishlist, error)
 }
@@ -471,14 +497,14 @@ func (s *stubService) GetByID(ctx context.Context, id string) (domain.Wishlist, 
 	return s.getWishlist(ctx, id)
 }
 
-func (s *stubService) Create(ctx context.Context, input application.CreateWishlistInput) (domain.Wishlist, error) {
+func (s *stubService) Create(ctx context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error) {
 	if s.createWishlist == nil {
 		return domain.Wishlist{}, nil
 	}
 	return s.createWishlist(ctx, input)
 }
 
-func (s *stubService) Patch(ctx context.Context, id string, input application.PatchWishlistInput) (domain.Wishlist, error) {
+func (s *stubService) Patch(ctx context.Context, id string, input *application.PatchWishlistInput) (domain.Wishlist, error) {
 	if s.patchWishlist == nil {
 		return domain.Wishlist{}, nil
 	}
@@ -506,21 +532,21 @@ func (s *stubService) Restore(ctx context.Context, id string) (domain.Wishlist, 
 	return s.restore(ctx, id)
 }
 
-func (s *stubService) AddItem(ctx context.Context, wishlistID string, input application.AddItemInput) (domain.WishlistItem, error) {
+func (s *stubService) AddItem(ctx context.Context, wishlistID string, input *application.AddItemInput) (domain.WishlistItem, error) {
 	if s.addItem == nil {
 		return domain.WishlistItem{}, nil
 	}
 	return s.addItem(ctx, wishlistID, input)
 }
 
-func (s *stubService) PatchItem(ctx context.Context, wishlistID string, itemID string, input application.PatchItemInput) (domain.WishlistItem, error) {
+func (s *stubService) PatchItem(ctx context.Context, wishlistID, itemID string, input *application.PatchItemInput) (domain.WishlistItem, error) {
 	if s.patchItem == nil {
 		return domain.WishlistItem{}, nil
 	}
 	return s.patchItem(ctx, wishlistID, itemID, input)
 }
 
-func (s *stubService) DeleteItem(ctx context.Context, wishlistID string, itemID string) error {
+func (s *stubService) DeleteItem(ctx context.Context, wishlistID, itemID string) error {
 	if s.deleteItem == nil {
 		return nil
 	}

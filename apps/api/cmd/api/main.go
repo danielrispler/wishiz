@@ -12,9 +12,9 @@ import (
 	"time"
 
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
-	wishlistapp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
 	wishlistpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/postgres"
+	wishlistapp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/config"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 	httpx "github.com/danielrispler/wishiz/apps/api/internal/platform/http"

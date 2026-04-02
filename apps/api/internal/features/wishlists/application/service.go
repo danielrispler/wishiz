@@ -86,12 +86,17 @@ func (s *Service) GetByID(ctx context.Context, id string) (domain.Wishlist, erro
 	return ensureWishlist(wishlist), nil
 }
 
-func (s *Service) Create(ctx context.Context, input CreateWishlistInput) (domain.Wishlist, error) {
-	title, err := requireTitle("title", input.Title)
+func (s *Service) Create(ctx context.Context, input *CreateWishlistInput) (domain.Wishlist, error) {
+	if input == nil {
+		return domain.Wishlist{}, ValidationError("input", "input is required")
+	}
+
+	title, err := requireTitle(input.Title)
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := validateYear(input.Year); err != nil {
+	err = validateYear(input.Year)
+	if err != nil {
 		return domain.Wishlist{}, err
 	}
 
@@ -109,7 +114,11 @@ func (s *Service) Create(ctx context.Context, input CreateWishlistInput) (domain
 	return ensureWishlist(wishlist), nil
 }
 
-func (s *Service) Patch(ctx context.Context, id string, input PatchWishlistInput) (domain.Wishlist, error) {
+func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInput) (domain.Wishlist, error) {
+	if input == nil {
+		return domain.Wishlist{}, ValidationError("input", "input is required")
+	}
+
 	current, err := s.GetByID(ctx, id)
 	if err != nil {
 		return domain.Wishlist{}, err
@@ -125,7 +134,7 @@ func (s *Service) Patch(ctx context.Context, id string, input PatchWishlistInput
 	}
 
 	if input.Title.Set {
-		params.Title, err = requireTitle("title", input.Title.Value)
+		params.Title, err = requireTitle(input.Title.Value)
 		if err != nil {
 			return domain.Wishlist{}, err
 		}
@@ -160,11 +169,11 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	if err := s.repo.Delete(ctx, id); errors.Is(err, ports.ErrNotFound) {
+	err := s.repo.Delete(ctx, id)
+	if errors.Is(err, ports.ErrNotFound) {
 		return WishlistNotFound()
-	} else {
-		return err
 	}
+	return err
 }
 
 func (s *Service) Archive(ctx context.Context, id string) (domain.Wishlist, error) {
@@ -195,12 +204,16 @@ func (s *Service) Restore(ctx context.Context, id string) (domain.Wishlist, erro
 	return s.GetByID(ctx, id)
 }
 
-func (s *Service) AddItem(ctx context.Context, wishlistID string, input AddItemInput) (domain.WishlistItem, error) {
+func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItemInput) (domain.WishlistItem, error) {
+	if input == nil {
+		return domain.WishlistItem{}, ValidationError("input", "input is required")
+	}
+
 	if _, err := s.GetByID(ctx, wishlistID); err != nil {
 		return domain.WishlistItem{}, err
 	}
 
-	title, err := requireTitle("title", input.Title)
+	title, err := requireTitle(input.Title)
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
@@ -234,12 +247,17 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input AddItemI
 	return item, nil
 }
 
-func (s *Service) PatchItem(ctx context.Context, wishlistID string, itemID string, input PatchItemInput) (domain.WishlistItem, error) {
+func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, input *PatchItemInput) (domain.WishlistItem, error) {
+	if input == nil {
+		return domain.WishlistItem{}, ValidationError("input", "input is required")
+	}
+
 	wishlist, err := s.GetByID(ctx, wishlistID)
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
-	if err := validateUUID("itemId", itemID); err != nil {
+	err = validateUUID("itemId", itemID)
+	if err != nil {
 		return domain.WishlistItem{}, err
 	}
 
@@ -263,7 +281,7 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID string, itemID strin
 	}
 
 	if input.Title.Set {
-		params.Title, err = requireTitle("title", input.Title.Value)
+		params.Title, err = requireTitle(input.Title.Value)
 		if err != nil {
 			return domain.WishlistItem{}, err
 		}
@@ -313,23 +331,24 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID string, itemID strin
 	return item, nil
 }
 
-func (s *Service) DeleteItem(ctx context.Context, wishlistID string, itemID string) error {
+func (s *Service) DeleteItem(ctx context.Context, wishlistID, itemID string) error {
 	wishlist, err := s.GetByID(ctx, wishlistID)
 	if err != nil {
 		return err
 	}
-	if err := validateUUID("itemId", itemID); err != nil {
+	err = validateUUID("itemId", itemID)
+	if err != nil {
 		return err
 	}
 	if _, ok := findItem(wishlist.Items, itemID); !ok {
 		return ItemNotFound()
 	}
 
-	if err := s.repo.DeleteItem(ctx, wishlistID, itemID); errors.Is(err, ports.ErrNotFound) {
+	err = s.repo.DeleteItem(ctx, wishlistID, itemID)
+	if errors.Is(err, ports.ErrNotFound) {
 		return ItemNotFound()
-	} else {
-		return err
 	}
+	return err
 }
 
 func (s *Service) ReorderItems(ctx context.Context, wishlistID string, orderedItemIDs []string) (domain.Wishlist, error) {
@@ -402,10 +421,10 @@ func ensureWishlist(wishlist domain.Wishlist) domain.Wishlist {
 	return wishlist
 }
 
-func requireTitle(field string, value string) (string, error) {
+func requireTitle(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "", ValidationError(field, field+" is required")
+		return "", ValidationError("title", "title is required")
 	}
 
 	return trimmed, nil

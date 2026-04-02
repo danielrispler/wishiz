@@ -12,29 +12,16 @@ void main() {
     await app.main();
     await tester.pumpAndSettle();
 
-    if (find.text('Need an account? Sign up').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Need an account? Sign up'));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextFormField).at(0), 'Dana');
-      await tester.enterText(find.byType(TextFormField).at(1), 'Rios');
-      await tester.enterText(find.byType(TextFormField).at(2), '28');
-      await tester.enterText(
-        find.byType(TextFormField).at(3),
-        'dana@example.com',
-      );
-      await tester.enterText(find.byType(TextFormField).at(4), 'password123');
-      await tester.enterText(find.byType(TextFormField).at(5), 'password123');
-      await tester.tap(find.text('Sign Up'));
+    if (find.text('Log In').evaluate().isNotEmpty) {
+      await tester.enterText(find.byType(TextFormField).at(0), 'daniel');
+      await tester.enterText(find.byType(TextFormField).at(1), 'daniel');
+      await tester.tap(find.text('Log In'));
       await tester.pumpAndSettle();
     }
 
     expect(find.text('Wishiz'), findsOneWidget);
 
-    final searchField = find.byWidgetPredicate((widget) {
-      return widget is TextFormField &&
-          widget.decoration?.hintText == 'Search your lists';
-    });
+    final searchField = find.byKey(const ValueKey('Search your lists-0'));
 
     await tester.enterText(searchField, 'Tech');
     await tester.pumpAndSettle();

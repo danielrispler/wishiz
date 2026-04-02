@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   crypto: ^3.0.6
   google_fonts: ^6.1.0
+  html: ^0.15.6
+  http: ^1.6.0
   image_picker: ^1.1.2
   share_plus: ^7.2.2
   shared_preferences: ^2.5.3

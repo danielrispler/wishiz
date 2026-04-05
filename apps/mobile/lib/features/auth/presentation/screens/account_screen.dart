@@ -4,10 +4,7 @@ import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({
-    super.key,
-    required this.authRepository,
-  });
+  const AccountScreen({super.key, required this.authRepository});
 
   final AuthRepository authRepository;
 
@@ -26,8 +23,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
   late DateTime _selectedBirthday;
   late String _selectedCurrencyCode;
-  late bool _notificationsEnabled;
-  late int _reminderDays;
 
   bool _isSaving = false;
   bool _showCurrentPassword = false;
@@ -46,8 +41,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _newPasswordController = TextEditingController();
     _selectedBirthday = user.birthday;
     _selectedCurrencyCode = user.preferredCurrencyCode;
-    _notificationsEnabled = user.notificationsEnabled;
-    _reminderDays = user.reminderDays;
   }
 
   @override
@@ -92,8 +85,10 @@ class _AccountScreenState extends State<AccountScreen> {
       fullName: _fullNameController.text.trim(),
       birthday: _selectedBirthday,
       preferredCurrencyCode: _selectedCurrencyCode,
-      notificationsEnabled: _notificationsEnabled,
-      reminderDays: _reminderDays,
+      notificationsEnabled: widget.authRepository
+          .getCurrentUser()!
+          .notificationsEnabled,
+      reminderDays: widget.authRepository.getCurrentUser()!.reminderDays,
       currentPassword: _currentPasswordController.text.trim().isEmpty
           ? null
           : _currentPasswordController.text,
@@ -141,9 +136,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Account'),
-      ),
+      appBar: AppBar(title: const Text('Account')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
@@ -154,7 +147,7 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           children: [
             Text(
-              'Manage your profile, default pricing currency, and reminder timing from one place.',
+              'Manage your profile, password, and default pricing currency.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: AppConstants.sectionGap),
@@ -294,57 +287,6 @@ class _AccountScreenState extends State<AccountScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(height: AppConstants.sectionGap),
-                  _buildSectionCard(
-                    context,
-                    title: 'Notifications',
-                    child: Column(
-                      children: [
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Enable wishlist reminders'),
-                          subtitle: const Text(
-                            'Show reminders inside the app when saved items have been waiting too long.',
-                          ),
-                          value: _notificationsEnabled,
-                          onChanged: (value) {
-                            setState(() {
-                              _notificationsEnabled = value;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: AppConstants.itemGap),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Remind me after $_reminderDays day${_reminderDays == 1 ? '' : 's'}',
-                                style: Theme.of(context).textTheme.labelLarge,
-                              ),
-                            ),
-                            Text(
-                              '$_reminderDays',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                          ],
-                        ),
-                        Slider(
-                          value: _reminderDays.toDouble(),
-                          min: 1,
-                          max: 60,
-                          divisions: 59,
-                          label: '$_reminderDays days',
-                          onChanged: _notificationsEnabled
-                              ? (value) {
-                                  setState(() {
-                                    _reminderDays = value.round();
-                                  });
-                                }
-                              : null,
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -352,10 +294,7 @@ class _AccountScreenState extends State<AccountScreen> {
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primary,
-                    colorScheme.primaryContainer,
-                  ],
+                  colors: [colorScheme.primary, colorScheme.primaryContainer],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -388,10 +327,7 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  Widget _buildFieldCard(
-    BuildContext context, {
-    required Widget child,
-  }) {
+  Widget _buildFieldCard(BuildContext context, {required Widget child}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -419,10 +355,7 @@ class _AccountScreenState extends State<AccountScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppConstants.itemGap),
           child,
         ],

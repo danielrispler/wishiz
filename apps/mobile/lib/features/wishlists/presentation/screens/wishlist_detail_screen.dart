@@ -2,13 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
+import 'package:wishiz/core/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
@@ -48,6 +48,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   String _selectedStatus = _allFilter;
   String _selectedPriority = _allFilter;
   String _selectedSort = _sortHighestRank;
+  final Set<String> _expandedItemIds = <String>{};
 
   void _showError(Object error, {required String fallbackMessage}) {
     _showFeedback(
@@ -68,7 +69,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
             if (wishlist == null) {
               return Scaffold(
-                appBar: AppBar(),
+                appBar: const WishizAppBar(titleText: 'List Details'),
                 body: Center(
                   child: Text(
                     'This list no longer exists.',
@@ -90,10 +91,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 visibleItems.length > 1;
 
             return Scaffold(
-              appBar: AppBar(
-                title: Text(
-                  widget.showPurchasedOnly ? 'Past List' : 'List Details',
-                ),
+              appBar: WishizAppBar(
+                titleText: widget.showPurchasedOnly
+                    ? 'Past List'
+                    : 'List Details',
                 actions: [
                   IconButton(
                     tooltip: 'Share list',
@@ -709,6 +710,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       item.priceLabel,
       currentUser,
     );
+    final isExpanded = _expandedItemIds.contains(item.id);
 
     return Padding(
       key: key,
@@ -751,167 +753,207 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
           ),
-          padding: const EdgeInsets.all(AppConstants.cardPadding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
-                _buildImage(
-                  context,
-                  imageSource: item.imageUrl!,
-                  aspectRatio: 4 / 3,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+                  onTap: () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedItemIds.remove(item.id);
+                      } else {
+                        _expandedItemIds.add(item.id);
+                      }
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppConstants.cardPadding,
+                      vertical: AppConstants.spacing3,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (showDragHandle && dragIndex != null)
+                              ReorderableDragStartListener(
+                                index: dragIndex,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: AppConstants.spacing2,
+                                  ),
+                                  child: Icon(
+                                    Icons.drag_indicator,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (displayedPriceLabel != null) ...[
+                                    const SizedBox(
+                                      height: AppConstants.spacing1,
+                                    ),
+                                    Text(
+                                      displayedPriceLabel,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelMedium,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            if (item.imageUrl != null &&
+                                item.imageUrl!.isNotEmpty) ...[
+                              const SizedBox(width: AppConstants.spacing2),
+                              SizedBox(
+                                width: 72,
+                                child: _buildImage(
+                                  context,
+                                  imageSource: item.imageUrl!,
+                                  aspectRatio: 1,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(width: AppConstants.spacing1),
+                            Icon(
+                              isExpanded
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppConstants.spacing2),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: () => _shareItem(wishlist, item),
+                                icon: const Icon(Icons.share_outlined),
+                                label: const Text('Share'),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppConstants.spacing3,
+                                    vertical: AppConstants.spacing2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppConstants.spacing2),
+                            Expanded(
+                              child: TextButton.icon(
+                                onPressed: () => _openItemEditor(
+                                  context,
+                                  wishlistId: wishlist.id,
+                                  item: item,
+                                  currentUser: currentUser,
+                                ),
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text('Edit'),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppConstants.spacing3,
+                                    vertical: AppConstants.spacing2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (item.productUrl != null &&
+                                item.productUrl!.isNotEmpty) ...[
+                              const SizedBox(width: AppConstants.spacing2),
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: () => _openProductLink(item),
+                                  icon: const Icon(Icons.open_in_new_outlined),
+                                  label: const Text('Open Link'),
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppConstants.spacing3,
+                                      vertical: AppConstants.spacing2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: AppConstants.itemGap),
-              ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showDragHandle && dragIndex != null)
-                    ReorderableDragStartListener(
-                      index: dragIndex,
-                      child: Padding(
-                        padding: const EdgeInsets.only(
-                          right: AppConstants.spacing2,
-                        ),
-                        child: Icon(
-                          Icons.drag_indicator,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+              ),
+              AnimatedCrossFade(
+                firstChild: const SizedBox.shrink(),
+                secondChild: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppConstants.cardPadding,
+                    0,
+                    AppConstants.cardPadding,
+                    AppConstants.spacing3,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildMetadataChip(
+                            context,
+                            label: 'Rank #${item.rank}',
+                          ),
+                          _buildMetadataChip(context, label: item.status),
+                          _buildMetadataChip(
+                            context,
+                            label: '${item.priority} priority',
+                          ),
+                          _buildMetadataChip(
+                            context,
+                            label:
+                                '${item.daysOnList} day${item.daysOnList == 1 ? '' : 's'} on list',
+                            key: ValueKey('days-on-list-${item.id}'),
+                          ),
+                        ],
                       ),
-                    ),
-                  Expanded(
-                    child: Text(
-                      item.title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Share item',
-                    onPressed: () => _shareItem(wishlist, item),
-                    icon: const Icon(Icons.share_outlined),
-                  ),
-                  PopupMenuButton<_WishlistItemAction>(
-                    tooltip: 'Item actions',
-                    onSelected: (action) async {
-                      if (action == _WishlistItemAction.edit) {
-                        await _openItemEditor(
-                          context,
-                          wishlistId: wishlist.id,
-                          item: item,
-                          currentUser: currentUser,
-                        );
-                        return;
-                      }
-
-                      if (action == _WishlistItemAction.moveToActive) {
-                        try {
-                          await widget.repository.updateWishlistItemStatus(
-                            wishlistId: wishlist.id,
-                            itemId: item.id,
-                            status: 'Saved',
-                          );
-                          if (!context.mounted) {
-                            return;
-                          }
-                          _showFeedback(context, 'Moved back to active items.');
-                        } catch (error) {
-                          if (!context.mounted) {
-                            return;
-                          }
-                          _showError(
-                            error,
-                            fallbackMessage: 'Could not update this item.',
-                          );
-                        }
-                        return;
-                      }
-
-                      await _confirmDeleteItem(context, wishlist, item);
-                    },
-                    itemBuilder: (context) {
-                      if (widget.showPurchasedOnly) {
-                        return const [
-                          PopupMenuItem(
-                            value: _WishlistItemAction.edit,
-                            child: Text('Edit item'),
-                          ),
-                          PopupMenuItem(
-                            value: _WishlistItemAction.moveToActive,
-                            child: Text('Move back to active'),
-                          ),
-                          PopupMenuItem(
-                            value: _WishlistItemAction.delete,
-                            child: Text('Delete item'),
-                          ),
-                        ];
-                      }
-
-                      return const [
-                        PopupMenuItem(
-                          value: _WishlistItemAction.edit,
-                          child: Text('Edit item'),
+                      if (item.notes != null && item.notes!.isNotEmpty) ...[
+                        const SizedBox(height: AppConstants.spacing2),
+                        Text(
+                          item.notes!,
+                          style: Theme.of(context).textTheme.bodyMedium,
                         ),
-                        PopupMenuItem(
-                          value: _WishlistItemAction.delete,
-                          child: Text('Delete item'),
-                        ),
-                      ];
-                    },
+                      ],
+                    ],
                   ),
-                ],
+                ),
+                crossFadeState: isExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 180),
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildMetadataChip(context, label: 'Rank #${item.rank}'),
-                  _buildMetadataChip(context, label: item.status),
-                  _buildMetadataChip(
-                    context,
-                    label: '${item.priority} priority',
-                  ),
-                  _buildMetadataChip(
-                    context,
-                    label:
-                        '${item.daysOnList} day${item.daysOnList == 1 ? '' : 's'} on list',
-                    key: ValueKey('days-on-list-${item.id}'),
-                  ),
-                ],
-              ),
-              if (item.notes != null && item.notes!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  item.notes!,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-              if (displayedPriceLabel != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  displayedPriceLabel,
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-              ],
-              if (item.productUrl != null && item.productUrl!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => _openProductLink(item),
-                      icon: const Icon(Icons.open_in_new_outlined),
-                      label: const Text('Open Link'),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => _copyProductLink(item),
-                      icon: const Icon(Icons.link_outlined),
-                      label: const Text('Copy Link'),
-                    ),
-                  ],
-                ),
-              ],
             ],
           ),
         ),
@@ -1320,22 +1362,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  Future<void> _copyProductLink(WishlistItem item) async {
-    final productUrl = item.productUrl;
-    if (productUrl == null || productUrl.isEmpty) {
-      return;
-    }
-
-    final messenger = ScaffoldMessenger.of(context);
-    await Clipboard.setData(ClipboardData(text: productUrl));
-    if (!mounted) {
-      return;
-    }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Product link copied.')));
-  }
-
   Future<void> _openProductLink(WishlistItem item) async {
     final productUrl = item.productUrl;
     if (productUrl == null || productUrl.isEmpty) {
@@ -1452,8 +1478,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 }
 
 enum _WishlistAction { delete }
-
-enum _WishlistItemAction { edit, moveToActive, delete }
 
 class _InviteCollaboratorResult {
   const _InviteCollaboratorResult({

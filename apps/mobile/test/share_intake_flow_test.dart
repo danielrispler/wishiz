@@ -38,6 +38,8 @@ void main() {
       expect(sharedProductRepository.requestedSharedTexts, [
         'https://example.com/products/mug',
       ]);
+      expect(find.text('Preview Item'), findsOneWidget);
+      expect(find.text('Imported details may have problems'), findsOneWidget);
       expect(find.text('Imported mug'), findsOneWidget);
     });
 

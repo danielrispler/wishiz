@@ -58,6 +58,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late final TextEditingController _productUrlController;
   late String _selectedPriority;
   late String _selectedStatus;
+  late bool _isLinkPreview;
   bool _showImageValidationError = false;
   bool _isGeneratingFromLink = false;
   bool _isSaving = false;
@@ -80,6 +81,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     );
     _selectedPriority = widget.item?.priority ?? WishlistItem.priorities[1];
     _selectedStatus = widget.item?.status ?? WishlistItem.statuses.first;
+    _isLinkPreview = widget.isSharedImport;
 
     if (!widget.isEditing && _productUrlController.text.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -228,9 +230,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final message = widget.isEditing ? 'Item updated.' : 'Item added.';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
     Navigator.of(context).pop();
   }
 
@@ -282,13 +282,15 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
           _titleController.text = draft.title!;
         }
         _notesController.text = draft.notes ?? '';
-        _priceController.text = CurrencyUtils.convertPriceLabel(
+        _priceController.text =
+            CurrencyUtils.convertPriceLabel(
               draft.priceLabel,
               targetCurrencyCode: widget.preferredCurrencyCode,
             ) ??
             '';
         _imageUrlController.text = draft.imageUrl ?? '';
         _productUrlController.text = draft.productUrl;
+        _isLinkPreview = true;
         _showImageValidationError = false;
       });
 
@@ -349,13 +351,20 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     final isBusy = _isGeneratingFromLink || _isSaving;
+    final isReviewingImportedDetails = _isLinkPreview && !widget.isEditing;
     final busyMessage = _isGeneratingFromLink
         ? 'Generating product details...'
         : 'Saving item...';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEditing ? 'Edit Item' : 'Add Item'),
+        title: Text(
+          widget.isEditing
+              ? 'Edit Item'
+              : isReviewingImportedDetails
+              ? 'Preview Item'
+              : 'Add Item',
+        ),
       ),
       body: Stack(
         children: [
@@ -370,12 +379,16 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   120,
                 ),
                 children: [
+                  if (isReviewingImportedDetails) ...[
+                    _buildImportedDetailsDisclaimer(context),
+                    const SizedBox(height: AppConstants.sectionGap),
+                  ],
                   Text(
                     widget.isEditing
                         ? 'Refresh the details of this saved piece without changing the surrounding look.'
-                        : widget.isSharedImport
-                            ? 'Wishiz imported the product link and any metadata it could find. Fill in anything still missing, then save it to this list.'
-                            : 'Add a new object to this collection while keeping the same editorial feel.',
+                        : isReviewingImportedDetails
+                        ? 'Review the imported details, edit anything that looks wrong, and save only after you verify the product information.'
+                        : 'Add a new object to this collection while keeping the same editorial feel.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppConstants.sectionGap),
@@ -435,12 +448,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                         labelText: 'Priority',
                         border: InputBorder.none,
                       ),
-                      items: WishlistItem.priorities.map((priority) {
-                        return DropdownMenuItem(
-                          value: priority,
-                          child: Text(priority),
-                        );
-                      }).toList(growable: false),
+                      items: WishlistItem.priorities
+                          .map((priority) {
+                            return DropdownMenuItem(
+                              value: priority,
+                              child: Text(priority),
+                            );
+                          })
+                          .toList(growable: false),
                       onChanged: (value) {
                         setState(() {
                           _selectedPriority =
@@ -458,12 +473,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                         labelText: 'Status',
                         border: InputBorder.none,
                       ),
-                      items: WishlistItem.statuses.map((status) {
-                        return DropdownMenuItem(
-                          value: status,
-                          child: Text(status),
-                        );
-                      }).toList(growable: false),
+                      items: WishlistItem.statuses
+                          .map((status) {
+                            return DropdownMenuItem(
+                              value: status,
+                              child: Text(status),
+                            );
+                          })
+                          .toList(growable: false),
                       onChanged: (value) {
                         setState(() {
                           _selectedStatus =
@@ -525,9 +542,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Please add an image before saving this shared item.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.error,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
                     ),
                   ],
                   const SizedBox(height: AppConstants.itemGap),
@@ -551,8 +568,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     child: TextButton.icon(
                       onPressed:
                           widget.sharedProductRepository == null || isBusy
-                              ? null
-                              : _generateFromProductLink,
+                          ? null
+                          : _generateFromProductLink,
                       icon: const Icon(Icons.auto_fix_high_outlined),
                       label: Text(
                         _isGeneratingFromLink
@@ -572,8 +589,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(AppConstants.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppConstants.radiusFull,
+                      ),
                     ),
                     child: ElevatedButton(
                       onPressed: isBusy ? null : _saveItem,
@@ -593,8 +611,10 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                         _isSaving
                             ? 'Saving...'
                             : widget.isEditing
-                                ? 'Save Item'
-                                : 'Add Item',
+                            ? 'Save Item'
+                            : isReviewingImportedDetails
+                            ? 'Verify And Save'
+                            : 'Add Item',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                     ),
@@ -604,10 +624,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
             ),
           ),
           if (isBusy) ...[
-            const ModalBarrier(
-              dismissible: false,
-              color: Colors.black45,
-            ),
+            const ModalBarrier(dismissible: false, color: Colors.black45),
             Center(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -639,10 +656,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     );
   }
 
-  Widget _buildFieldCard(
-    BuildContext context, {
-    required Widget child,
-  }) {
+  Widget _buildFieldCard(BuildContext context, {required Widget child}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -653,6 +667,50 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         vertical: AppConstants.itemGap,
       ),
       child: child,
+    );
+  }
+
+  Widget _buildImportedDetailsDisclaimer(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+        border: Border.all(color: colorScheme.tertiary.withValues(alpha: 0.4)),
+      ),
+      padding: const EdgeInsets.all(AppConstants.cardPadding),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            color: colorScheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: AppConstants.spacing3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Imported details may have problems',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colorScheme.onTertiaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Please verify the title, price, image, and link before saving. You can edit everything in this preview.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -683,10 +741,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     }
 
     final normalized = trimmed.replaceFirst(RegExp(r'^[^\d]+'), '');
-    final isValid =
-        RegExp(r'^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$').hasMatch(
-      normalized,
-    );
+    final isValid = RegExp(
+      r'^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$',
+    ).hasMatch(normalized);
     return isValid ? null : 'Use a valid amount like 120 or 120.00.';
   }
 
@@ -741,7 +798,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _imageUrlController.text.trim();
     final uri = Uri.tryParse(source);
-    final isRemote = uri != null &&
+    final isRemote =
+        uri != null &&
         (uri.scheme == 'http' ||
             uri.scheme == 'https' ||
             uri.scheme == 'blob' ||
@@ -751,16 +809,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         ? Image.network(
             source,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _imageFallback(
-              colorScheme,
-            ),
+            errorBuilder: (context, error, stackTrace) =>
+                _imageFallback(colorScheme),
           )
         : Image.file(
             File(source),
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _imageFallback(
-              colorScheme,
-            ),
+            errorBuilder: (context, error, stackTrace) =>
+                _imageFallback(colorScheme),
           );
 
     return InkWell(
@@ -768,10 +824,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       borderRadius: BorderRadius.circular(AppConstants.radiusXl),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: image,
-        ),
+        child: AspectRatio(aspectRatio: 16 / 9, child: image),
       ),
     );
   }
@@ -780,16 +833,14 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     return Container(
       color: colorScheme.surfaceContainerHigh,
       alignment: Alignment.center,
-      child: Icon(
-        Icons.image_outlined,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
     );
   }
 
   Future<void> _openImageViewer(BuildContext context, String imageSource) {
     final uri = Uri.tryParse(imageSource);
-    final isRemote = uri != null &&
+    final isRemote =
+        uri != null &&
         (uri.scheme == 'http' ||
             uri.scheme == 'https' ||
             uri.scheme == 'blob' ||
@@ -807,14 +858,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   minScale: 0.8,
                   maxScale: 4,
                   child: kIsWeb || isRemote
-                      ? Image.network(
-                          imageSource,
-                          fit: BoxFit.contain,
-                        )
-                      : Image.file(
-                          File(imageSource),
-                          fit: BoxFit.contain,
-                        ),
+                      ? Image.network(imageSource, fit: BoxFit.contain)
+                      : Image.file(File(imageSource), fit: BoxFit.contain),
                 ),
               ),
             ),
@@ -835,8 +880,9 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String? _inferTitleFromProductUri(Uri uri) {
-    final pathSegments =
-        uri.pathSegments.where((segment) => segment.isNotEmpty);
+    final pathSegments = uri.pathSegments.where(
+      (segment) => segment.isNotEmpty,
+    );
     for (final segment in pathSegments.toList().reversed) {
       final decoded = Uri.decodeComponent(segment)
           .replaceAll(RegExp(r'[-_+]'), ' ')
@@ -864,9 +910,13 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String _toTitleCase(String value) {
-    return value.split(' ').where((word) => word.isNotEmpty).map((word) {
-      final lower = word.toLowerCase();
-      return '${lower[0].toUpperCase()}${lower.substring(1)}';
-    }).join(' ');
+    return value
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map((word) {
+          final lower = word.toLowerCase();
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
   }
 }

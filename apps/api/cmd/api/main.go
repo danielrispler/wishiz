@@ -41,6 +41,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if cfg.AppEnv == "production" && cfg.DatabaseURL == "" {
+		return errors.New("DATABASE_URL is required in production")
+	}
 
 	appLogger := logger.New(cfg.AppEnv)
 
@@ -84,7 +87,14 @@ func run() error {
 
 		wishlistRepo := wishlistpostgres.NewRepository(pool)
 		wishlistService := wishlistapp.NewService(wishlistRepo)
-		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService, authhttp.RequireAuth(authService))
+		wishlisthttp.RegisterRoutes(
+			mux,
+			appLogger,
+			wishlistService,
+			func(next http.HandlerFunc) http.HandlerFunc {
+				return authhttp.RequireAuth(authService, next)
+			},
+		)
 	} else {
 		appLogger.Info("starting api without database-backed wishlist routes")
 	}

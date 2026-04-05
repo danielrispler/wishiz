@@ -72,22 +72,28 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 
 	itemRows, err := r.pool.Query(ctx, `
 		SELECT
-			id::text,
-			wishlist_id::text,
-			title,
-			rank,
-			notes,
-			price_label,
-			priority,
-			status,
-			image_url,
-			product_url,
-			purchased_at,
-			created_at,
-			updated_at
-		FROM wishlist_items
+			i.id::text,
+			i.wishlist_id::text,
+			i.title,
+			i.rank,
+			i.notes,
+			i.price_label,
+			i.priority,
+			i.status,
+			i.image_url,
+			i.product_url,
+			i.purchased_at,
+			i.created_at,
+			i.updated_at
+		FROM wishlist_items i
+		JOIN wishlists w ON w.id = i.wishlist_id
+		WHERE w.owner_id = $1::uuid OR (
+			w.is_shared = true AND w.id IN (
+				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
+			)
+		)
 		ORDER BY wishlist_id, rank ASC
-	`)
+	`, requestUserID, requestUserEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list wishlist items: %w", err)
 	}
@@ -112,14 +118,20 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 
 	sharedUserRows, err := r.pool.Query(ctx, `
 		SELECT
-			wishlist_id::text,
-			id::text,
-			name,
-			email,
-			role
-		FROM wishlist_shared_users
+			su.wishlist_id::text,
+			su.id::text,
+			su.name,
+			su.email,
+			su.role
+		FROM wishlist_shared_users su
+		JOIN wishlists w ON w.id = su.wishlist_id
+		WHERE w.owner_id = $1::uuid OR (
+			w.is_shared = true AND w.id IN (
+				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
+			)
+		)
 		ORDER BY wishlist_id, created_at ASC
-	`)
+	`, requestUserID, requestUserEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list shared users: %w", err)
 	}
@@ -128,8 +140,8 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 	for sharedUserRows.Next() {
 		var wishlistID string
 		var user domain.SharedUser
-		if err := sharedUserRows.Scan(&wishlistID, &user.ID, &user.Name, &user.Email, &user.Role); err != nil {
-			return nil, err
+		if scanErr := sharedUserRows.Scan(&wishlistID, &user.ID, &user.Name, &user.Email, &user.Role); scanErr != nil {
+			return nil, scanErr
 		}
 
 		index, ok := indexByID[wishlistID]

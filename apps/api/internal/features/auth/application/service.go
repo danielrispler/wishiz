@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -65,7 +66,7 @@ func (s *Service) SignUp(ctx context.Context, input *SignUpInput) (domain.User, 
 	}
 
 	user, err := s.repo.CreateUser(ctx, params)
-	if err == ports.ErrEmailConflict {
+	if errors.Is(err, ports.ErrEmailConflict) {
 		return domain.User{}, "", Conflict("email", "an account with that email already exists")
 	}
 	if err != nil {
@@ -94,7 +95,7 @@ func (s *Service) LogIn(ctx context.Context, input *LogInInput) (domain.User, st
 	}
 
 	user, passwordHash, err := s.repo.GetUserByEmail(ctx, email)
-	if err == ports.ErrNotFound {
+	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, "", Unauthorized("email or password is incorrect")
 	}
 	if err != nil {
@@ -119,7 +120,7 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (domain.Use
 	}
 
 	user, err := s.repo.GetUserBySessionTokenHash(ctx, tokenHash(token))
-	if err == ports.ErrNotFound {
+	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, Unauthorized("session is invalid or expired")
 	}
 	if err != nil {
@@ -131,7 +132,7 @@ func (s *Service) Authenticate(ctx context.Context, rawToken string) (domain.Use
 
 func (s *Service) GetCurrentUser(ctx context.Context, userID string) (domain.User, error) {
 	user, _, err := s.repo.GetUserByID(ctx, userID)
-	if err == ports.ErrNotFound {
+	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, NotFound("user not found")
 	}
 	return user, err
@@ -143,7 +144,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	}
 
 	currentUser, existingPasswordHash, err := s.repo.GetUserByID(ctx, userID)
-	if err == ports.ErrNotFound {
+	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, NotFound("user not found")
 	}
 	if err != nil {
@@ -186,7 +187,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		NotificationsEnabled:  input.NotificationsEnabled,
 		ReminderDays:          normalizeReminderDays(input.ReminderDays),
 	})
-	if err == ports.ErrEmailConflict {
+	if errors.Is(err, ports.ErrEmailConflict) {
 		return domain.User{}, Conflict("email", "an account with that email already exists")
 	}
 	if err != nil {
@@ -202,7 +203,7 @@ func (s *Service) LogOut(ctx context.Context, rawToken string) error {
 		return nil
 	}
 	err := s.repo.DeleteSessionByTokenHash(ctx, tokenHash(token))
-	if err == ports.ErrNotFound {
+	if errors.Is(err, ports.ErrNotFound) {
 		return nil
 	}
 	return err

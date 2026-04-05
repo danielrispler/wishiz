@@ -84,7 +84,7 @@ func (s *Service) userEmail(ctx context.Context) string {
 	return strings.ToLower(strings.TrimSpace(user.Email))
 }
 
-func (s *Service) checkAccess(wishlist domain.Wishlist, ctx context.Context) error {
+func (s *Service) checkAccess(ctx context.Context, wishlist domain.Wishlist) error {
 	uid := s.userID(ctx)
 	if wishlist.OwnerID == uid {
 		return nil
@@ -100,7 +100,7 @@ func (s *Service) checkAccess(wishlist domain.Wishlist, ctx context.Context) err
 	return WishlistNotFound()
 }
 
-func (s *Service) checkOwner(wishlist domain.Wishlist, ctx context.Context) error {
+func (s *Service) checkOwner(ctx context.Context, wishlist domain.Wishlist) error {
 	if wishlist.OwnerID != s.userID(ctx) {
 		return WishlistNotFound()
 	}
@@ -129,7 +129,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (domain.Wishlist, erro
 		return domain.Wishlist{}, err
 	}
 
-	if err := s.checkAccess(wishlist, ctx); err != nil {
+	if err := s.checkAccess(ctx, wishlist); err != nil {
 		return domain.Wishlist{}, err
 	}
 
@@ -174,8 +174,8 @@ func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInpu
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := s.checkOwner(current, ctx); err != nil {
-		return domain.Wishlist{}, err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return domain.Wishlist{}, ownerErr
 	}
 
 	params := ports.UpdateWishlistParams{
@@ -197,8 +197,8 @@ func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInpu
 		params.Description = normalizeText(input.Description.Value)
 	}
 	if input.Year.Set {
-		if err := validateYear(input.Year.Value); err != nil {
-			return domain.Wishlist{}, err
+		if validationErr := validateYear(input.Year.Value); validationErr != nil {
+			return domain.Wishlist{}, validationErr
 		}
 		params.Year = input.Year.Value
 	}
@@ -227,8 +227,8 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.checkOwner(current, ctx); err != nil {
-		return err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return ownerErr
 	}
 
 	err = s.repo.Delete(ctx, id)
@@ -247,8 +247,8 @@ func (s *Service) Archive(ctx context.Context, id string) (domain.Wishlist, erro
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := s.checkOwner(current, ctx); err != nil {
-		return domain.Wishlist{}, err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return domain.Wishlist{}, ownerErr
 	}
 
 	if _, err := s.repo.Archive(ctx, id); errors.Is(err, ports.ErrNotFound) {
@@ -269,8 +269,8 @@ func (s *Service) Restore(ctx context.Context, id string) (domain.Wishlist, erro
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := s.checkOwner(current, ctx); err != nil {
-		return domain.Wishlist{}, err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return domain.Wishlist{}, ownerErr
 	}
 
 	if _, err := s.repo.Restore(ctx, id); errors.Is(err, ports.ErrNotFound) {
@@ -291,8 +291,8 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
-	if err := s.checkOwner(current, ctx); err != nil {
-		return domain.WishlistItem{}, err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return domain.WishlistItem{}, ownerErr
 	}
 
 	title, err := requireTitle(input.Title)
@@ -338,8 +338,8 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
-	if err := s.checkOwner(wishlist, ctx); err != nil {
-		return domain.WishlistItem{}, err
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return domain.WishlistItem{}, ownerErr
 	}
 	err = validateUUID("itemId", itemID)
 	if err != nil {
@@ -421,8 +421,8 @@ func (s *Service) DeleteItem(ctx context.Context, wishlistID, itemID string) err
 	if err != nil {
 		return err
 	}
-	if err := s.checkOwner(wishlist, ctx); err != nil {
-		return err
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return ownerErr
 	}
 	err = validateUUID("itemId", itemID)
 	if err != nil {
@@ -444,8 +444,8 @@ func (s *Service) ReorderItems(ctx context.Context, wishlistID string, orderedIt
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := s.checkOwner(wishlist, ctx); err != nil {
-		return domain.Wishlist{}, err
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return domain.Wishlist{}, ownerErr
 	}
 
 	existing := make(map[string]domain.WishlistItem, len(wishlist.Items))
@@ -498,8 +498,8 @@ func (s *Service) AddSharedUser(ctx context.Context, wishlistID string, input *A
 	if err != nil {
 		return err
 	}
-	if err := s.checkOwner(wishlist, ctx); err != nil {
-		return err
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return ownerErr
 	}
 
 	name := normalizeText(input.Name)
@@ -533,11 +533,11 @@ func (s *Service) RemoveSharedUser(ctx context.Context, wishlistID, userID strin
 	if err != nil {
 		return err
 	}
-	if err := s.checkOwner(wishlist, ctx); err != nil {
-		return err
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return ownerErr
 	}
-	if err := validateUUID("userId", userID); err != nil {
-		return err
+	if validationErr := validateUUID("userId", userID); validationErr != nil {
+		return validationErr
 	}
 
 	err = s.repo.RemoveSharedUser(ctx, wishlistID, userID)

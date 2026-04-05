@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 )
 
@@ -353,11 +354,11 @@ func readImage(value any) string {
 	return ""
 }
 
-func readOfferPrice(value any) (string, string) {
+func readOfferPrice(value any) (amount string, currency string) {
 	switch typed := value.(type) {
 	case map[string]any:
-		amount := stringValue(typed["price"])
-		currency := stringValue(typed["priceCurrency"])
+		amount = stringValue(typed["price"])
+		currency = stringValue(typed["priceCurrency"])
 		if amount != "" && currency != "" {
 			if normalizedAmount, normalizedCurrency, ok := scrapeapp.NormalizePrice(currency + " " + amount); ok {
 				return normalizedAmount, normalizedCurrency
@@ -372,9 +373,9 @@ func readOfferPrice(value any) (string, string) {
 	case []any:
 		for _, entry := range typed {
 			if offer, ok := entry.(map[string]any); ok {
-				amount, currency := readOfferPrice(offer)
-				if amount != "" && currency != "" {
-					return amount, currency
+				nestedAmount, nestedCurrency := readOfferPrice(offer)
+				if nestedAmount != "" && nestedCurrency != "" {
+					return nestedAmount, nestedCurrency
 				}
 			}
 		}

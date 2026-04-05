@@ -11,11 +11,9 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 
 class LocalAuthRepository implements AuthRepository {
   LocalAuthRepository._(this._storage, this._storedUsers, this._currentUser)
-      : _currentUserNotifier = ValueNotifier<AppUser?>(_currentUser);
+    : _currentUserNotifier = ValueNotifier<AppUser?>(_currentUser);
 
   static const Uuid _uuid = Uuid();
-  static const String _devDanielLogin = 'daniel';
-  static const String _devDanielEmail = 'daniel@wishiz.local';
 
   final AuthStorage _storage;
   final List<_StoredUser> _storedUsers;
@@ -28,7 +26,8 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   static Future<LocalAuthRepository> createWithStorage(
-      AuthStorage storage) async {
+    AuthStorage storage,
+  ) async {
     final source = await storage.read();
     final payload = _decode(source);
     final storedUsers = List<_StoredUser>.of(payload.users, growable: true);
@@ -62,7 +61,8 @@ class LocalAuthRepository implements AuthRepository {
     );
     if (alreadyExists) {
       return const AuthResult.failure(
-          'An account with that email already exists.');
+        'An account with that email already exists.',
+      );
     }
 
     final storedUser = _StoredUser(
@@ -91,19 +91,14 @@ class LocalAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    if (email.trim().toLowerCase() == _devDanielLogin &&
-        password == _devDanielLogin) {
-      return _logInWithDevDanielUser();
-    }
-
     final normalizedEmail = email.trim().toLowerCase();
     final passwordHash = _hashPassword(password);
     final matchedUser = _storedUsers.cast<_StoredUser?>().firstWhere(
-          (user) =>
-              user?.email.toLowerCase() == normalizedEmail &&
-              user?.passwordHash == passwordHash,
-          orElse: () => null,
-        );
+      (user) =>
+          user?.email.toLowerCase() == normalizedEmail &&
+          user?.passwordHash == passwordHash,
+      orElse: () => null,
+    );
 
     if (matchedUser == null) {
       return const AuthResult.failure('Email or password is incorrect.');
@@ -118,37 +113,6 @@ class LocalAuthRepository implements AuthRepository {
         'We could not restore your session on this device.',
       );
     }
-    return AuthResult.success(_currentUser!);
-  }
-
-  Future<AuthResult> _logInWithDevDanielUser() async {
-    var matchedUser = _storedUsers.cast<_StoredUser?>().firstWhere(
-          (user) => user?.email.toLowerCase() == _devDanielEmail,
-          orElse: () => null,
-        );
-
-    if (matchedUser == null) {
-      final devUser = _StoredUser(
-        id: _uuid.v4(),
-        email: _devDanielEmail,
-        fullName: 'Daniel Daniel',
-        birthday: DateTime(1990, 1, 1),
-        passwordHash: _hashPassword(_devDanielLogin),
-      );
-      _storedUsers.add(devUser);
-      matchedUser = devUser;
-    }
-
-    _setCurrentUser(matchedUser.toAppUser());
-    try {
-      await _persist();
-    } catch (_) {
-      _setCurrentUser(null);
-      return const AuthResult.failure(
-        'We could not restore your session on this device.',
-      );
-    }
-
     return AuthResult.success(_currentUser!);
   }
 
@@ -176,7 +140,8 @@ class LocalAuthRepository implements AuthRepository {
     );
     if (alreadyExists) {
       return const AuthResult.failure(
-          'An account with that email already exists.');
+        'An account with that email already exists.',
+      );
     }
 
     final index = _storedUsers.indexWhere((user) => user.id == currentUser.id);
@@ -250,10 +215,7 @@ class LocalAuthRepository implements AuthRepository {
 
   static _AuthPayload _decode(String? source) {
     if (source == null || source.trim().isEmpty) {
-      return const _AuthPayload(
-        currentUserId: null,
-        users: <_StoredUser>[],
-      );
+      return const _AuthPayload(currentUserId: null, users: <_StoredUser>[]);
     }
 
     try {
@@ -266,15 +228,9 @@ class LocalAuthRepository implements AuthRepository {
         users: users,
       );
     } on FormatException {
-      return const _AuthPayload(
-        currentUserId: null,
-        users: <_StoredUser>[],
-      );
+      return const _AuthPayload(currentUserId: null, users: <_StoredUser>[]);
     } catch (_) {
-      return const _AuthPayload(
-        currentUserId: null,
-        users: <_StoredUser>[],
-      );
+      return const _AuthPayload(currentUserId: null, users: <_StoredUser>[]);
     }
   }
 
@@ -285,10 +241,7 @@ class LocalAuthRepository implements AuthRepository {
 }
 
 class _AuthPayload {
-  const _AuthPayload({
-    required this.currentUserId,
-    required this.users,
-  });
+  const _AuthPayload({required this.currentUserId, required this.users});
 
   final String? currentUserId;
   final List<_StoredUser> users;

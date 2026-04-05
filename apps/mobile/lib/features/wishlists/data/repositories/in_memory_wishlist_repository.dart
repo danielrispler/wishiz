@@ -11,15 +11,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
   InMemoryWishlistRepository({
     required this.ownerUserId,
     List<Wishlist>? initialWishlists,
-  })
-      : _wishlists = ValueNotifier<List<Wishlist>>(
-          List<Wishlist>.unmodifiable(
-            initialWishlists ?? seedWishlists(ownerUserId: ownerUserId),
-          ),
-        );
+  }) : _wishlists = ValueNotifier<List<Wishlist>>(
+         List<Wishlist>.unmodifiable(initialWishlists ?? const <Wishlist>[]),
+       );
 
-  static final InMemoryWishlistRepository instance =
-      InMemoryWishlistRepository(ownerUserId: 'demo-user');
   static const Uuid _uuid = Uuid();
 
   final String ownerUserId;
@@ -96,10 +91,8 @@ class InMemoryWishlistRepository implements WishlistRepository {
   Future<Wishlist?> archiveWishlist(String id) async {
     return _replaceWishlist(
       id,
-      (wishlist) => wishlist.copyWith(
-        isArchived: true,
-        updatedAt: DateTime.now(),
-      ),
+      (wishlist) =>
+          wishlist.copyWith(isArchived: true, updatedAt: DateTime.now()),
     );
   }
 
@@ -107,10 +100,8 @@ class InMemoryWishlistRepository implements WishlistRepository {
   Future<Wishlist?> restoreWishlist(String id) async {
     return _replaceWishlist(
       id,
-      (wishlist) => wishlist.copyWith(
-        isArchived: false,
-        updatedAt: DateTime.now(),
-      ),
+      (wishlist) =>
+          wishlist.copyWith(isArchived: false, updatedAt: DateTime.now()),
     );
   }
 
@@ -130,32 +121,24 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String email,
     required String role,
   }) async {
-    return _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final normalizedEmail = email.toLowerCase();
-        final alreadyExists = wishlist.sharedUsers.any(
-          (user) => user.email.toLowerCase() == normalizedEmail,
-        );
-        if (alreadyExists) {
-          return wishlist;
-        }
+    return _replaceWishlist(wishlistId, (wishlist) {
+      final normalizedEmail = email.toLowerCase();
+      final alreadyExists = wishlist.sharedUsers.any(
+        (user) => user.email.toLowerCase() == normalizedEmail,
+      );
+      if (alreadyExists) {
+        return wishlist;
+      }
 
-        return wishlist.copyWith(
-          isShared: true,
-          sharedUsers: [
-            ...wishlist.sharedUsers,
-            SharedUser(
-              id: _uuid.v4(),
-              name: name,
-              email: email,
-              role: role,
-            ),
-          ],
-          updatedAt: DateTime.now(),
-        );
-      },
-    );
+      return wishlist.copyWith(
+        isShared: true,
+        sharedUsers: [
+          ...wishlist.sharedUsers,
+          SharedUser(id: _uuid.v4(), name: name, email: email, role: role),
+        ],
+        updatedAt: DateTime.now(),
+      );
+    });
   }
 
   @override
@@ -165,21 +148,18 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }) async {
     var wasRemoved = false;
 
-    final updatedWishlist = _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final nextUsers = wishlist.sharedUsers
-            .where((user) => user.id != userId)
-            .toList(growable: false);
-        wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
+    final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
+      final nextUsers = wishlist.sharedUsers
+          .where((user) => user.id != userId)
+          .toList(growable: false);
+      wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
 
-        return wishlist.copyWith(
-          isShared: nextUsers.isNotEmpty,
-          sharedUsers: nextUsers,
-          updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
-        );
-      },
-    );
+      return wishlist.copyWith(
+        isShared: nextUsers.isNotEmpty,
+        sharedUsers: nextUsers,
+        updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
+      );
+    });
 
     return updatedWishlist != null && wasRemoved;
   }
@@ -217,10 +197,8 @@ class InMemoryWishlistRepository implements WishlistRepository {
 
     final updatedWishlist = _replaceWishlist(
       wishlistId,
-      (wishlist) => wishlist.copyWith(
-        items: [...wishlist.items, item],
-        updatedAt: now,
-      ),
+      (wishlist) =>
+          wishlist.copyWith(items: [...wishlist.items, item], updatedAt: now),
     );
 
     if (updatedWishlist == null) {
@@ -239,35 +217,24 @@ class InMemoryWishlistRepository implements WishlistRepository {
       return findById(wishlistId);
     }
 
-    return _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final itemById = {
-          for (final item in wishlist.items) item.id: item,
-        };
-        final prioritizedItems = orderedItemIds
-            .map(itemById.remove)
-            .whereType<WishlistItem>()
-            .toList(growable: false);
-        final remainingItems = wishlist.items
-            .where((item) => itemById.containsKey(item.id))
-            .toList(growable: false);
-        final reorderedItems = [
-          ...prioritizedItems,
-          ...remainingItems,
-        ];
-        final rankedItems = List<WishlistItem>.generate(
-          reorderedItems.length,
-          (index) => reorderedItems[index].copyWith(rank: index + 1),
-          growable: false,
-        );
+    return _replaceWishlist(wishlistId, (wishlist) {
+      final itemById = {for (final item in wishlist.items) item.id: item};
+      final prioritizedItems = orderedItemIds
+          .map(itemById.remove)
+          .whereType<WishlistItem>()
+          .toList(growable: false);
+      final remainingItems = wishlist.items
+          .where((item) => itemById.containsKey(item.id))
+          .toList(growable: false);
+      final reorderedItems = [...prioritizedItems, ...remainingItems];
+      final rankedItems = List<WishlistItem>.generate(
+        reorderedItems.length,
+        (index) => reorderedItems[index].copyWith(rank: index + 1),
+        growable: false,
+      );
 
-        return wishlist.copyWith(
-          items: rankedItems,
-          updatedAt: DateTime.now(),
-        );
-      },
-    );
+      return wishlist.copyWith(items: rankedItems, updatedAt: DateTime.now());
+    });
   }
 
   @override
@@ -280,33 +247,32 @@ class InMemoryWishlistRepository implements WishlistRepository {
     var didUpdate = false;
     final now = DateTime.now();
 
-    final updatedWishlist = _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final nextItems = wishlist.items.map((item) {
-          if (item.id != itemId) {
-            return item;
-          }
+    final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
+      final nextItems = wishlist.items
+          .map((item) {
+            if (item.id != itemId) {
+              return item;
+            }
 
-          updatedItem = item.copyWith(
-            status: status,
-            purchasedAt: _nextPurchasedAt(
-              previousStatus: item.status,
-              nextStatus: status,
-              currentPurchasedAt: item.purchasedAt,
-              now: now,
-            ),
-          );
-          didUpdate = true;
-          return updatedItem!;
-        }).toList(growable: false);
+            updatedItem = item.copyWith(
+              status: status,
+              purchasedAt: _nextPurchasedAt(
+                previousStatus: item.status,
+                nextStatus: status,
+                currentPurchasedAt: item.purchasedAt,
+                now: now,
+              ),
+            );
+            didUpdate = true;
+            return updatedItem!;
+          })
+          .toList(growable: false);
 
-        return wishlist.copyWith(
-          items: nextItems,
-          updatedAt: didUpdate ? now : wishlist.updatedAt,
-        );
-      },
-    );
+      return wishlist.copyWith(
+        items: nextItems,
+        updatedAt: didUpdate ? now : wishlist.updatedAt,
+      );
+    });
 
     if (updatedWishlist == null || !didUpdate) {
       return null;
@@ -331,39 +297,38 @@ class InMemoryWishlistRepository implements WishlistRepository {
     var didUpdate = false;
     final now = DateTime.now();
 
-    final updatedWishlist = _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final nextItems = wishlist.items.map((item) {
-          if (item.id != itemId) {
-            return item;
-          }
+    final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
+      final nextItems = wishlist.items
+          .map((item) {
+            if (item.id != itemId) {
+              return item;
+            }
 
-          updatedItem = item.copyWith(
-            title: title,
-            notes: notes,
-            priceLabel: priceLabel,
-            priority: priority,
-            status: status,
-            imageUrl: imageUrl,
-            productUrl: productUrl,
-            purchasedAt: _nextPurchasedAt(
-              previousStatus: item.status,
-              nextStatus: status,
-              currentPurchasedAt: item.purchasedAt,
-              now: now,
-            ),
-          );
-          didUpdate = true;
-          return updatedItem!;
-        }).toList(growable: false);
+            updatedItem = item.copyWith(
+              title: title,
+              notes: notes,
+              priceLabel: priceLabel,
+              priority: priority,
+              status: status,
+              imageUrl: imageUrl,
+              productUrl: productUrl,
+              purchasedAt: _nextPurchasedAt(
+                previousStatus: item.status,
+                nextStatus: status,
+                currentPurchasedAt: item.purchasedAt,
+                now: now,
+              ),
+            );
+            didUpdate = true;
+            return updatedItem!;
+          })
+          .toList(growable: false);
 
-        return wishlist.copyWith(
-          items: nextItems,
-          updatedAt: didUpdate ? now : wishlist.updatedAt,
-        );
-      },
-    );
+      return wishlist.copyWith(
+        items: nextItems,
+        updatedAt: didUpdate ? now : wishlist.updatedAt,
+      );
+    });
 
     if (updatedWishlist == null || !didUpdate) {
       return null;
@@ -379,20 +344,17 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }) async {
     var wasDeleted = false;
 
-    final updatedWishlist = _replaceWishlist(
-      wishlistId,
-      (wishlist) {
-        final nextItems = wishlist.items
-            .where((item) => item.id != itemId)
-            .toList(growable: false);
-        wasDeleted = nextItems.length != wishlist.items.length;
+    final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
+      final nextItems = wishlist.items
+          .where((item) => item.id != itemId)
+          .toList(growable: false);
+      wasDeleted = nextItems.length != wishlist.items.length;
 
-        return wishlist.copyWith(
-          items: nextItems,
-          updatedAt: wasDeleted ? DateTime.now() : wishlist.updatedAt,
-        );
-      },
-    );
+      return wishlist.copyWith(
+        items: nextItems,
+        updatedAt: wasDeleted ? DateTime.now() : wishlist.updatedAt,
+      );
+    });
 
     return updatedWishlist != null && wasDeleted;
   }
@@ -402,14 +364,16 @@ class InMemoryWishlistRepository implements WishlistRepository {
     Wishlist Function(Wishlist wishlist) update,
   ) {
     Wishlist? updatedWishlist;
-    final nextWishlists = _wishlists.value.map((wishlist) {
-      if (wishlist.id != id) {
-        return wishlist;
-      }
+    final nextWishlists = _wishlists.value
+        .map((wishlist) {
+          if (wishlist.id != id) {
+            return wishlist;
+          }
 
-      updatedWishlist = update(wishlist);
-      return updatedWishlist!;
-    }).toList(growable: false);
+          updatedWishlist = update(wishlist);
+          return updatedWishlist!;
+        })
+        .toList(growable: false);
 
     if (updatedWishlist == null) {
       return null;
@@ -441,170 +405,5 @@ class InMemoryWishlistRepository implements WishlistRepository {
     }
 
     return currentPurchasedAt;
-  }
-
-  static List<Wishlist> seedWishlists({
-    required String ownerUserId,
-  }) {
-    final now = DateTime.now();
-
-    return [
-      Wishlist(
-        id: 'home-decor',
-        ownerUserId: ownerUserId,
-        title: 'Home Decor',
-        description:
-            'Soft lighting, sculptural objects, and pieces for a calmer living room.',
-        year: 2026,
-        coverImageUrl: 'https://picsum.photos/seed/home-decor/1200/800',
-        createdAt: now.subtract(const Duration(days: 21)),
-        updatedAt: now.subtract(const Duration(days: 2)),
-        items: [
-          WishlistItem(
-            id: 'decor-lamp',
-            title: 'Marble table lamp',
-            rank: 1,
-            notes: 'Warm bulb, low profile shade.',
-            priceLabel: '\$180',
-            priority: 'High',
-            status: 'Saved',
-            imageUrl: 'https://picsum.photos/seed/decor-lamp/900/700',
-            createdAt: now.subtract(const Duration(days: 7)),
-          ),
-          WishlistItem(
-            id: 'decor-vase',
-            title: 'Stoneware floor vase',
-            rank: 2,
-            notes: 'Neutral finish, tall silhouette.',
-            priceLabel: '\$96',
-            priority: 'Medium',
-            status: 'Considering',
-            imageUrl: 'https://picsum.photos/seed/decor-vase/900/700',
-            createdAt: now.subtract(const Duration(days: 5)),
-          ),
-          WishlistItem(
-            id: 'decor-throw',
-            title: 'Brushed wool throw',
-            rank: 3,
-            notes: 'Textural layer for the reading chair.',
-            priceLabel: '\$74',
-            priority: 'Low',
-            status: 'Saved',
-            imageUrl: 'https://picsum.photos/seed/decor-throw/900/700',
-            createdAt: now.subtract(const Duration(days: 4)),
-          ),
-        ],
-      ),
-      Wishlist(
-        id: 'tech-gear',
-        ownerUserId: ownerUserId,
-        title: 'Tech Gear 2024',
-        description:
-            'Portable tools and desk upgrades for daily work and travel.',
-        year: 2024,
-        coverImageUrl: 'https://picsum.photos/seed/tech-gear/1200/800',
-        createdAt: now.subtract(const Duration(days: 60)),
-        updatedAt: now.subtract(const Duration(days: 1)),
-        items: [
-          WishlistItem(
-            id: 'tech-keyboard',
-            title: 'Low-profile keyboard',
-            rank: 1,
-            notes: 'Quiet switches and compact layout.',
-            priceLabel: '\$129',
-            priority: 'High',
-            status: 'Considering',
-            imageUrl: 'https://picsum.photos/seed/tech-keyboard/900/700',
-            createdAt: now.subtract(const Duration(days: 10)),
-          ),
-          WishlistItem(
-            id: 'tech-monitor-light',
-            title: 'Monitor light bar',
-            rank: 2,
-            notes: 'For late-night desk work.',
-            priceLabel: '\$89',
-            priority: 'Medium',
-            status: 'Saved',
-            imageUrl: 'https://picsum.photos/seed/tech-monitor-light/900/700',
-            createdAt: now.subtract(const Duration(days: 8)),
-          ),
-        ],
-      ),
-      Wishlist(
-        id: 'shared-weekend',
-        ownerUserId: ownerUserId,
-        title: 'Weekend Hosting',
-        description:
-            'A collaborative list for pieces we both want before the next dinner party.',
-        year: 2026,
-        coverImageUrl: 'https://picsum.photos/seed/shared-weekend/1200/800',
-        createdAt: now.subtract(const Duration(days: 14)),
-        updatedAt: now.subtract(const Duration(hours: 6)),
-        isShared: true,
-        sharedUsers: const [
-          SharedUser(
-            id: 'user-maya',
-            name: 'Maya',
-            email: 'maya@example.com',
-            role: 'Owner',
-          ),
-          SharedUser(
-            id: 'user-dan',
-            name: 'Dan',
-            email: 'dan@example.com',
-            role: 'Editor',
-          ),
-        ],
-        items: [
-          WishlistItem(
-            id: 'hosting-plates',
-            title: 'Set of dinner plates',
-            rank: 1,
-            notes: 'Matte finish, set of six.',
-            priceLabel: '\$148',
-            priority: 'High',
-            status: 'Saved',
-            imageUrl: 'https://picsum.photos/seed/hosting-plates/900/700',
-            createdAt: now.subtract(const Duration(days: 3)),
-          ),
-          WishlistItem(
-            id: 'hosting-candles',
-            title: 'Taper candle pair',
-            rank: 2,
-            notes: 'For the dining setup.',
-            priceLabel: '\$28',
-            priority: 'Low',
-            status: 'Purchased',
-            imageUrl: 'https://picsum.photos/seed/hosting-candles/900/700',
-            purchasedAt: now.subtract(const Duration(days: 1)),
-            createdAt: now.subtract(const Duration(days: 2)),
-          ),
-        ],
-      ),
-      Wishlist(
-        id: 'archived-registry',
-        ownerUserId: ownerUserId,
-        title: 'Summer Registry',
-        description: 'An older collection we have already wrapped up.',
-        year: 2025,
-        coverImageUrl: 'https://picsum.photos/seed/archived-registry/1200/800',
-        createdAt: now.subtract(const Duration(days: 180)),
-        updatedAt: now.subtract(const Duration(days: 30)),
-        items: [
-          WishlistItem(
-            id: 'registry-tray',
-            title: 'Walnut serving tray',
-            rank: 1,
-            notes: 'Already purchased.',
-            priceLabel: '\$112',
-            priority: 'Medium',
-            status: 'Purchased',
-            imageUrl: 'https://picsum.photos/seed/registry-tray/900/700',
-            purchasedAt: now.subtract(const Duration(days: 80)),
-            createdAt: now.subtract(const Duration(days: 90)),
-          ),
-        ],
-      ),
-    ];
   }
 }

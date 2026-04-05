@@ -7,6 +7,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/device"
+
 	fastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 )
@@ -44,7 +45,7 @@ func (s *Scraper) Close() error {
 	return nil
 }
 
-func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product, error) {
+func (s *Scraper) Scrape(_ context.Context, rawURL string) (scrapeapp.Product, error) {
 	browserCtx, browserCancel := chromedp.NewContext(s.allocatorCtx)
 	defer browserCancel()
 

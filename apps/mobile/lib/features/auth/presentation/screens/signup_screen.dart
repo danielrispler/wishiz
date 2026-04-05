@@ -13,7 +13,7 @@ class SignupScreen extends StatefulWidget {
   final AuthRepository authRepository;
   final VoidCallback onShowLogin;
   final Future<DateTime?> Function(BuildContext context, DateTime initialDate)?
-      showBirthdayPicker;
+  showBirthdayPicker;
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -40,7 +40,8 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _selectBirthday() async {
-    final initialDate = _selectedBirthday ??
+    final initialDate =
+        _selectedBirthday ??
         DateTime.now().subtract(const Duration(days: 365 * 18));
     final picked =
         await (widget.showBirthdayPicker?.call(context, initialDate) ??
@@ -104,8 +105,10 @@ class _SignupScreenState extends State<SignupScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-              content: Text(
-                  message.isEmpty ? 'An unexpected error occurred.' : message)),
+            content: Text(
+              message.isEmpty ? 'An unexpected error occurred.' : message,
+            ),
+          ),
         );
     }
   }
@@ -124,142 +127,146 @@ class _SignupScreenState extends State<SignupScreen> {
                 horizontal: AppConstants.pagePadding,
               ),
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
-                child: IntrinsicHeight(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppConstants.pagePadding,
-                      ),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 420),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(height: AppConstants.spacing4),
-                            Text(
-                              'Create Account',
-                              style: Theme.of(context).textTheme.displaySmall,
-                              textAlign: TextAlign.center,
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppConstants.pagePadding,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: AppConstants.spacing4),
+                          Text(
+                            'Create Account',
+                            style: Theme.of(context).textTheme.displaySmall,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppConstants.spacing4),
+                          Text(
+                            'Create your account and keep your wishlists synced with the backend.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppConstants.spacing8),
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              children: [
+                                _buildFieldCard(
+                                  context,
+                                  child: TextFormField(
+                                    controller: _fullNameController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Full name',
+                                      border: InputBorder.none,
+                                    ),
+                                    validator: _validateRequired,
+                                  ),
+                                ),
+                                const SizedBox(height: AppConstants.itemGap),
+                                _buildFieldCard(
+                                  context,
+                                  child: TextFormField(
+                                    controller: _birthdayController,
+                                    readOnly: true,
+                                    onTap: _selectBirthday,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Birthday',
+                                      suffixIcon: Icon(
+                                        Icons.calendar_today_outlined,
+                                      ),
+                                      border: InputBorder.none,
+                                    ),
+                                    validator: _validateBirthday,
+                                  ),
+                                ),
+                                const SizedBox(height: AppConstants.itemGap),
+                                _buildFieldCard(
+                                  context,
+                                  child: TextFormField(
+                                    controller: _emailController,
+                                    keyboardType: TextInputType.emailAddress,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Email',
+                                      border: InputBorder.none,
+                                    ),
+                                    validator: _validateEmail,
+                                  ),
+                                ),
+                                const SizedBox(height: AppConstants.itemGap),
+                                _buildFieldCard(
+                                  context,
+                                  child: TextFormField(
+                                    controller: _passwordController,
+                                    obscureText: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Password',
+                                      border: InputBorder.none,
+                                    ),
+                                    validator: _validatePassword,
+                                  ),
+                                ),
+                                const SizedBox(height: AppConstants.itemGap),
+                                _buildFieldCard(
+                                  context,
+                                  child: TextFormField(
+                                    controller: _confirmPasswordController,
+                                    obscureText: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Confirm password',
+                                      border: InputBorder.none,
+                                    ),
+                                    validator: _validateConfirmPassword,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: AppConstants.spacing4),
-                            Text(
-                              'Sign up once and keep using the app offline until the backend arrives.',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: AppConstants.spacing8),
-                            Form(
-                              key: _formKey,
-                              child: Column(
-                                children: [
-                                  _buildFieldCard(
-                                    context,
-                                    child: TextFormField(
-                                      controller: _fullNameController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Full name',
-                                        border: InputBorder.none,
-                                      ),
-                                      validator: _validateRequired,
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppConstants.itemGap),
-                                  _buildFieldCard(
-                                    context,
-                                    child: TextFormField(
-                                      controller: _birthdayController,
-                                      readOnly: true,
-                                      onTap: _selectBirthday,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Birthday',
-                                        suffixIcon: Icon(Icons.calendar_today_outlined),
-                                        border: InputBorder.none,
-                                      ),
-                                      validator: _validateBirthday,
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppConstants.itemGap),
-                                  _buildFieldCard(
-                                    context,
-                                    child: TextFormField(
-                                      controller: _emailController,
-                                      keyboardType: TextInputType.emailAddress,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Email',
-                                        border: InputBorder.none,
-                                      ),
-                                      validator: _validateEmail,
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppConstants.itemGap),
-                                  _buildFieldCard(
-                                    context,
-                                    child: TextFormField(
-                                      controller: _passwordController,
-                                      obscureText: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Password',
-                                        border: InputBorder.none,
-                                      ),
-                                      validator: _validatePassword,
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppConstants.itemGap),
-                                  _buildFieldCard(
-                                    context,
-                                    child: TextFormField(
-                                      controller: _confirmPasswordController,
-                                      obscureText: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Confirm password',
-                                        border: InputBorder.none,
-                                      ),
-                                      validator: _validateConfirmPassword,
-                                    ),
-                                  ),
+                          ),
+                          const SizedBox(height: AppConstants.sectionGap),
+                          Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  colorScheme.primary,
+                                  colorScheme.primaryContainer,
                                 ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                AppConstants.radiusFull,
                               ),
                             ),
-                            const SizedBox(height: AppConstants.sectionGap),
-                            Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    colorScheme.primary,
-                                    colorScheme.primaryContainer,
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius:
-                                    BorderRadius.circular(AppConstants.radiusFull),
-                              ),
-                              child: ElevatedButton(
-                                onPressed: _isSubmitting ? null : _submit,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  shadowColor: Colors.transparent,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: AppConstants.spacing4,
-                                  ),
-                                ),
-                                child: Text(
-                                  _isSubmitting ? 'Creating Account...' : 'Sign Up',
-                                  style: Theme.of(context).textTheme.titleSmall,
+                            child: ElevatedButton(
+                              onPressed: _isSubmitting ? null : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: AppConstants.spacing4,
                                 ),
                               ),
+                              child: Text(
+                                _isSubmitting
+                                    ? 'Creating Account...'
+                                    : 'Sign Up',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
                             ),
-                            const SizedBox(height: AppConstants.spacing4),
-                            TextButton(
-                              onPressed: widget.onShowLogin,
-                              child: const Text('Already have an account? Log in'),
+                          ),
+                          const SizedBox(height: AppConstants.spacing4),
+                          TextButton(
+                            onPressed: widget.onShowLogin,
+                            child: const Text(
+                              'Already have an account? Log in',
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -272,10 +279,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget _buildFieldCard(
-    BuildContext context, {
-    required Widget child,
-  }) {
+  Widget _buildFieldCard(BuildContext context, {required Widget child}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,

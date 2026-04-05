@@ -60,10 +60,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AppUser?>(
       valueListenable: widget.authRepository.watchCurrentUser(),
-      builder: (context, currentUser, __) {
+      builder: (context, currentUser, _) {
         return ValueListenableBuilder<List<Wishlist>>(
           valueListenable: widget.repository.watchWishlists(),
-          builder: (context, _, __) {
+          builder: (context, _, child) {
             final wishlist = widget.repository.findById(widget.wishlistId);
 
             if (wishlist == null) {
@@ -1293,19 +1293,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   Future<void> _shareWishlist(Wishlist wishlist, AppUser? currentUser) async {
-    await Share.share(
-      WishizShareText.buildWishlistShareText(wishlist: wishlist),
-      subject: wishlist.title,
+    await SharePlus.instance.share(
+      ShareParams(
+        text: WishizShareText.buildWishlistShareText(wishlist: wishlist),
+        subject: wishlist.title,
+      ),
     );
   }
 
   Future<void> _shareItem(Wishlist wishlist, WishlistItem item) async {
-    await Share.share(
-      WishizShareText.buildWishlistItemShareText(
-        wishlist: wishlist,
-        item: item,
+    await SharePlus.instance.share(
+      ShareParams(
+        text: WishizShareText.buildWishlistItemShareText(
+          wishlist: wishlist,
+          item: item,
+        ),
+        subject: item.title,
       ),
-      subject: item.title,
     );
   }
 

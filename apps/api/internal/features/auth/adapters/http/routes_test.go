@@ -60,6 +60,44 @@ func TestLogInReturnsTokenAndUser(t *testing.T) {
 	}
 }
 
+func TestSignUpReturnsTokenAndUser(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		signUp: func(_ context.Context, input *application.SignUpInput) (domain.User, string, error) {
+			if input.Email != "maya@example.com" {
+				t.Fatalf("unexpected email %q", input.Email)
+			}
+			if input.FullName != "Maya Hope" {
+				t.Fatalf("unexpected full name %q", input.FullName)
+			}
+			return sampleUser(), "signup-token", nil
+		},
+	}
+
+	response := performRequest(
+		t,
+		service,
+		http.MethodPost,
+		"/auth/signup",
+		`{"email":"maya@example.com","password":"secret","fullName":"Maya Hope","birthday":"1992-06-15T00:00:00Z","preferredCurrencyCode":"USD","notificationsEnabled":true,"reminderDays":14}`,
+		"",
+	)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload authResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Token != "signup-token" {
+		t.Fatalf("expected signup token, got %q", payload.Token)
+	}
+	if payload.User.Email != "maya@example.com" {
+		t.Fatalf("expected user email, got %q", payload.User.Email)
+	}
+}
+
 func TestGetCurrentUserUsesAuthenticatedContext(t *testing.T) {
 	t.Parallel()
 	service := &stubService{

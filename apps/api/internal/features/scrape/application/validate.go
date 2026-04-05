@@ -39,7 +39,7 @@ func ValidateProductURL(ctx context.Context, resolver HostResolver, rawURL strin
 		return nil, BadRequest("url host is not allowed")
 	}
 
-	if ip, err := netip.ParseAddr(host); err == nil {
+	if ip, parseErr := netip.ParseAddr(host); parseErr == nil {
 		if isDisallowedAddr(ip) {
 			return nil, BadRequest("url host is not allowed")
 		}

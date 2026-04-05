@@ -13,9 +13,9 @@ class PersistentWishlistRepository implements WishlistRepository {
     required WishlistStorage storage,
     required InMemoryWishlistRepository repository,
     WishlistStorageCodec codec = const WishlistStorageCodec(),
-  })  : _storage = storage,
-        _repository = repository,
-        _codec = codec;
+  }) : _storage = storage,
+       _repository = repository,
+       _codec = codec;
 
   final WishlistStorage _storage;
   final InMemoryWishlistRepository _repository;
@@ -29,23 +29,18 @@ class PersistentWishlistRepository implements WishlistRepository {
     WishlistStorageCodec codec = const WishlistStorageCodec(),
   }) async {
     final source = await storage.read();
-    final shouldPersistInitialState = source == null || source.trim().isEmpty;
-    final initialWishlists = _decodeInitialWishlists(
-      ownerUserId: ownerUserId,
-      source: source,
-      codec: codec,
-    );
+    final initialState = _decodeInitialWishlists(source: source, codec: codec);
 
     final repository = PersistentWishlistRepository._(
       storage: storage,
       repository: InMemoryWishlistRepository(
         ownerUserId: ownerUserId,
-        initialWishlists: initialWishlists,
+        initialWishlists: initialState.wishlists,
       ),
       codec: codec,
     );
 
-    if (shouldPersistInitialState) {
+    if (initialState.shouldPersist) {
       repository._persist();
       await repository.flush();
     }
@@ -53,19 +48,27 @@ class PersistentWishlistRepository implements WishlistRepository {
     return repository;
   }
 
-  static List<Wishlist> _decodeInitialWishlists({
-    required String ownerUserId,
+  static _InitialWishlistState _decodeInitialWishlists({
     required String? source,
     required WishlistStorageCodec codec,
   }) {
     if (source == null || source.trim().isEmpty) {
-      return InMemoryWishlistRepository.seedWishlists(ownerUserId: ownerUserId);
+      return const _InitialWishlistState(
+        wishlists: <Wishlist>[],
+        shouldPersist: true,
+      );
     }
 
     try {
-      return codec.decode(source);
+      return _InitialWishlistState(
+        wishlists: codec.decode(source),
+        shouldPersist: false,
+      );
     } on FormatException {
-      return InMemoryWishlistRepository.seedWishlists(ownerUserId: ownerUserId);
+      return const _InitialWishlistState(
+        wishlists: <Wishlist>[],
+        shouldPersist: true,
+      );
     }
   }
 
@@ -294,4 +297,14 @@ class PersistentWishlistRepository implements WishlistRepository {
     }
     return wasDeleted;
   }
+}
+
+class _InitialWishlistState {
+  const _InitialWishlistState({
+    required this.wishlists,
+    required this.shouldPersist,
+  });
+
+  final List<Wishlist> wishlists;
+  final bool shouldPersist;
 }

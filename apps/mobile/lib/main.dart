@@ -9,7 +9,6 @@ import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/auth/data/api/auth_api_client.dart';
 import 'package:wishiz/features/auth/data/repositories/api_auth_repository.dart';
-import 'package:wishiz/features/auth/data/repositories/local_auth_repository.dart';
 import 'package:wishiz/features/auth/data/storage/shared_preferences_auth_storage.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
@@ -19,86 +18,107 @@ import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
 import 'package:wishiz/features/wishlists/data/api/shared_product_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/api_shared_product_repository.dart';
-import 'package:wishiz/features/wishlists/data/repositories/http_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
-import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/data/storage/shared_preferences_wishlist_storage.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final authRepository = await _createAuthRepository();
-  final sharedProductRepository = _createSharedProductRepository();
-
-  runApp(
-    WishizApp(
-      wishlistRepositoryLoader: _createWishlistRepositoryLoader(authRepository),
-      authRepository: authRepository,
-      sharedProductRepository: sharedProductRepository,
-    ),
-  );
+  runApp(await createApp());
 }
 
 typedef WishlistRepositoryLoader =
     Future<WishlistRepository> Function(AppUser user);
 
-Future<AuthRepository> _createAuthRepository() async {
-  final baseUrl = ApiConfig.baseUrl;
-  if (baseUrl != null) {
-    final storage = await SharedPreferencesAuthStorage.create();
-    return ApiAuthRepository.create(
-      storage: storage,
-      apiClient: AuthApiClient(baseUri: Uri.parse(baseUrl)),
-    );
+Future<Widget> createApp({
+  String? baseUrlOverride,
+  Future<AuthRepository> Function(String baseUrl)? authRepositoryFactory,
+  SharedProductRepository Function(String baseUrl)?
+  sharedProductRepositoryFactory,
+  Future<void> Function()? clearLegacyWishlistStorage,
+}) async {
+  await (clearLegacyWishlistStorage ??
+      SharedPreferencesWishlistStorage.clearLegacyData)();
+
+  final baseUrl = baseUrlOverride ?? ApiConfig.baseUrl;
+  if (baseUrl == null) {
+    return _buildBootstrapApp(error: const MissingBackendConfigurationError());
   }
 
-  return LocalAuthRepository.create();
+  try {
+    final authRepository =
+        await (authRepositoryFactory ?? _createAuthRepository)(baseUrl);
+    final sharedProductRepository =
+        (sharedProductRepositoryFactory ?? _createSharedProductRepository)(
+          baseUrl,
+        );
+
+    return WishizApp(
+      wishlistRepositoryLoader: _createWishlistRepositoryLoader(
+        authRepository,
+        baseUrl,
+      ),
+      authRepository: authRepository,
+      sharedProductRepository: sharedProductRepository,
+    );
+  } catch (error) {
+    return _buildBootstrapApp(error: error);
+  }
 }
 
 WishlistRepositoryLoader _createWishlistRepositoryLoader(
   AuthRepository authRepository,
+  String baseUrl,
 ) {
-  final baseUrl = ApiConfig.baseUrl;
-  if (baseUrl != null) {
-    return (user) {
-      final tokenProvider = authRepository is SessionTokenProvider
-          ? authRepository as SessionTokenProvider
-          : null;
-      final authToken = tokenProvider?.getSessionToken();
-      if (authToken == null || authToken.isEmpty) {
-        throw StateError('No authenticated API session is available.');
-      }
-      final apiClient = WishlistApiClient(
-        baseUri: Uri.parse(baseUrl),
-        authToken: authToken,
-      );
-      return HttpWishlistRepository.create(
-        apiClient: apiClient,
-        currentUserId: user.id,
-      );
-    };
-  }
-
-  return (user) async {
-    final storage = await SharedPreferencesWishlistStorage.create(
-      userId: user.id,
+  return (user) {
+    final tokenProvider = authRepository is SessionTokenProvider
+        ? authRepository as SessionTokenProvider
+        : null;
+    final authToken = tokenProvider?.getSessionToken();
+    if (authToken == null || authToken.isEmpty) {
+      throw StateError('No authenticated API session is available.');
+    }
+    final apiClient = WishlistApiClient(
+      baseUri: Uri.parse(baseUrl),
+      authToken: authToken,
     );
-    return PersistentWishlistRepository.create(
-      storage: storage,
-      ownerUserId: user.id,
+    return HttpWishlistRepository.create(
+      apiClient: apiClient,
+      currentUserId: user.id,
     );
   };
 }
 
-SharedProductRepository _createSharedProductRepository() {
-  final baseUrl = ApiConfig.baseUrl;
-  if (baseUrl != null) {
-    final apiClient = SharedProductApiClient(baseUri: Uri.parse(baseUrl));
-    return ApiSharedProductRepository(apiClient: apiClient);
-  }
+Future<AuthRepository> _createAuthRepository(String baseUrl) async {
+  final storage = await SharedPreferencesAuthStorage.create();
+  return ApiAuthRepository.create(
+    storage: storage,
+    apiClient: AuthApiClient(baseUri: Uri.parse(baseUrl)),
+  );
+}
 
-  return HttpSharedProductRepository();
+SharedProductRepository _createSharedProductRepository(String baseUrl) {
+  final apiClient = SharedProductApiClient(baseUri: Uri.parse(baseUrl));
+  return ApiSharedProductRepository(apiClient: apiClient);
+}
+
+Widget _buildBootstrapApp({Object? error}) {
+  return MaterialApp(
+    title: 'Wishiz',
+    theme: AppTheme.lightTheme,
+    home: BootstrapErrorApp(error: error),
+    debugShowCheckedModeBanner: false,
+  );
+}
+
+class MissingBackendConfigurationError implements Exception {
+  const MissingBackendConfigurationError();
+
+  @override
+  String toString() {
+    return 'WISHIZ_API_BASE_URL is required to start the app.';
+  }
 }
 
 class WishizApp extends StatelessWidget {
@@ -138,6 +158,9 @@ class BootstrapErrorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMissingBackendConfiguration =
+        error is MissingBackendConfigurationError;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -150,15 +173,19 @@ class BootstrapErrorApp extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Could not connect to the wishlist backend.',
+                    isMissingBackendConfiguration
+                        ? 'Wishlist backend configuration is required.'
+                        : 'Could not connect to the wishlist backend.',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: AppConstants.itemGap),
                   Text(
-                    'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
+                    isMissingBackendConfiguration
+                        ? 'Set WISHIZ_API_BASE_URL to the backend base URL and relaunch the app.'
+                        : 'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  if (error != null) ...[
+                  if (error != null && !isMissingBackendConfiguration) ...[
                     const SizedBox(height: AppConstants.itemGap),
                     Text(
                       formatErrorMessage(

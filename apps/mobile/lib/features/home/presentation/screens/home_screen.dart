@@ -348,9 +348,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _shareWishlist(Wishlist wishlist) async {
-    await Share.share(
-      WishizShareText.buildWishlistShareText(wishlist: wishlist),
-      subject: wishlist.title,
+    await SharePlus.instance.share(
+      ShareParams(
+        text: WishizShareText.buildWishlistShareText(wishlist: wishlist),
+        subject: wishlist.title,
+      ),
     );
   }
 

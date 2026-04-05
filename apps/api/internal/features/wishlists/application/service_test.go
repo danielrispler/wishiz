@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -470,6 +469,19 @@ func TestServiceListIncludesOnlyExplicitlySharedWishlists(t *testing.T) {
 	}
 }
 
+func TestServiceListReturnsEmptyForNewUserWithoutWishlists(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRepository())
+
+	wishlists, err := service.List(userContext("new-user", "new@example.com"))
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(wishlists) != 0 {
+		t.Fatalf("expected 0 wishlists, got %d", len(wishlists))
+	}
+}
+
 const (
 	wishlistID1 = "11111111-1111-1111-1111-111111111111"
 	itemID1     = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -713,19 +725,30 @@ func (r *fakeRepository) ReorderItems(_ context.Context, wishlistID string, orde
 		itemByID[item.ID] = item
 	}
 
-	nextItems := make([]domain.WishlistItem, 0, len(orderedItemIDs))
+	nextItems := make([]domain.WishlistItem, 0, len(wishlist.Items))
+	seen := make(map[string]struct{}, len(wishlist.Items))
 	for index, itemID := range orderedItemIDs {
 		item, ok := itemByID[itemID]
 		if !ok {
 			continue
 		}
+		if _, exists := seen[itemID]; exists {
+			continue
+		}
 
 		item.Rank = index + 1
 		nextItems = append(nextItems, item)
+		seen[itemID] = struct{}{}
 	}
 
-	if len(nextItems) != len(wishlist.Items) {
-		return errors.New("reorder expected full item list")
+	nextRank := len(nextItems) + 1
+	for _, item := range wishlist.Items {
+		if _, exists := seen[item.ID]; exists {
+			continue
+		}
+		item.Rank = nextRank
+		nextRank++
+		nextItems = append(nextItems, item)
 	}
 
 	wishlist.Items = nextItems

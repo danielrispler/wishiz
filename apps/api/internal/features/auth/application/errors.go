@@ -1,5 +1,7 @@
 package application
 
+import "errors"
+
 type ErrorCode string
 
 const (
@@ -20,7 +22,8 @@ func (e *Error) Error() string {
 }
 
 func AsError(err error) (*Error, bool) {
-	appErr, ok := err.(*Error)
+	var appErr *Error
+	ok := errors.As(err, &appErr)
 	return appErr, ok
 }
 

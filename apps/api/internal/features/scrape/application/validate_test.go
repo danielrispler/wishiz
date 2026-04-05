@@ -23,7 +23,7 @@ type stubResolver struct {
 	addresses []net.IPAddr
 }
 
-func (s stubResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+func (s stubResolver) LookupIPAddr(_ context.Context, _ string) ([]net.IPAddr, error) {
 	if len(s.addresses) == 0 {
 		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
 	}

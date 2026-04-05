@@ -9,6 +9,13 @@ void main() {
   );
 
   group('InMemoryWishlistRepository', () {
+    test('starts empty when no initial wishlists are provided', () {
+      final repository = InMemoryWishlistRepository(ownerUserId: ownerUserId);
+
+      expect(repository.getWishlists(), isEmpty);
+      expect(repository.watchWishlists().value, isEmpty);
+    });
+
     test(
       'creates a wishlist with a year and exposes it through the notifier',
       () async {

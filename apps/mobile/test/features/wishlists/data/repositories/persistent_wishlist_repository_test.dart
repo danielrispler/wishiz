@@ -8,19 +8,20 @@ void main() {
   const ownerUserId = 'user-dana';
 
   group('PersistentWishlistRepository', () {
-    test('persists seeded data on first launch', () async {
-      final storage = _FakeWishlistStorage();
+    test(
+      'starts empty on first launch and persists an empty snapshot',
+      () async {
+        final storage = _FakeWishlistStorage();
 
-      final repository = await PersistentWishlistRepository.create(
-        storage: storage,
-        ownerUserId: ownerUserId,
-      );
+        final repository = await PersistentWishlistRepository.create(
+          storage: storage,
+          ownerUserId: ownerUserId,
+        );
 
-      expect(repository.getWishlists(), isNotEmpty);
-      expect(repository.getWishlists().first.ownerUserId, ownerUserId);
-      expect(storage.value, isNotNull);
-      expect(storage.value, contains('Home Decor'));
-    });
+        expect(repository.getWishlists(), isEmpty);
+        expect(storage.value, '[]');
+      },
+    );
 
     test('reloads saved wishlists and ranked items from storage', () async {
       final storage = _FakeWishlistStorage();
@@ -60,8 +61,10 @@ void main() {
       expect(reloadedWishlist?.items.first.rank, 1);
       expect(reloadedWishlist?.items.first.priority, 'High');
       expect(reloadedWishlist?.items.first.status, 'Considering');
-      expect(reloadedWishlist?.items.first.imageUrl,
-          'https://example.com/bag.jpg');
+      expect(
+        reloadedWishlist?.items.first.imageUrl,
+        'https://example.com/bag.jpg',
+      );
       expect(
         reloadedWishlist?.items.first.productUrl,
         'https://example.com/bag',
@@ -101,41 +104,55 @@ void main() {
       expect(reloadedWishlist?.sharedUsers.first.role, 'Editor');
     });
 
-    test('resolves mutation futures only after persistence completes',
-        () async {
-      final storage = _FakeWishlistStorage();
+    test(
+      'resolves mutation futures only after persistence completes',
+      () async {
+        final storage = _FakeWishlistStorage();
+        final repository = await PersistentWishlistRepository.create(
+          storage: storage,
+          ownerUserId: ownerUserId,
+        );
+
+        final writeCompleter = Completer<void>();
+        storage.nextWriteCompleter = writeCompleter;
+
+        var didComplete = false;
+        final createFuture = repository
+            .createWishlist(
+              title: 'Slow Save',
+              description: 'Wait for disk before completing.',
+              year: 2026,
+            )
+            .then((_) {
+              didComplete = true;
+            });
+
+        expect(
+          repository.getWishlists().any(
+            (wishlist) => wishlist.title == 'Slow Save',
+          ),
+          isTrue,
+        );
+
+        await Future<void>.delayed(Duration.zero);
+        expect(didComplete, isFalse);
+
+        writeCompleter.complete();
+        await createFuture;
+        expect(didComplete, isTrue);
+      },
+    );
+
+    test('replaces invalid stored data with an empty snapshot', () async {
+      final storage = _FakeWishlistStorage()..value = '{"invalid":true}';
+
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
         ownerUserId: ownerUserId,
       );
 
-      final writeCompleter = Completer<void>();
-      storage.nextWriteCompleter = writeCompleter;
-
-      var didComplete = false;
-      final createFuture = repository
-          .createWishlist(
-        title: 'Slow Save',
-        description: 'Wait for disk before completing.',
-        year: 2026,
-      )
-          .then((_) {
-        didComplete = true;
-      });
-
-      expect(
-        repository
-            .getWishlists()
-            .any((wishlist) => wishlist.title == 'Slow Save'),
-        isTrue,
-      );
-
-      await Future<void>.delayed(Duration.zero);
-      expect(didComplete, isFalse);
-
-      writeCompleter.complete();
-      await createFuture;
-      expect(didComplete, isTrue);
+      expect(repository.getWishlists(), isEmpty);
+      expect(storage.value, '[]');
     });
   });
 }

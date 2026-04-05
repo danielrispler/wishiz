@@ -14,10 +14,7 @@ abstract class AuthRepository {
     required DateTime birthday,
   });
 
-  Future<AuthResult> logIn({
-    required String email,
-    required String password,
-  });
+  Future<AuthResult> logIn({required String email, required String password});
 
   Future<AuthResult> updateCurrentUser({
     required String email,
@@ -31,4 +28,8 @@ abstract class AuthRepository {
   });
 
   Future<void> logOut();
+}
+
+abstract class SessionTokenProvider {
+  String? getSessionToken();
 }

@@ -13,6 +13,9 @@ import (
 	"time"
 
 	applinkshttp "github.com/danielrispler/wishiz/apps/api/internal/features/applinks/adapters/http"
+	authhttp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/http"
+	authpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/postgres"
+	authapp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/application"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
 	scrapefastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
 	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
@@ -75,9 +78,13 @@ func run() error {
 			}
 		}
 
+		authRepo := authpostgres.NewRepository(pool)
+		authService := authapp.NewService(authRepo)
+		authhttp.RegisterRoutes(mux, appLogger, authService)
+
 		wishlistRepo := wishlistpostgres.NewRepository(pool)
 		wishlistService := wishlistapp.NewService(wishlistRepo)
-		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService)
+		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService, authhttp.RequireAuth(authService))
 	} else {
 		appLogger.Info("starting api without database-backed wishlist routes")
 	}

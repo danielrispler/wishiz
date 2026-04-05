@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE TABLE IF NOT EXISTS wishlists (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     year INTEGER NOT NULL,
@@ -40,3 +41,19 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
 
 CREATE INDEX IF NOT EXISTS wishlist_items_wishlist_id_idx
     ON wishlist_items (wishlist_id);
+
+CREATE TABLE IF NOT EXISTS wishlist_shared_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'Viewer',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS wishlist_shared_users_wishlist_id_idx
+    ON wishlist_shared_users (wishlist_id);
+
+CREATE INDEX IF NOT EXISTS wishlist_shared_users_email_idx
+    ON wishlist_shared_users (email);

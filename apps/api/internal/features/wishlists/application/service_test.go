@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/ports"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
 )
 
 func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *testing.T) {
@@ -388,6 +389,87 @@ func TestServicePatchItemRejectsNilInput(t *testing.T) {
 	}
 }
 
+func TestServiceGetByIDRejectsUnsharedAccessForOtherUser(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:          wishlistID1,
+		OwnerID:     "owner-1",
+		Title:       "Private",
+		Year:        2026,
+		CreatedAt:   fixedTime,
+		UpdatedAt:   fixedTime,
+		SharedUsers: []domain.SharedUser{},
+		Items:       []domain.WishlistItem{},
+	}
+
+	service := NewService(repo)
+
+	_, err := service.GetByID(userContext("viewer-1", "viewer@example.com"), wishlistID1)
+	if err == nil {
+		t.Fatalf("expected access error")
+	}
+
+	appErr, ok := AsError(err)
+	if !ok {
+		t.Fatalf("expected application error, got %T", err)
+	}
+	if appErr.Code != ErrorCodeWishlistNotFound {
+		t.Fatalf("expected wishlist not found error, got %+v", appErr)
+	}
+}
+
+func TestServiceListIncludesOnlyExplicitlySharedWishlists(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists["11111111-1111-1111-1111-111111111111"] = domain.Wishlist{
+		ID:        "11111111-1111-1111-1111-111111111111",
+		OwnerID:   "owner-1",
+		Title:     "Owned",
+		Year:      2026,
+		IsShared:  false,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+	}
+	repo.wishlists["22222222-2222-2222-2222-222222222222"] = domain.Wishlist{
+		ID:        "22222222-2222-2222-2222-222222222222",
+		OwnerID:   "owner-2",
+		Title:     "Invite Only",
+		Year:      2026,
+		IsShared:  true,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		SharedUsers: []domain.SharedUser{
+			{ID: "33333333-3333-3333-3333-333333333333", Email: "viewer@example.com"},
+		},
+	}
+	repo.wishlists["44444444-4444-4444-4444-444444444444"] = domain.Wishlist{
+		ID:        "44444444-4444-4444-4444-444444444444",
+		OwnerID:   "owner-3",
+		Title:     "Not For Viewer",
+		Year:      2026,
+		IsShared:  true,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		SharedUsers: []domain.SharedUser{
+			{ID: "55555555-5555-5555-5555-555555555555", Email: "someone@example.com"},
+		},
+	}
+
+	service := NewService(repo)
+
+	wishlists, err := service.List(userContext("viewer-1", "viewer@example.com"))
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(wishlists) != 1 {
+		t.Fatalf("expected 1 visible wishlist, got %d", len(wishlists))
+	}
+	if wishlists[0].ID != "22222222-2222-2222-2222-222222222222" {
+		t.Fatalf("expected invite-only shared wishlist, got %s", wishlists[0].ID)
+	}
+}
+
 const (
 	wishlistID1 = "11111111-1111-1111-1111-111111111111"
 	itemID1     = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -407,10 +489,22 @@ func newFakeRepository() *fakeRepository {
 	}
 }
 
-func (r *fakeRepository) List(context.Context) ([]domain.Wishlist, error) {
+func (r *fakeRepository) List(_ context.Context, requestUserID string, requestUserEmail string) ([]domain.Wishlist, error) {
 	result := make([]domain.Wishlist, 0, len(r.wishlists))
 	for _, wishlist := range r.wishlists {
-		result = append(result, cloneWishlist(wishlist))
+		if wishlist.OwnerID == requestUserID {
+			result = append(result, cloneWishlist(wishlist))
+			continue
+		}
+		if !wishlist.IsShared {
+			continue
+		}
+		for _, user := range wishlist.SharedUsers {
+			if user.Email == requestUserEmail {
+				result = append(result, cloneWishlist(wishlist))
+				break
+			}
+		}
 	}
 	return result, nil
 }
@@ -427,6 +521,7 @@ func (r *fakeRepository) GetByID(_ context.Context, id string) (domain.Wishlist,
 func (r *fakeRepository) Create(_ context.Context, params ports.CreateWishlistParams) (domain.Wishlist, error) {
 	wishlist := domain.Wishlist{
 		ID:            wishlistID1,
+		OwnerID:       params.OwnerID,
 		Title:         params.Title,
 		Description:   params.Description,
 		Year:          params.Year,
@@ -440,6 +535,42 @@ func (r *fakeRepository) Create(_ context.Context, params ports.CreateWishlistPa
 
 	r.wishlists[wishlist.ID] = wishlist
 	return cloneWishlist(wishlist), nil
+}
+
+func (r *fakeRepository) AddSharedUser(_ context.Context, wishlistID string, user domain.SharedUser) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+
+	user.ID = itemID3
+	wishlist.SharedUsers = append(wishlist.SharedUsers, user)
+	r.wishlists[wishlistID] = wishlist
+	return nil
+}
+
+func (r *fakeRepository) RemoveSharedUser(_ context.Context, wishlistID string, userID string) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+
+	nextUsers := make([]domain.SharedUser, 0, len(wishlist.SharedUsers))
+	found := false
+	for _, user := range wishlist.SharedUsers {
+		if user.ID == userID {
+			found = true
+			continue
+		}
+		nextUsers = append(nextUsers, user)
+	}
+	if !found {
+		return ports.ErrNotFound
+	}
+
+	wishlist.SharedUsers = nextUsers
+	r.wishlists[wishlistID] = wishlist
+	return nil
 }
 
 func (r *fakeRepository) Update(_ context.Context, params ports.UpdateWishlistParams) (domain.Wishlist, error) {
@@ -621,4 +752,11 @@ func cloneItem(item domain.WishlistItem) domain.WishlistItem {
 	cloned.ProductURL = cloneString(item.ProductURL)
 	cloned.PurchasedAt = cloneTime(item.PurchasedAt)
 	return cloned
+}
+
+func userContext(userID string, email string) context.Context {
+	return authctx.WithUser(context.Background(), authctx.User{
+		ID:    userID,
+		Email: email,
+	})
 }

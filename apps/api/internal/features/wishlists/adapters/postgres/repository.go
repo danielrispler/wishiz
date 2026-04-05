@@ -25,10 +25,11 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
+func (r *Repository) List(ctx context.Context, requestUserID string, requestUserEmail string) ([]domain.Wishlist, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 			id::text,
+			owner_id::text,
 			title,
 			description,
 			year,
@@ -38,8 +39,13 @@ func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
 			is_archived,
 			is_shared
 		FROM wishlists
+		WHERE owner_id = $1::uuid OR (
+			is_shared = true AND id IN (
+			SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
+			)
+		)
 		ORDER BY updated_at DESC, created_at DESC
-	`)
+	`, requestUserID, requestUserEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list wishlists: %w", err)
 	}
@@ -104,6 +110,39 @@ func (r *Repository) List(ctx context.Context) ([]domain.Wishlist, error) {
 		return nil, fmt.Errorf("iterate wishlist items: %w", err)
 	}
 
+	sharedUserRows, err := r.pool.Query(ctx, `
+		SELECT
+			wishlist_id::text,
+			id::text,
+			name,
+			email,
+			role
+		FROM wishlist_shared_users
+		ORDER BY wishlist_id, created_at ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list shared users: %w", err)
+	}
+	defer sharedUserRows.Close()
+
+	for sharedUserRows.Next() {
+		var wishlistID string
+		var user domain.SharedUser
+		if err := sharedUserRows.Scan(&wishlistID, &user.ID, &user.Name, &user.Email, &user.Role); err != nil {
+			return nil, err
+		}
+
+		index, ok := indexByID[wishlistID]
+		if !ok {
+			continue
+		}
+
+		wishlists[index].SharedUsers = append(wishlists[index].SharedUsers, user)
+	}
+	if err = sharedUserRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate shared users: %w", err)
+	}
+
 	return wishlists, nil
 }
 
@@ -111,6 +150,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 	row := r.pool.QueryRow(ctx, `
 		SELECT
 			id::text,
+			owner_id::text,
 			title,
 			description,
 			year,
@@ -135,23 +175,31 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-
 	wishlist.Items = items
+
+	sharedUsers, err := r.listSharedUsersByWishlistID(ctx, r.pool, id)
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
+	wishlist.SharedUsers = sharedUsers
+
 	return wishlist, nil
 }
 
 func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistParams) (domain.Wishlist, error) {
 	row := r.pool.QueryRow(ctx, `
 		INSERT INTO wishlists (
+			owner_id,
 			title,
 			description,
 			year,
 			cover_image_url,
 			is_shared
 		)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6)
 		RETURNING
 			id::text,
+			owner_id::text,
 			title,
 			description,
 			year,
@@ -160,7 +208,7 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			updated_at,
 			is_archived,
 			is_shared
-	`, params.Title, params.Description, params.Year, params.CoverImageURL, params.IsShared)
+	`, params.OwnerID, params.Title, params.Description, params.Year, params.CoverImageURL, params.IsShared)
 
 	wishlist, err := scanWishlist(row)
 	if err != nil {
@@ -183,6 +231,7 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
+			owner_id::text,
 			title,
 			description,
 			year,
@@ -452,6 +501,7 @@ func (r *Repository) setArchivedState(ctx context.Context, id string, archived b
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
+			owner_id::text,
 			title,
 			description,
 			year,
@@ -519,6 +569,7 @@ func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) 
 
 	err := row.Scan(
 		&wishlist.ID,
+		&wishlist.OwnerID,
 		&wishlist.Title,
 		&wishlist.Description,
 		&wishlist.Year,
@@ -562,4 +613,71 @@ func scanWishlistItem(row interface{ Scan(...any) error }) (string, domain.Wishl
 	}
 
 	return wishlistID, item, nil
+}
+
+func (r *Repository) listSharedUsersByWishlistID(ctx context.Context, querier rowQueryer, wishlistID string) ([]domain.SharedUser, error) {
+	rows, err := querier.Query(ctx, `
+		SELECT
+			id::text,
+			name,
+			email,
+			role
+		FROM wishlist_shared_users
+		WHERE wishlist_id = $1::uuid
+		ORDER BY created_at ASC
+	`, wishlistID)
+	if err != nil {
+		return nil, fmt.Errorf("list shared users for wishlist %s: %w", wishlistID, err)
+	}
+	defer rows.Close()
+
+	users := make([]domain.SharedUser, 0)
+	for rows.Next() {
+		var user domain.SharedUser
+		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate shared users for wishlist %s: %w", wishlistID, err)
+	}
+
+	return users, nil
+}
+
+func (r *Repository) AddSharedUser(ctx context.Context, wishlistID string, user domain.SharedUser) error {
+	row := r.pool.QueryRow(ctx, `
+		INSERT INTO wishlist_shared_users (
+			wishlist_id,
+			name,
+			email,
+			role
+		)
+		VALUES ($1::uuid, $2, $3, $4)
+		RETURNING id::text
+	`, wishlistID, user.Name, user.Email, user.Role)
+
+	var insertedID string
+	err := row.Scan(&insertedID)
+	if err != nil {
+		return fmt.Errorf("add shared user to wishlist %s: %w", wishlistID, err)
+	}
+
+	return nil
+}
+
+func (r *Repository) RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM wishlist_shared_users
+		WHERE wishlist_id = $1::uuid AND id = $2::uuid
+	`, wishlistID, userID)
+	if err != nil {
+		return fmt.Errorf("remove shared user %s from wishlist %s: %w", userID, wishlistID, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+
+	return nil
 }

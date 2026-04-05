@@ -8,10 +8,13 @@ import (
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
 	httpx "github.com/danielrispler/wishiz/apps/api/internal/platform/http"
 )
 
 type Service interface {
+	AddSharedUser(ctx context.Context, wishlistID string, input *application.AddSharedUserInput) error
+	RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error
 	List(ctx context.Context) ([]domain.Wishlist, error)
 	GetByID(ctx context.Context, id string) (domain.Wishlist, error)
 	Create(ctx context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error)
@@ -70,8 +73,15 @@ type reorderItemsRequest struct {
 	OrderedItemIDs []string `json:"orderedItemIds"`
 }
 
+type addSharedUserRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
 type wishlistResponse struct {
 	ID            string             `json:"id"`
+	OwnerUserID   string             `json:"ownerUserId"`
 	Title         string             `json:"title"`
 	Description   string             `json:"description"`
 	Year          int                `json:"year"`
@@ -106,23 +116,43 @@ type itemResponse struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
-func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
+type AuthMiddleware func(http.HandlerFunc) http.HandlerFunc
+
+func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, authMiddleware AuthMiddleware) {
 	h := handler{
 		logger:  logger,
 		service: service,
 	}
 
-	mux.HandleFunc("GET /wishlists", h.listWishlists)
-	mux.HandleFunc("POST /wishlists", h.createWishlist)
-	mux.HandleFunc("GET /wishlists/{id}", h.getWishlist)
-	mux.HandleFunc("PATCH /wishlists/{id}", h.patchWishlist)
-	mux.HandleFunc("DELETE /wishlists/{id}", h.deleteWishlist)
-	mux.HandleFunc("POST /wishlists/{id}/archive", h.archiveWishlist)
-	mux.HandleFunc("POST /wishlists/{id}/restore", h.restoreWishlist)
-	mux.HandleFunc("POST /wishlists/{id}/items", h.addItem)
-	mux.HandleFunc("PATCH /wishlists/{id}/items/{itemId}", h.patchItem)
-	mux.HandleFunc("DELETE /wishlists/{id}/items/{itemId}", h.deleteItem)
-	mux.HandleFunc("POST /wishlists/{id}/items/reorder", h.reorderItems)
+	if authMiddleware == nil {
+		authMiddleware = func(next http.HandlerFunc) http.HandlerFunc {
+			return next
+		}
+	}
+
+	mux.HandleFunc("GET /wishlists", authMiddleware(withAuthenticatedUser(h.listWishlists)))
+	mux.HandleFunc("POST /wishlists", authMiddleware(withAuthenticatedUser(h.createWishlist)))
+	mux.HandleFunc("GET /wishlists/{id}", authMiddleware(withAuthenticatedUser(h.getWishlist)))
+	mux.HandleFunc("PATCH /wishlists/{id}", authMiddleware(withAuthenticatedUser(h.patchWishlist)))
+	mux.HandleFunc("DELETE /wishlists/{id}", authMiddleware(withAuthenticatedUser(h.deleteWishlist)))
+	mux.HandleFunc("POST /wishlists/{id}/archive", authMiddleware(withAuthenticatedUser(h.archiveWishlist)))
+	mux.HandleFunc("POST /wishlists/{id}/restore", authMiddleware(withAuthenticatedUser(h.restoreWishlist)))
+	mux.HandleFunc("POST /wishlists/{id}/items", authMiddleware(withAuthenticatedUser(h.addItem)))
+	mux.HandleFunc("PATCH /wishlists/{id}/items/{itemId}", authMiddleware(withAuthenticatedUser(h.patchItem)))
+	mux.HandleFunc("DELETE /wishlists/{id}/items/{itemId}", authMiddleware(withAuthenticatedUser(h.deleteItem)))
+	mux.HandleFunc("POST /wishlists/{id}/items/reorder", authMiddleware(withAuthenticatedUser(h.reorderItems)))
+	mux.HandleFunc("POST /wishlists/{id}/shared-users", authMiddleware(withAuthenticatedUser(h.addSharedUser)))
+	mux.HandleFunc("DELETE /wishlists/{id}/shared-users/{userId}", authMiddleware(withAuthenticatedUser(h.removeSharedUser)))
+}
+
+func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authctx.UserFromContext(r.Context()); !ok {
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "authorization is required", "")
+			return
+		}
+		h(w, r)
+	}
 }
 
 func (h handler) listWishlists(w http.ResponseWriter, r *http.Request) {
@@ -338,6 +368,7 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 
 	return wishlistResponse{
 		ID:            wishlist.ID,
+		OwnerUserID:   wishlist.OwnerID,
 		Title:         wishlist.Title,
 		Description:   wishlist.Description,
 		Year:          wishlist.Year,
@@ -349,6 +380,35 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		SharedUsers:   sharedUsers,
 		Items:         items,
 	}
+}
+
+func (h handler) addSharedUser(w http.ResponseWriter, r *http.Request) {
+	var request addSharedUserRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+
+	err := h.service.AddSharedUser(r.Context(), r.PathValue("id"), &application.AddSharedUserInput{
+		Name:  request.Name,
+		Email: request.Email,
+		Role:  request.Role,
+	})
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h handler) removeSharedUser(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.RemoveSharedUser(r.Context(), r.PathValue("id"), r.PathValue("userId")); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func mapItemResponse(item domain.WishlistItem) itemResponse {

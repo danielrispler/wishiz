@@ -6,13 +6,16 @@ import 'package:wishiz/features/wishlists/data/api/wishlist_api_dto.dart';
 class WishlistApiClient {
   WishlistApiClient({
     required Uri baseUri,
+    required String authToken,
     HttpClient? httpClient,
-  })  : _baseUri = _normalizeBaseUri(baseUri),
-        _httpClient = httpClient ?? HttpClient() {
+  }) : _baseUri = _normalizeBaseUri(baseUri),
+       _authToken = authToken,
+       _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
   final Uri _baseUri;
+  final String _authToken;
   final HttpClient _httpClient;
 
   Future<List<WishlistDto>> listWishlists() async {
@@ -112,6 +115,31 @@ class WishlistApiClient {
     return WishlistDto.fromJson(response as Map<String, dynamic>);
   }
 
+  Future<void> addSharedUser({
+    required String wishlistId,
+    required String name,
+    required String email,
+    required String role,
+  }) {
+    return _requestJson(
+      'POST',
+      '/wishlists/$wishlistId/shared-users',
+      body: {'name': name, 'email': email, 'role': role},
+      expectedStatusCodes: const {HttpStatus.noContent},
+    );
+  }
+
+  Future<void> removeSharedUser({
+    required String wishlistId,
+    required String userId,
+  }) {
+    return _requestJson(
+      'DELETE',
+      '/wishlists/$wishlistId/shared-users/$userId',
+      expectedStatusCodes: const {HttpStatus.noContent},
+    );
+  }
+
   Future<WishlistItemDto> addWishlistItem({
     required String wishlistId,
     required String title,
@@ -173,9 +201,7 @@ class WishlistApiClient {
     final response = await _requestJson(
       'POST',
       '/wishlists/$wishlistId/items/reorder',
-      body: {
-        'orderedItemIds': orderedItemIds,
-      },
+      body: {'orderedItemIds': orderedItemIds},
       expectedStatusCodes: const {HttpStatus.ok},
     );
 
@@ -188,9 +214,12 @@ class WishlistApiClient {
     Object? body,
     required Set<int> expectedStatusCodes,
   }) async {
-    final request =
-        await _httpClient.openUrl(method, _baseUri.resolve(_trimmedPath(path)));
+    final request = await _httpClient.openUrl(
+      method,
+      _baseUri.resolve(_trimmedPath(path)),
+    );
     request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_authToken');
 
     if (body != null) {
       request.headers.contentType = ContentType.json;
@@ -215,8 +244,9 @@ class WishlistApiClient {
   }
 
   static Uri _normalizeBaseUri(Uri baseUri) {
-    final normalizedPath =
-        baseUri.path.endsWith('/') ? baseUri.path : '${baseUri.path}/';
+    final normalizedPath = baseUri.path.endsWith('/')
+        ? baseUri.path
+        : '${baseUri.path}/';
     return baseUri.replace(path: normalizedPath.isEmpty ? '/' : normalizedPath);
   }
 

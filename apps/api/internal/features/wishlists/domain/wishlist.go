@@ -14,6 +14,7 @@ const (
 
 type Wishlist struct {
 	ID            string
+	OwnerID       string
 	Title         string
 	Description   string
 	Year          int

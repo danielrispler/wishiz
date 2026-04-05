@@ -14,22 +14,21 @@ void main() {
       server.listen((request) async {
         expect(request.method, 'GET');
         expect(request.uri.path, '/wishlists');
-        await _writeJsonResponse(
-          request.response,
-          HttpStatus.ok,
-          [
-            _wishlistJson(
-              id: 'travel',
-              title: 'Travel',
-              description: 'Carry-on ideas',
-              year: 2027,
-            ),
-          ],
-        );
+        await _writeJsonResponse(request.response, HttpStatus.ok, [
+          _wishlistJson(
+            id: 'travel',
+            title: 'Travel',
+            description: 'Carry-on ideas',
+            year: 2027,
+          ),
+        ]);
       });
 
       final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
+        apiClient: WishlistApiClient(
+          baseUri: _serverUri(server),
+          authToken: 'test-token',
+        ),
         currentUserId: 'user-1',
       );
 
@@ -73,7 +72,10 @@ void main() {
       });
 
       final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
+        apiClient: WishlistApiClient(
+          baseUri: _serverUri(server),
+          authToken: 'test-token',
+        ),
         currentUserId: 'user-1',
       );
 
@@ -88,72 +90,69 @@ void main() {
       expect(repository.getWishlists().first.title, 'Hosting');
     });
 
-    test('updates local cache after adding an item without refetching', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(server.close);
+    test(
+      'updates local cache after adding an item without refetching',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(server.close);
 
-      var detailRequestCount = 0;
-      server.listen((request) async {
-        if (request.method == 'GET' && request.uri.path == '/wishlists') {
-          await _writeJsonResponse(
-            request.response,
-            HttpStatus.ok,
-            [
+        var detailRequestCount = 0;
+        server.listen((request) async {
+          if (request.method == 'GET' && request.uri.path == '/wishlists') {
+            await _writeJsonResponse(request.response, HttpStatus.ok, [
               _wishlistJson(
                 id: 'home',
                 title: 'Home',
                 description: 'Decor',
                 year: 2026,
               ),
-            ],
-          );
-          return;
-        }
+            ]);
+            return;
+          }
 
-        if (request.method == 'POST' &&
-            request.uri.path == '/wishlists/home/items') {
-          await _writeJsonResponse(
-            request.response,
-            HttpStatus.created,
-            _itemJson(
-              id: 'lamp',
-              title: 'Marble lamp',
-              rank: 1,
-            ),
-          );
-          return;
-        }
+          if (request.method == 'POST' &&
+              request.uri.path == '/wishlists/home/items') {
+            await _writeJsonResponse(
+              request.response,
+              HttpStatus.created,
+              _itemJson(id: 'lamp', title: 'Marble lamp', rank: 1),
+            );
+            return;
+          }
 
-        fail('Unexpected request: ${request.method} ${request.uri.path}');
-      });
+          fail('Unexpected request: ${request.method} ${request.uri.path}');
+        });
 
-      final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
-        currentUserId: 'user-1',
-      );
+        final repository = await HttpWishlistRepository.create(
+          apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          currentUserId: 'user-1',
+        );
 
-      final createdItem = await repository.addWishlistItem(
-        wishlistId: 'home',
-        title: 'Marble lamp',
-      );
+        final createdItem = await repository.addWishlistItem(
+          wishlistId: 'home',
+          title: 'Marble lamp',
+        );
 
-      expect(detailRequestCount, 0);
-      expect(createdItem.id, 'lamp');
-      expect(repository.findById('home')?.items, hasLength(1));
-      expect(repository.findById('home')?.items.first.title, 'Marble lamp');
-    });
+        expect(detailRequestCount, 0);
+        expect(createdItem.id, 'lamp');
+        expect(repository.findById('home')?.items, hasLength(1));
+        expect(repository.findById('home')?.items.first.title, 'Marble lamp');
+      },
+    );
 
-    test('falls back to the current user id when ownerUserId is missing', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(server.close);
+    test(
+      'falls back to the current user id when ownerUserId is missing',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(server.close);
 
-      server.listen((request) async {
-        expect(request.method, 'GET');
-        expect(request.uri.path, '/wishlists');
-        await _writeJsonResponse(
-          request.response,
-          HttpStatus.ok,
-          [
+        server.listen((request) async {
+          expect(request.method, 'GET');
+          expect(request.uri.path, '/wishlists');
+          await _writeJsonResponse(request.response, HttpStatus.ok, [
             _wishlistJson(
               id: 'travel',
               title: 'Travel',
@@ -161,143 +160,140 @@ void main() {
               year: 2027,
               includeOwnerUserId: false,
             ),
-          ],
+          ]);
+        });
+
+        final repository = await HttpWishlistRepository.create(
+          apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          currentUserId: 'fallback-user',
         );
-      });
 
-      final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
-        currentUserId: 'fallback-user',
-      );
+        expect(repository.findById('travel')?.ownerUserId, 'fallback-user');
+      },
+    );
 
-      expect(repository.findById('travel')?.ownerUserId, 'fallback-user');
-    });
+    test(
+      'updates local cache after editing an item without refetching',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(server.close);
 
-    test('updates local cache after editing an item without refetching', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(server.close);
-
-      var detailRequestCount = 0;
-      server.listen((request) async {
-        if (request.method == 'GET' && request.uri.path == '/wishlists') {
-          await _writeJsonResponse(
-            request.response,
-            HttpStatus.ok,
-            [
+        var detailRequestCount = 0;
+        server.listen((request) async {
+          if (request.method == 'GET' && request.uri.path == '/wishlists') {
+            await _writeJsonResponse(request.response, HttpStatus.ok, [
               _wishlistJson(
                 id: 'home',
                 title: 'Home',
                 description: 'Decor',
                 year: 2026,
-                items: [
-                  _itemJson(
-                    id: 'lamp',
-                    title: 'Old lamp',
-                    rank: 1,
-                  ),
-                ],
+                items: [_itemJson(id: 'lamp', title: 'Old lamp', rank: 1)],
               ),
-            ],
-          );
-          return;
-        }
+            ]);
+            return;
+          }
 
-        if (request.method == 'PATCH' &&
-            request.uri.path == '/wishlists/home/items/lamp') {
-          await _writeJsonResponse(
-            request.response,
-            HttpStatus.ok,
-            _itemJson(
-              id: 'lamp',
-              title: 'New lamp',
-              rank: 1,
-              status: 'Purchased',
-            ),
-          );
-          return;
-        }
+          if (request.method == 'PATCH' &&
+              request.uri.path == '/wishlists/home/items/lamp') {
+            await _writeJsonResponse(
+              request.response,
+              HttpStatus.ok,
+              _itemJson(
+                id: 'lamp',
+                title: 'New lamp',
+                rank: 1,
+                status: 'Purchased',
+              ),
+            );
+            return;
+          }
 
-        if (request.method == 'GET' && request.uri.path == '/wishlists/home') {
-          detailRequestCount += 1;
-        }
+          if (request.method == 'GET' &&
+              request.uri.path == '/wishlists/home') {
+            detailRequestCount += 1;
+          }
 
-        fail('Unexpected request: ${request.method} ${request.uri.path}');
-      });
+          fail('Unexpected request: ${request.method} ${request.uri.path}');
+        });
 
-      final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
-        currentUserId: 'user-1',
-      );
+        final repository = await HttpWishlistRepository.create(
+          apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          currentUserId: 'user-1',
+        );
 
-      final updatedItem = await repository.updateWishlistItemStatus(
-        wishlistId: 'home',
-        itemId: 'lamp',
-        status: 'Purchased',
-      );
+        final updatedItem = await repository.updateWishlistItemStatus(
+          wishlistId: 'home',
+          itemId: 'lamp',
+          status: 'Purchased',
+        );
 
-      expect(detailRequestCount, 0);
-      expect(updatedItem?.title, 'New lamp');
-      expect(updatedItem?.status, 'Purchased');
-      expect(repository.findById('home')?.items.first.status, 'Purchased');
-    });
+        expect(detailRequestCount, 0);
+        expect(updatedItem?.title, 'New lamp');
+        expect(updatedItem?.status, 'Purchased');
+        expect(repository.findById('home')?.items.first.status, 'Purchased');
+      },
+    );
 
-    test('updates local cache after deleting an item without refetching', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(server.close);
+    test(
+      'updates local cache after deleting an item without refetching',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(server.close);
 
-      var detailRequestCount = 0;
-      server.listen((request) async {
-        if (request.method == 'GET' && request.uri.path == '/wishlists') {
-          await _writeJsonResponse(
-            request.response,
-            HttpStatus.ok,
-            [
+        var detailRequestCount = 0;
+        server.listen((request) async {
+          if (request.method == 'GET' && request.uri.path == '/wishlists') {
+            await _writeJsonResponse(request.response, HttpStatus.ok, [
               _wishlistJson(
                 id: 'home',
                 title: 'Home',
                 description: 'Decor',
                 year: 2026,
-                items: [
-                  _itemJson(
-                    id: 'lamp',
-                    title: 'Lamp',
-                    rank: 1,
-                  ),
-                ],
+                items: [_itemJson(id: 'lamp', title: 'Lamp', rank: 1)],
               ),
-            ],
-          );
-          return;
-        }
+            ]);
+            return;
+          }
 
-        if (request.method == 'DELETE' &&
-            request.uri.path == '/wishlists/home/items/lamp') {
-          request.response.statusCode = HttpStatus.noContent;
-          await request.response.close();
-          return;
-        }
+          if (request.method == 'DELETE' &&
+              request.uri.path == '/wishlists/home/items/lamp') {
+            request.response.statusCode = HttpStatus.noContent;
+            await request.response.close();
+            return;
+          }
 
-        if (request.method == 'GET' && request.uri.path == '/wishlists/home') {
-          detailRequestCount += 1;
-        }
+          if (request.method == 'GET' &&
+              request.uri.path == '/wishlists/home') {
+            detailRequestCount += 1;
+          }
 
-        fail('Unexpected request: ${request.method} ${request.uri.path}');
-      });
+          fail('Unexpected request: ${request.method} ${request.uri.path}');
+        });
 
-      final repository = await HttpWishlistRepository.create(
-        apiClient: WishlistApiClient(baseUri: _serverUri(server)),
-        currentUserId: 'user-1',
-      );
+        final repository = await HttpWishlistRepository.create(
+          apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          currentUserId: 'user-1',
+        );
 
-      final deleted = await repository.deleteWishlistItem(
-        wishlistId: 'home',
-        itemId: 'lamp',
-      );
+        final deleted = await repository.deleteWishlistItem(
+          wishlistId: 'home',
+          itemId: 'lamp',
+        );
 
-      expect(deleted, isTrue);
-      expect(detailRequestCount, 0);
-      expect(repository.findById('home')?.items, isEmpty);
-    });
+        expect(deleted, isTrue);
+        expect(detailRequestCount, 0);
+        expect(repository.findById('home')?.items, isEmpty);
+      },
+    );
   });
 }
 

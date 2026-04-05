@@ -14,6 +14,7 @@ import (
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
 )
 
 func TestPatchWishlistExplicitNullPreservesPatchSemantics(t *testing.T) {
@@ -429,7 +430,15 @@ func performRequest(t *testing.T, service Service, method, path, body string) *h
 	t.Helper()
 
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, slog.New(slog.NewTextHandler(io.Discard, nil)), service)
+	RegisterRoutes(mux, slog.New(slog.NewTextHandler(io.Discard, nil)), service, func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			ctx := authctx.WithUser(r.Context(), authctx.User{
+				ID:    "11111111-1111-1111-1111-111111111111",
+				Email: "viewer@example.com",
+			})
+			next(w, r.WithContext(ctx))
+		}
+	})
 
 	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	if body != "" {
@@ -470,17 +479,33 @@ const (
 )
 
 type stubService struct {
-	listWishlists  func(context.Context) ([]domain.Wishlist, error)
-	getWishlist    func(context.Context, string) (domain.Wishlist, error)
-	createWishlist func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
-	patchWishlist  func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
-	deleteWishlist func(context.Context, string) error
-	archive        func(context.Context, string) (domain.Wishlist, error)
-	restore        func(context.Context, string) (domain.Wishlist, error)
-	addItem        func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
-	patchItem      func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
-	deleteItem     func(context.Context, string, string) error
-	reorderItems   func(context.Context, string, []string) (domain.Wishlist, error)
+	addSharedUser    func(context.Context, string, *application.AddSharedUserInput) error
+	removeSharedUser func(context.Context, string, string) error
+	listWishlists    func(context.Context) ([]domain.Wishlist, error)
+	getWishlist      func(context.Context, string) (domain.Wishlist, error)
+	createWishlist   func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
+	patchWishlist    func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
+	deleteWishlist   func(context.Context, string) error
+	archive          func(context.Context, string) (domain.Wishlist, error)
+	restore          func(context.Context, string) (domain.Wishlist, error)
+	addItem          func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
+	patchItem        func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
+	deleteItem       func(context.Context, string, string) error
+	reorderItems     func(context.Context, string, []string) (domain.Wishlist, error)
+}
+
+func (s *stubService) AddSharedUser(ctx context.Context, wishlistID string, input *application.AddSharedUserInput) error {
+	if s.addSharedUser == nil {
+		return nil
+	}
+	return s.addSharedUser(ctx, wishlistID, input)
+}
+
+func (s *stubService) RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error {
+	if s.removeSharedUser == nil {
+		return nil
+	}
+	return s.removeSharedUser(ctx, wishlistID, userID)
 }
 
 func (s *stubService) List(ctx context.Context) ([]domain.Wishlist, error) {

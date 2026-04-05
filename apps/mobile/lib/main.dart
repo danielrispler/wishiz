@@ -7,7 +7,10 @@ import 'package:wishiz/core/navigation/wishiz_app_link.dart';
 import 'package:wishiz/core/services/share_intake_service.dart';
 import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
+import 'package:wishiz/features/auth/data/api/auth_api_client.dart';
+import 'package:wishiz/features/auth/data/repositories/api_auth_repository.dart';
 import 'package:wishiz/features/auth/data/repositories/local_auth_repository.dart';
+import 'package:wishiz/features/auth/data/storage/shared_preferences_auth_storage.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
@@ -25,12 +28,12 @@ import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repositor
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final authRepository = await LocalAuthRepository.create();
+  final authRepository = await _createAuthRepository();
   final sharedProductRepository = _createSharedProductRepository();
 
   runApp(
     WishizApp(
-      wishlistRepositoryLoader: _createWishlistRepositoryLoader(),
+      wishlistRepositoryLoader: _createWishlistRepositoryLoader(authRepository),
       authRepository: authRepository,
       sharedProductRepository: sharedProductRepository,
     ),
@@ -40,14 +43,41 @@ Future<void> main() async {
 typedef WishlistRepositoryLoader =
     Future<WishlistRepository> Function(AppUser user);
 
-WishlistRepositoryLoader _createWishlistRepositoryLoader() {
+Future<AuthRepository> _createAuthRepository() async {
   final baseUrl = ApiConfig.baseUrl;
   if (baseUrl != null) {
-    final apiClient = WishlistApiClient(baseUri: Uri.parse(baseUrl));
-    return (user) => HttpWishlistRepository.create(
-          apiClient: apiClient,
-          currentUserId: user.id,
-        );
+    final storage = await SharedPreferencesAuthStorage.create();
+    return ApiAuthRepository.create(
+      storage: storage,
+      apiClient: AuthApiClient(baseUri: Uri.parse(baseUrl)),
+    );
+  }
+
+  return LocalAuthRepository.create();
+}
+
+WishlistRepositoryLoader _createWishlistRepositoryLoader(
+  AuthRepository authRepository,
+) {
+  final baseUrl = ApiConfig.baseUrl;
+  if (baseUrl != null) {
+    return (user) {
+      final tokenProvider = authRepository is SessionTokenProvider
+          ? authRepository as SessionTokenProvider
+          : null;
+      final authToken = tokenProvider?.getSessionToken();
+      if (authToken == null || authToken.isEmpty) {
+        throw StateError('No authenticated API session is available.');
+      }
+      final apiClient = WishlistApiClient(
+        baseUri: Uri.parse(baseUrl),
+        authToken: authToken,
+      );
+      return HttpWishlistRepository.create(
+        apiClient: apiClient,
+        currentUserId: user.id,
+      );
+    };
   }
 
   return (user) async {

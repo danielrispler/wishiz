@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
-import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -10,10 +8,8 @@ class HttpWishlistRepository implements WishlistRepository {
   HttpWishlistRepository._({
     required WishlistApiClient apiClient,
     required String currentUserId,
-  })  : _apiClient = apiClient,
-        _currentUserId = currentUserId;
-
-  static const Uuid _uuid = Uuid();
+  }) : _apiClient = apiClient,
+       _currentUserId = currentUserId;
 
   static Future<HttpWishlistRepository> create({
     required WishlistApiClient apiClient,
@@ -37,9 +33,8 @@ class HttpWishlistRepository implements WishlistRepository {
     _wishlists.value = List<Wishlist>.unmodifiable(
       wishlists
           .map(
-            (wishlist) => wishlist.toEntity(
-              fallbackOwnerUserId: _currentUserId,
-            ),
+            (wishlist) =>
+                wishlist.toEntity(fallbackOwnerUserId: _currentUserId),
           )
           .toList(growable: false),
     );
@@ -142,37 +137,14 @@ class HttpWishlistRepository implements WishlistRepository {
     required String email,
     required String role,
   }) async {
-    final wishlist = findById(wishlistId);
-    if (wishlist == null) {
-      return null;
-    }
-
-    final normalizedEmail = email.toLowerCase();
-    final alreadyExists = wishlist.sharedUsers.any(
-      (user) => user.email.toLowerCase() == normalizedEmail,
-    );
-    if (alreadyExists) {
-      return wishlist;
-    }
-
-    // Collaborator routes do not exist in the Go backend yet, so we keep this
-    // as a temporary in-memory behavior to avoid a wider UI rewrite in this step.
-    final updatedWishlist = wishlist.copyWith(
-      isShared: true,
-      sharedUsers: [
-        ...wishlist.sharedUsers,
-        SharedUser(
-          id: _uuid.v4(),
-          name: name,
-          email: email,
-          role: role,
-        ),
-      ],
-      updatedAt: DateTime.now(),
+    await _apiClient.addSharedUser(
+      wishlistId: wishlistId,
+      name: name,
+      email: email,
+      role: role,
     );
 
-    _replaceWishlist(updatedWishlist);
-    return updatedWishlist;
+    return _refreshWishlist(wishlistId);
   }
 
   @override
@@ -180,26 +152,9 @@ class HttpWishlistRepository implements WishlistRepository {
     required String wishlistId,
     required String userId,
   }) async {
-    final wishlist = findById(wishlistId);
-    if (wishlist == null) {
-      return false;
-    }
+    await _apiClient.removeSharedUser(wishlistId: wishlistId, userId: userId);
 
-    final nextUsers = wishlist.sharedUsers
-        .where((user) => user.id != userId)
-        .toList(growable: false);
-    final wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
-    if (!wasRemoved) {
-      return false;
-    }
-
-    _replaceWishlist(
-      wishlist.copyWith(
-        isShared: nextUsers.isNotEmpty,
-        sharedUsers: nextUsers,
-        updatedAt: DateTime.now(),
-      ),
-    );
+    await _refreshWishlist(wishlistId);
     return true;
   }
 
@@ -268,9 +223,7 @@ class HttpWishlistRepository implements WishlistRepository {
     final updatedItem = await _apiClient.updateWishlistItem(
       wishlistId: wishlistId,
       itemId: itemId,
-      body: {
-        'status': status,
-      },
+      body: {'status': status},
     );
 
     final updatedWishlist = _patchWishlist(
@@ -346,10 +299,7 @@ class HttpWishlistRepository implements WishlistRepository {
     required String wishlistId,
     required String itemId,
   }) async {
-    await _apiClient.deleteWishlistItem(
-      wishlistId: wishlistId,
-      itemId: itemId,
-    );
+    await _apiClient.deleteWishlistItem(wishlistId: wishlistId, itemId: itemId);
 
     final updatedWishlist = _patchWishlist(
       wishlistId,
@@ -385,13 +335,15 @@ class HttpWishlistRepository implements WishlistRepository {
   }
 
   void _replaceWishlist(Wishlist wishlist) {
-    final nextWishlists = _wishlists.value.map((existing) {
-      if (existing.id != wishlist.id) {
-        return existing;
-      }
+    final nextWishlists = _wishlists.value
+        .map((existing) {
+          if (existing.id != wishlist.id) {
+            return existing;
+          }
 
-      return wishlist;
-    }).toList(growable: false);
+          return wishlist;
+        })
+        .toList(growable: false);
 
     final wasPresent = nextWishlists.any((entry) => entry.id == wishlist.id);
     _wishlists.value = List<Wishlist>.unmodifiable(
@@ -404,14 +356,16 @@ class HttpWishlistRepository implements WishlistRepository {
     Wishlist Function(Wishlist wishlist) update,
   ) {
     Wishlist? updatedWishlist;
-    final nextWishlists = _wishlists.value.map((wishlist) {
-      if (wishlist.id != wishlistId) {
-        return wishlist;
-      }
+    final nextWishlists = _wishlists.value
+        .map((wishlist) {
+          if (wishlist.id != wishlistId) {
+            return wishlist;
+          }
 
-      updatedWishlist = update(wishlist);
-      return updatedWishlist!;
-    }).toList(growable: false);
+          updatedWishlist = update(wishlist);
+          return updatedWishlist!;
+        })
+        .toList(growable: false);
 
     if (updatedWishlist == null) {
       return null;

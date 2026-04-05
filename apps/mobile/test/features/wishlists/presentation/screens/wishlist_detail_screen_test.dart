@@ -13,6 +13,43 @@ import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_s
 
 void main() {
   group('WishlistDetailScreen past list', () {
+    testWidgets('shows how many days each item has been on the list', (
+      tester,
+    ) async {
+      final itemOne = WishlistItem(
+        id: 'item-1',
+        title: 'Espresso cups',
+        rank: 1,
+        status: 'Purchased',
+        purchasedAt: null,
+        createdAt: DateTime.now().subtract(const Duration(days: 3)),
+      );
+      final itemTwo = WishlistItem(
+        id: 'item-2',
+        title: 'Serving tray',
+        rank: 2,
+        status: 'Purchased',
+        purchasedAt: null,
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      );
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: _sampleUser.id,
+        initialWishlists: [
+          _buildWishlist(
+            items: [itemOne, itemTwo],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(_buildSubject(repository: repository));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Espresso cups'), 300);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('days-on-list-item-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('days-on-list-item-2')), findsOneWidget);
+    });
+
     testWidgets('restores the whole list from the Restore All button', (
       tester,
     ) async {
@@ -27,7 +64,7 @@ void main() {
                 rank: 1,
                 status: 'Purchased',
                 purchasedAt: null,
-                createdAt: DateTime(2026, 1, 1),
+                createdAt: DateTime.now().subtract(const Duration(days: 3)),
               ),
               WishlistItem(
                 id: 'item-2',
@@ -35,7 +72,7 @@ void main() {
                 rank: 2,
                 status: 'Purchased',
                 purchasedAt: null,
-                createdAt: DateTime(2026, 1, 1),
+                createdAt: DateTime.now().subtract(const Duration(days: 1)),
               ),
             ],
           ),

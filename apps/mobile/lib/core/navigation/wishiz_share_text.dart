@@ -5,16 +5,10 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 class WishizShareText {
   WishizShareText._();
 
-  static String buildWishlistShareText({
-    required Wishlist wishlist,
-    List<String> previewLines = const [],
-  }) {
+  static String buildWishlistShareText({required Wishlist wishlist}) {
     final lines = <String>[
+      'Open this Wishiz list.',
       WishizAppLink.wishlistShareLink(wishlist.id),
-      '',
-      'Open this Wishiz list in the app.',
-      'Join my Wishiz list "${wishlist.title}" for ${wishlist.year}.',
-      ...previewLines,
     ];
 
     return lines.join('\n');
@@ -23,15 +17,10 @@ class WishizShareText {
   static String buildWishlistItemShareText({
     required Wishlist wishlist,
     required WishlistItem item,
-    List<String> extraLines = const [],
   }) {
     final lines = <String>[
+      'Take a look at this item in my Wishiz list.',
       WishizAppLink.wishlistShareLink(wishlist.id),
-      '',
-      '${item.title} from ${wishlist.title}',
-      'Rank: #${item.rank}',
-      'Open this list in Wishiz.',
-      ...extraLines,
     ];
 
     return lines.join('\n');

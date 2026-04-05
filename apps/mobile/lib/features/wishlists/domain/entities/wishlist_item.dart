@@ -28,6 +28,11 @@ class WishlistItem {
   final DateTime? purchasedAt;
   final DateTime createdAt;
 
+  int get daysOnList {
+    final days = DateTime.now().difference(createdAt).inDays;
+    return days < 0 ? 0 : days;
+  }
+
   WishlistItem copyWith({
     String? id,
     String? title,

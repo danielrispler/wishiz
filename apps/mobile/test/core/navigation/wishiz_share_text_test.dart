@@ -9,8 +9,14 @@ void main() {
       final wishlist = _buildWishlist();
 
       final text = WishizShareText.buildWishlistShareText(wishlist: wishlist);
+      final lines = text.split('\n');
 
-      expect(text.split('\n').first, 'https://wishiz.app/lists/wishlist-42');
+      expect(lines, [
+        'Open this Wishiz list.',
+        'https://wishiz.app/lists/wishlist-42',
+      ]);
+      expect(text, isNot(contains('Hosting')));
+      expect(text, isNot(contains('2026')));
       expect(text, isNot(contains('wishiz://lists/')));
     });
 
@@ -26,12 +32,16 @@ void main() {
       final text = WishizShareText.buildWishlistItemShareText(
         wishlist: wishlist,
         item: item,
-        extraLines: const ['https://example.com/products/cups'],
       );
 
       final lines = text.split('\n');
-      expect(lines.first, 'https://wishiz.app/lists/wishlist-42');
-      expect(text, contains('https://example.com/products/cups'));
+      expect(lines, [
+        'Take a look at this item in my Wishiz list.',
+        'https://wishiz.app/lists/wishlist-42',
+      ]);
+      expect(text, isNot(contains('Espresso Cups')));
+      expect(text, isNot(contains('Hosting')));
+      expect(text, isNot(contains('Rank:')));
       expect(text, isNot(contains('wishiz://lists/')));
     });
   });

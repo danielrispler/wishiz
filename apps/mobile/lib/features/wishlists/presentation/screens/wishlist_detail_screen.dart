@@ -337,10 +337,15 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  Widget _buildMetadataChip(BuildContext context, {required String label}) {
+  Widget _buildMetadataChip(
+    BuildContext context, {
+    required String label,
+    Key? key,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
+      key: key,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(AppConstants.radiusFull),
@@ -866,6 +871,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     context,
                     label: '${item.priority} priority',
                   ),
+                  _buildMetadataChip(
+                    context,
+                    label:
+                        '${item.daysOnList} day${item.daysOnList == 1 ? '' : 's'} on list',
+                    key: ValueKey('days-on-list-${item.id}'),
+                  ),
                 ],
               ),
               if (item.notes != null && item.notes!.isNotEmpty) ...[
@@ -1283,63 +1294,18 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
   Future<void> _shareWishlist(Wishlist wishlist, AppUser? currentUser) async {
     await Share.share(
-      _buildWishlistShareText(wishlist, currentUser),
+      WishizShareText.buildWishlistShareText(wishlist: wishlist),
       subject: wishlist.title,
     );
   }
 
   Future<void> _shareItem(Wishlist wishlist, WishlistItem item) async {
     await Share.share(
-      _buildShareText(wishlist, item, widget.authRepository.getCurrentUser()),
+      WishizShareText.buildWishlistItemShareText(
+        wishlist: wishlist,
+        item: item,
+      ),
       subject: item.title,
-    );
-  }
-
-  String _buildWishlistShareText(Wishlist wishlist, AppUser? currentUser) {
-    final previewLines = <String>[];
-
-    for (final item in wishlist.activeItems.take(5)) {
-      previewLines.add('- ${item.title}');
-      final displayedPriceLabel = _formatPriceLabelForUser(
-        item.priceLabel,
-        currentUser,
-      );
-      if (displayedPriceLabel != null) {
-        previewLines.add('Price: $displayedPriceLabel');
-      }
-    }
-
-    return WishizShareText.buildWishlistShareText(
-      wishlist: wishlist,
-      previewLines: previewLines,
-    );
-  }
-
-  String _buildShareText(
-    Wishlist wishlist,
-    WishlistItem item,
-    AppUser? currentUser,
-  ) {
-    final extraLines = <String>[];
-
-    final displayedPriceLabel = _formatPriceLabelForUser(
-      item.priceLabel,
-      currentUser,
-    );
-    if (displayedPriceLabel != null) {
-      extraLines.add('Price: $displayedPriceLabel');
-    }
-    if (item.notes != null && item.notes!.isNotEmpty) {
-      extraLines.add(item.notes!);
-    }
-    if (item.productUrl != null && item.productUrl!.isNotEmpty) {
-      extraLines.add(item.productUrl!);
-    }
-
-    return WishizShareText.buildWishlistItemShareText(
-      wishlist: wishlist,
-      item: item,
-      extraLines: extraLines,
     );
   }
 

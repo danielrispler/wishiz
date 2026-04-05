@@ -130,7 +130,7 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
 			)
 		)
-		ORDER BY wishlist_id, created_at ASC
+		ORDER BY su.wishlist_id, su.created_at ASC
 	`, requestUserID, requestUserEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list shared users: %w", err)

@@ -464,14 +464,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         Text(
           'Create a New List',
-          style: Theme.of(context).textTheme.headlineSmall,
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 8),
         Text(
           'Start the next wishlist first, then browse and filter everything else below.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
-        const SizedBox(height: AppConstants.sectionGap),
+        const SizedBox(height: AppConstants.spacing4),
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -520,16 +520,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         children: [
           _buildHeader(showName: true, reminderCount: reminderCount),
-          const SizedBox(height: AppConstants.sectionGap),
+          const SizedBox(height: AppConstants.spacing5),
           _buildTopCreateSection(),
-          const SizedBox(height: AppConstants.sectionGap),
+          const SizedBox(height: AppConstants.spacing5),
           Text('My Lists', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
             'Search by name, narrow by year, and open only the active items you still want.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: AppConstants.spacing4),
+          const SizedBox(height: AppConstants.spacing3),
           _buildSearchAndFilters(
             hintText: 'Search your lists',
             availableYears: availableYears,

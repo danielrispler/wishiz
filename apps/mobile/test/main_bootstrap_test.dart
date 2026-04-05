@@ -11,24 +11,26 @@ import 'package:wishiz/main.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('shows a blocking error when the backend URL is missing', (
+  testWidgets('uses the default backend URL when no dart define is passed', (
     tester,
   ) async {
+    String? capturedBaseUrl;
+
     await tester.pumpWidget(
-      await createApp(clearLegacyWishlistStorage: () async {}),
+      await createApp(
+        authRepositoryFactory: (baseUrl) async {
+          capturedBaseUrl = baseUrl;
+          return _FakeAuthRepository();
+        },
+        sharedProductRepositoryFactory: (_) =>
+            const _FakeSharedProductRepository(),
+        clearLegacyWishlistStorage: () async {},
+      ),
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Wishlist backend configuration is required.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text(
-        'Set WISHIZ_API_BASE_URL to the backend base URL and relaunch the app.',
-      ),
-      findsOneWidget,
-    );
+    expect(capturedBaseUrl, 'https://wishiz.app');
+    expect(find.text('Could not connect to the wishlist backend.'), findsNothing);
   });
 
   testWidgets('shows a blocking error when startup cannot reach the backend', (

@@ -42,10 +42,6 @@ Future<Widget> createApp({
       SharedPreferencesWishlistStorage.clearLegacyData)();
 
   final baseUrl = baseUrlOverride ?? ApiConfig.baseUrl;
-  if (baseUrl == null) {
-    return _buildBootstrapApp(error: const MissingBackendConfigurationError());
-  }
-
   try {
     final authRepository =
         await (authRepositoryFactory ?? _createAuthRepository)(baseUrl);
@@ -158,9 +154,6 @@ class BootstrapErrorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMissingBackendConfiguration =
-        error is MissingBackendConfigurationError;
-
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -173,19 +166,15 @@ class BootstrapErrorApp extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isMissingBackendConfiguration
-                        ? 'Wishlist backend configuration is required.'
-                        : 'Could not connect to the wishlist backend.',
+                    'Could not connect to the wishlist backend.',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: AppConstants.itemGap),
                   Text(
-                    isMissingBackendConfiguration
-                        ? 'Set WISHIZ_API_BASE_URL to the backend base URL and relaunch the app.'
-                        : 'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
+                    'Check that Docker is running, the API is listening on the base URL you passed, and then relaunch the app.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  if (error != null && !isMissingBackendConfiguration) ...[
+                  if (error != null) ...[
                     const SizedBox(height: AppConstants.itemGap),
                     Text(
                       formatErrorMessage(

@@ -71,14 +71,12 @@ class HttpWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool isShared = false,
   }) async {
     final created = await _apiClient.createWishlist(
       title: title,
       description: description,
       year: year,
       coverImageUrl: coverImageUrl,
-      isShared: isShared,
     );
 
     final wishlist = created.toEntity(fallbackOwnerUserId: _currentUserId);
@@ -96,7 +94,6 @@ class HttpWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool? isShared,
   }) async {
     final updated = await _apiClient.updateWishlist(
       id: id,
@@ -104,7 +101,6 @@ class HttpWishlistRepository implements WishlistRepository {
       description: description,
       year: year,
       coverImageUrl: coverImageUrl,
-      isShared: isShared ?? findById(id)?.isShared ?? false,
     );
 
     final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);

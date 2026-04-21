@@ -55,7 +55,6 @@ class WishlistApiClient {
     required String description,
     required int year,
     String? coverImageUrl,
-    required bool isShared,
   }) async {
     final response = await _requestJson(
       'POST',
@@ -65,7 +64,6 @@ class WishlistApiClient {
         'description': description,
         'year': year,
         'coverImageUrl': coverImageUrl,
-        'isShared': isShared,
       },
       expectedStatusCodes: const {HttpStatus.created},
     );
@@ -79,7 +77,6 @@ class WishlistApiClient {
     required String description,
     required int year,
     String? coverImageUrl,
-    required bool isShared,
   }) async {
     final response = await _requestJson(
       'PATCH',
@@ -89,7 +86,6 @@ class WishlistApiClient {
         'description': description,
         'year': year,
         'coverImageUrl': coverImageUrl,
-        'isShared': isShared,
       },
       expectedStatusCodes: const {HttpStatus.ok},
     );

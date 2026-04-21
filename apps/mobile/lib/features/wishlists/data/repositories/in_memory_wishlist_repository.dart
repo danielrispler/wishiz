@@ -48,7 +48,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool isShared = false,
   }) async {
     final now = DateTime.now();
     final wishlist = Wishlist(
@@ -60,7 +59,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
       coverImageUrl: coverImageUrl,
       createdAt: now,
       updatedAt: now,
-      isShared: isShared,
     );
 
     _wishlists.value = List<Wishlist>.unmodifiable([
@@ -77,7 +75,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool? isShared,
   }) async {
     return _replaceWishlist(
       id,
@@ -86,7 +83,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
         description: description,
         year: year,
         coverImageUrl: coverImageUrl,
-        isShared: isShared ?? wishlist.isShared,
         updatedAt: DateTime.now(),
       ),
     );
@@ -136,7 +132,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
       }
 
       return wishlist.copyWith(
-        isShared: true,
         sharedUsers: [
           ...wishlist.sharedUsers,
           SharedUser(id: _uuid.v4(), name: name, email: email, role: role),
@@ -160,7 +155,6 @@ class InMemoryWishlistRepository implements WishlistRepository {
       wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
 
       return wishlist.copyWith(
-        isShared: nextUsers.isNotEmpty,
         sharedUsers: nextUsers,
         updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
       );

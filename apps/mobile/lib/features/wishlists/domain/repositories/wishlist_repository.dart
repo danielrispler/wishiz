@@ -16,7 +16,6 @@ abstract class WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool isShared = false,
   });
 
   Future<Wishlist?> updateWishlist({
@@ -25,7 +24,6 @@ abstract class WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool? isShared,
   });
 
   Future<Wishlist?> archiveWishlist(String id);

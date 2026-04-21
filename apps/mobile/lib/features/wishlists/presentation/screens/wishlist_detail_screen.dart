@@ -323,8 +323,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 context,
                 label: '${wishlist.purchasedItemCount} purchased',
               ),
-              if (wishlist.isShared)
-                _buildMetadataChip(context, label: 'Shared'),
             ],
           ),
         ],

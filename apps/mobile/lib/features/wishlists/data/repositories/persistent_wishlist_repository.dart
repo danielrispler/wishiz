@@ -111,14 +111,12 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool isShared = false,
   }) async {
     final wishlist = await _repository.createWishlist(
       title: title,
       description: description,
       year: year,
       coverImageUrl: coverImageUrl,
-      isShared: isShared,
     );
     return _persistAndReturn(wishlist);
   }
@@ -130,7 +128,6 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String description,
     required int year,
     String? coverImageUrl,
-    bool? isShared,
   }) async {
     final wishlist = await _repository.updateWishlist(
       id: id,
@@ -138,7 +135,6 @@ class PersistentWishlistRepository implements WishlistRepository {
       description: description,
       year: year,
       coverImageUrl: coverImageUrl,
-      isShared: isShared,
     );
     if (wishlist != null) {
       return _persistAndReturn(wishlist);

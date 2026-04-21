@@ -148,9 +148,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (wishlist == null) {
       try {
         wishlist = await widget.repository.joinWishlist(wishlistId);
-      } catch (e) {
+      } catch (e, stackTrace) {
+        debugPrint('Failed to join wishlist: $e\n$stackTrace');
         if (!mounted) return;
-        _showFeedback('That shared list is not available on this device yet.');
+        _showFeedback('Failed to join list: $e');
         return;
       }
     }
@@ -838,7 +839,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (showPurchasedOnly) {
       segments.add('${wishlist.purchasedItemCount} purchased');
-    } else if (wishlist.isShared && wishlist.sharedUsers.isNotEmpty) {
+    } else if (wishlist.sharedUsers.isNotEmpty) {
       segments.add('${wishlist.sharedUsers.length} members');
     }
 
@@ -906,7 +907,7 @@ class _HomeScreenState extends State<HomeScreen> {
           visibleWishlists
               .where(
                 (wishlist) =>
-                    wishlist.isShared &&
+                    wishlist.sharedUsers.isNotEmpty &&
                     (wishlist.activeItemCount > 0 || wishlist.items.isEmpty),
               )
               .toList(growable: false),

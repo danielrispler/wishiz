@@ -12,7 +12,6 @@ class Wishlist {
     required this.createdAt,
     required this.updatedAt,
     this.isArchived = false,
-    this.isShared = false,
     List<SharedUser> sharedUsers = const [],
     List<WishlistItem> items = const [],
   })  : sharedUsers = List.unmodifiable(sharedUsers),
@@ -27,7 +26,6 @@ class Wishlist {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isArchived;
-  final bool isShared;
   final List<SharedUser> sharedUsers;
   final List<WishlistItem> items;
 
@@ -51,7 +49,6 @@ class Wishlist {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isArchived,
-    bool? isShared,
     List<SharedUser>? sharedUsers,
     List<WishlistItem>? items,
   }) {
@@ -67,7 +64,6 @@ class Wishlist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isArchived: isArchived ?? this.isArchived,
-      isShared: isShared ?? this.isShared,
       sharedUsers: sharedUsers ?? this.sharedUsers,
       items: items ?? this.items,
     );

@@ -32,7 +32,6 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
   late final TextEditingController _descriptionController;
   late final TextEditingController _coverImageUrlController;
   late final TextEditingController _yearController;
-  late bool _isShared;
 
   @override
   void initState() {
@@ -48,7 +47,6 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
     _yearController = TextEditingController(
       text: (widget.wishlist?.year ?? DateTime.now().year).toString(),
     );
-    _isShared = widget.wishlist?.isShared ?? false;
   }
 
   @override
@@ -90,14 +88,12 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
               description: description,
               year: year,
               coverImageUrl: coverImageUrl,
-              isShared: _isShared,
             )
           : await widget.repository.createWishlist(
               title: title,
               description: description,
               year: year,
               coverImageUrl: coverImageUrl,
-              isShared: _isShared,
             );
     } catch (error) {
       if (!mounted) {
@@ -245,30 +241,6 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.itemGap),
-              Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-                ),
-                padding: const EdgeInsets.all(AppConstants.cardPadding),
-                child: SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    'Shared list',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  subtitle: Text(
-                    'Enable member sharing and link-based invites for this list.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  value: _isShared,
-                  onChanged: (value) {
-                    setState(() {
-                      _isShared = value;
-                    });
-                  },
-                ),
-              ),
               const SizedBox(height: AppConstants.sectionGap),
               Container(
                 decoration: BoxDecoration(

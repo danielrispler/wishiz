@@ -31,7 +31,6 @@ type CreateWishlistInput struct {
 	Description   string
 	Year          int
 	CoverImageURL *string
-	IsShared      bool
 }
 
 type PatchWishlistInput struct {
@@ -39,7 +38,6 @@ type PatchWishlistInput struct {
 	Description   PatchField[string]
 	Year          PatchField[int]
 	CoverImageURL PatchField[*string]
-	IsShared      PatchField[bool]
 }
 
 type AddItemInput struct {
@@ -90,7 +88,7 @@ func (s *Service) checkAccess(ctx context.Context, wishlist domain.Wishlist) err
 		return nil
 	}
 	uemail := s.userEmail(ctx)
-	if wishlist.IsShared && uemail != "" {
+	if uemail != "" {
 		for _, u := range wishlist.SharedUsers {
 			if strings.ToLower(u.Email) == uemail {
 				return nil
@@ -118,10 +116,6 @@ func (s *Service) Join(ctx context.Context, id string) (domain.Wishlist, error) 
 	}
 	if err != nil {
 		return domain.Wishlist{}, err
-	}
-
-	if !wishlist.IsShared {
-		return domain.Wishlist{}, WishlistNotFound()
 	}
 
 	uid := s.userID(ctx)
@@ -201,7 +195,6 @@ func (s *Service) Create(ctx context.Context, input *CreateWishlistInput) (domai
 		Description:   normalizeText(input.Description),
 		Year:          input.Year,
 		CoverImageURL: normalizeOptionalString(input.CoverImageURL),
-		IsShared:      input.IsShared,
 	})
 	if err != nil {
 		return domain.Wishlist{}, err
@@ -229,7 +222,6 @@ func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInpu
 		Description:   current.Description,
 		Year:          current.Year,
 		CoverImageURL: cloneString(current.CoverImageURL),
-		IsShared:      current.IsShared,
 	}
 
 	if input.Title.Set {
@@ -249,9 +241,6 @@ func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInpu
 	}
 	if input.CoverImageURL.Set {
 		params.CoverImageURL = normalizeOptionalString(input.CoverImageURL.Value)
-	}
-	if input.IsShared.Set {
-		params.IsShared = input.IsShared.Value
 	}
 
 	if _, err := s.repo.Update(ctx, params); errors.Is(err, ports.ErrNotFound) {

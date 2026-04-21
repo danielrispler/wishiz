@@ -22,7 +22,6 @@ type Wishlist struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	IsArchived    bool
-	IsShared      bool
 	SharedUsers   []SharedUser
 	Items         []WishlistItem
 }

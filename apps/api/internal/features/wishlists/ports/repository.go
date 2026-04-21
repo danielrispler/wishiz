@@ -32,7 +32,6 @@ type CreateWishlistParams struct {
 	Description   string
 	Year          int
 	CoverImageURL *string
-	IsShared      bool
 }
 
 type UpdateWishlistParams struct {
@@ -41,7 +40,6 @@ type UpdateWishlistParams struct {
 	Description   string
 	Year          int
 	CoverImageURL *string
-	IsShared      bool
 }
 
 type AddItemParams struct {

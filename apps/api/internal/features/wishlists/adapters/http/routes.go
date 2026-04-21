@@ -39,7 +39,6 @@ type createWishlistRequest struct {
 	Description   string  `json:"description"`
 	Year          int     `json:"year"`
 	CoverImageURL *string `json:"coverImageUrl"`
-	IsShared      bool    `json:"isShared"`
 }
 
 type patchWishlistRequest struct {
@@ -47,7 +46,6 @@ type patchWishlistRequest struct {
 	Description   application.PatchField[string]  `json:"description"`
 	Year          application.PatchField[int]     `json:"year"`
 	CoverImageURL application.PatchField[*string] `json:"coverImageUrl"`
-	IsShared      application.PatchField[bool]    `json:"isShared"`
 }
 
 type createItemRequest struct {
@@ -90,7 +88,6 @@ type wishlistResponse struct {
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
 	IsArchived    bool               `json:"isArchived"`
-	IsShared      bool               `json:"isShared"`
 	SharedUsers   []sharedUserResult `json:"sharedUsers"`
 	Items         []itemResponse     `json:"items"`
 }
@@ -184,7 +181,6 @@ func (h handler) createWishlist(w http.ResponseWriter, r *http.Request) {
 		Description:   request.Description,
 		Year:          request.Year,
 		CoverImageURL: request.CoverImageURL,
-		IsShared:      request.IsShared,
 	})
 	if err != nil {
 		h.writeError(w, r, err)
@@ -226,7 +222,6 @@ func (h handler) patchWishlist(w http.ResponseWriter, r *http.Request) {
 		Description:   request.Description,
 		Year:          request.Year,
 		CoverImageURL: request.CoverImageURL,
-		IsShared:      request.IsShared,
 	})
 	if err != nil {
 		h.writeError(w, r, err)
@@ -388,7 +383,6 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		CreatedAt:     wishlist.CreatedAt,
 		UpdatedAt:     wishlist.UpdatedAt,
 		IsArchived:    wishlist.IsArchived,
-		IsShared:      wishlist.IsShared,
 		SharedUsers:   sharedUsers,
 		Items:         items,
 	}

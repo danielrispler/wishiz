@@ -35,7 +35,6 @@ class WishlistStorageCodec {
       'createdAt': wishlist.createdAt.toIso8601String(),
       'updatedAt': wishlist.updatedAt.toIso8601String(),
       'isArchived': wishlist.isArchived,
-      'isShared': wishlist.isShared,
       'sharedUsers':
           wishlist.sharedUsers.map(_sharedUserToJson).toList(growable: false),
       'items': wishlist.items.map(_itemToJson).toList(growable: false),
@@ -53,7 +52,6 @@ class WishlistStorageCodec {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       isArchived: json['isArchived'] as bool? ?? false,
-      isShared: json['isShared'] as bool? ?? false,
       sharedUsers: (json['sharedUsers'] as List<dynamic>? ?? const [])
           .map((user) => _sharedUserFromJson(user as Map<String, dynamic>))
           .toList(growable: false),

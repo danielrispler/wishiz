@@ -36,11 +36,10 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 			cover_image_url,
 			created_at,
 			updated_at,
-			is_archived,
-			is_shared
+			is_archived
 		FROM wishlists
 		WHERE owner_id = $1::uuid OR (
-			is_shared = true AND id IN (
+			id IN (
 			SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
 			)
 		)
@@ -88,7 +87,7 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 		FROM wishlist_items i
 		JOIN wishlists w ON w.id = i.wishlist_id
 		WHERE w.owner_id = $1::uuid OR (
-			w.is_shared = true AND w.id IN (
+			w.id IN (
 				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
 			)
 		)
@@ -126,7 +125,7 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 		FROM wishlist_shared_users su
 		JOIN wishlists w ON w.id = su.wishlist_id
 		WHERE w.owner_id = $1::uuid OR (
-			w.is_shared = true AND w.id IN (
+			w.id IN (
 				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
 			)
 		)
@@ -169,8 +168,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 			cover_image_url,
 			created_at,
 			updated_at,
-			is_archived,
-			is_shared
+			is_archived
 		FROM wishlists
 		WHERE id = $1::uuid
 	`, id)
@@ -206,9 +204,9 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			description,
 			year,
 			cover_image_url,
-			is_shared
+			is_archived
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6)
+		VALUES ($1::uuid, $2, $3, $4, $5)
 		RETURNING
 			id::text,
 			owner_id::text,
@@ -218,9 +216,8 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			cover_image_url,
 			created_at,
 			updated_at,
-			is_archived,
-			is_shared
-	`, params.OwnerID, params.Title, params.Description, params.Year, params.CoverImageURL, params.IsShared)
+			is_archived
+	`, params.OwnerID, params.Title, params.Description, params.Year, params.CoverImageURL)
 
 	wishlist, err := scanWishlist(row)
 	if err != nil {
@@ -238,7 +235,6 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 			description = $3,
 			year = $4,
 			cover_image_url = $5,
-			is_shared = $6,
 			updated_at = NOW()
 		WHERE id = $1::uuid
 		RETURNING
@@ -250,9 +246,8 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 			cover_image_url,
 			created_at,
 			updated_at,
-			is_archived,
-			is_shared
-	`, params.ID, params.Title, params.Description, params.Year, params.CoverImageURL, params.IsShared)
+			is_archived
+	`, params.ID, params.Title, params.Description, params.Year, params.CoverImageURL)
 
 	wishlist, err := scanWishlist(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -520,8 +515,7 @@ func (r *Repository) setArchivedState(ctx context.Context, id string, archived b
 			cover_image_url,
 			created_at,
 			updated_at,
-			is_archived,
-			is_shared
+			is_archived
 	`, id, archived)
 
 	wishlist, err := scanWishlist(row)
@@ -589,7 +583,6 @@ func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) 
 		&wishlist.CreatedAt,
 		&wishlist.UpdatedAt,
 		&wishlist.IsArchived,
-		&wishlist.IsShared,
 	)
 	if err != nil {
 		return domain.Wishlist{}, err

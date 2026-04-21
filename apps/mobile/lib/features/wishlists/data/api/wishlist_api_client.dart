@@ -40,6 +40,16 @@ class WishlistApiClient {
     return WishlistDto.fromJson(response as Map<String, dynamic>);
   }
 
+  Future<WishlistDto> joinWishlist(String id) async {
+    final response = await _requestJson(
+      'POST',
+      '/wishlists/$id/join',
+      expectedStatusCodes: const {HttpStatus.ok},
+    );
+
+    return WishlistDto.fromJson(response as Map<String, dynamic>);
+  }
+
   Future<WishlistDto> createWishlist({
     required String title,
     required String description,

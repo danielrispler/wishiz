@@ -40,13 +40,11 @@ class WishlistDetailScreen extends StatefulWidget {
 }
 
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
-  static const String _allFilter = 'All';
+
   static const String _sortHighestRank = 'Highest Rank';
   static const String _sortLowestRank = 'Lowest Rank';
   static const String _sortNewestAdded = 'Newest Added';
 
-  String _selectedStatus = _allFilter;
-  String _selectedPriority = _allFilter;
   String _selectedSort = _sortHighestRank;
   final Set<String> _expandedItemIds = <String>{};
 
@@ -85,8 +83,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             final visibleItems = _applyFilters(sourceItems);
             final canReorder =
                 !widget.showPurchasedOnly &&
-                _selectedStatus == _allFilter &&
-                _selectedPriority == _allFilter &&
                 _selectedSort == _sortHighestRank &&
                 visibleItems.length > 1;
 
@@ -98,7 +94,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 actions: [
                   IconButton(
                     tooltip: 'Share list',
-                    onPressed: () => _shareWishlist(wishlist, currentUser),
+                    onPressed: () => _showShareDialog(context, wishlist, currentUser),
                     icon: const Icon(Icons.share_outlined),
                   ),
                   if (!widget.showPurchasedOnly)
@@ -180,8 +176,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   ),
                   children: [
                     _buildHeroCard(context, wishlist),
-                    const SizedBox(height: AppConstants.sectionGap),
-                    _buildSharingSection(context, wishlist, currentUser),
                     const SizedBox(height: AppConstants.sectionGap),
                     Row(
                       children: [
@@ -359,66 +353,83 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     );
   }
 
-  Widget _buildSharingSection(
+  void _showShareDialog(
     BuildContext context,
     Wishlist wishlist,
     AppUser? currentUser,
   ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      ),
-      padding: const EdgeInsets.all(AppConstants.cardPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: AppConstants.spacing3,
-            runSpacing: AppConstants.spacing3,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 120),
-                child: Text(
-                  'Sharing',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _shareWishlist(wishlist, currentUser),
-                icon: const Icon(Icons.share_outlined),
-                label: const Text('Share Link'),
-              ),
-              if (!widget.showPurchasedOnly)
-                TextButton.icon(
-                  onPressed: () => _openInviteDialog(context, wishlist),
-                  icon: const Icon(Icons.person_add_alt_1_outlined),
-                  label: const Text('Invite'),
-                ),
-            ],
+    final isOwner = currentUser?.id == wishlist.ownerUserId;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Sharing'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isOwner && currentUser != null)
+                  _buildSharedUserRow(
+                    dialogContext,
+                    wishlist,
+                    SharedUser(
+                      id: currentUser.id,
+                      name: currentUser.fullName,
+                      email: currentUser.email,
+                      role: 'Owner',
+                    ),
+                    isOwner: isOwner,
+                    isOwnerRow: true,
+                  )
+                else
+                  _buildSharedUserRow(
+                    dialogContext,
+                    wishlist,
+                    SharedUser(
+                      id: wishlist.ownerUserId,
+                      name: 'List Owner',
+                      email: '',
+                      role: 'Owner',
+                    ),
+                    isOwner: isOwner,
+                    isOwnerRow: true,
+                  ),
+                if (wishlist.sharedUsers.isNotEmpty) ...[
+                  ...wishlist.sharedUsers.map(
+                    (user) => _buildSharedUserRow(
+                      dialogContext,
+                      wishlist,
+                      user,
+                      isOwner: isOwner,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-          const SizedBox(height: AppConstants.spacing2),
-          Text(
-            'Send the list link through WhatsApp, email, or messages. Members can still be tracked locally until the backend arrives.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (wishlist.sharedUsers.isNotEmpty) ...[
-            const SizedBox(height: AppConstants.spacing4),
-            ...wishlist.sharedUsers.map(
-              (user) => _buildSharedUserRow(context, wishlist, user),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _shareWishlist(wishlist, currentUser);
+              },
+              child: const Text('Share list'),
             ),
           ],
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildSharedUserRow(
     BuildContext context,
     Wishlist wishlist,
-    SharedUser user,
-  ) {
+    SharedUser user, {
+    bool isOwner = false,
+    bool isOwnerRow = false,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
       decoration: BoxDecoration(
@@ -437,15 +448,17 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(user.name, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: AppConstants.spacing1),
-                Text(
-                  '${user.role} · ${user.email}',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                if (user.role.isNotEmpty) ...[
+                  const SizedBox(height: AppConstants.spacing1),
+                  Text(
+                    user.role,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
               ],
             ),
           ),
-          if (!widget.showPurchasedOnly)
+          if (!widget.showPurchasedOnly && isOwner && !isOwnerRow)
             IconButton(
               tooltip: 'Remove collaborator',
               onPressed: () => _removeCollaborator(context, wishlist, user),
@@ -498,89 +511,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             },
           ),
         ),
-        const SizedBox(height: AppConstants.itemGap),
-        if (!widget.showPurchasedOnly) ...[
-          Text(
-            'Filter by status',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: AppConstants.spacing2),
-          Wrap(
-            spacing: AppConstants.spacing2,
-            runSpacing: AppConstants.spacing2,
-            children: [
-              _buildFilterChip(
-                label: _allFilter,
-                isSelected: _selectedStatus == _allFilter,
-                onSelected: () {
-                  setState(() {
-                    _selectedStatus = _allFilter;
-                  });
-                },
-              ),
-              ...WishlistItem.statuses
-                  .where((status) => status != 'Purchased')
-                  .map(
-                    (status) => _buildFilterChip(
-                      label: status,
-                      isSelected: _selectedStatus == status,
-                      onSelected: () {
-                        setState(() {
-                          _selectedStatus = status;
-                        });
-                      },
-                    ),
-                  ),
-            ],
-          ),
-          const SizedBox(height: AppConstants.itemGap),
-        ],
-        Text(
-          'Filter by priority',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: AppConstants.spacing2),
-        Wrap(
-          spacing: AppConstants.spacing2,
-          runSpacing: AppConstants.spacing2,
-          children: [
-            _buildFilterChip(
-              label: _allFilter,
-              isSelected: _selectedPriority == _allFilter,
-              onSelected: () {
-                setState(() {
-                  _selectedPriority = _allFilter;
-                });
-              },
-            ),
-            ...WishlistItem.priorities.map(
-              (priority) => _buildFilterChip(
-                label: priority,
-                isSelected: _selectedPriority == priority,
-                onSelected: () {
-                  setState(() {
-                    _selectedPriority = priority;
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 
-  Widget _buildFilterChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onSelected,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => onSelected(),
-    );
-  }
+
 
   Widget _buildEmptyItemsState(BuildContext context) {
     return Container(
@@ -609,23 +544,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'No items match these filters.',
+            'No items match the current view.',
             style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: AppConstants.spacing2),
-          Text(
-            'Clear the current filters to see the rest of the ranked items again.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: AppConstants.itemGap),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedStatus = _allFilter;
-                _selectedPriority = _allFilter;
-              });
-            },
-            child: const Text('Clear Filters'),
           ),
         ],
       ),
@@ -633,17 +553,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem> items) {
-    final filteredItems = items
-        .where((item) {
-          final statusMatches = widget.showPurchasedOnly
-              ? true
-              : _selectedStatus == _allFilter || item.status == _selectedStatus;
-          final priorityMatches =
-              _selectedPriority == _allFilter ||
-              item.priority == _selectedPriority;
-          return statusMatches && priorityMatches;
-        })
-        .toList(growable: false);
+    final filteredItems = List<WishlistItem>.from(items);
 
     filteredItems.sort((left, right) {
       switch (_selectedSort) {

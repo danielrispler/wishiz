@@ -58,6 +58,14 @@ class HttpWishlistRepository implements WishlistRepository {
   }
 
   @override
+  Future<Wishlist?> joinWishlist(String id) async {
+    final joined = await _apiClient.joinWishlist(id);
+    final wishlist = joined.toEntity(fallbackOwnerUserId: _currentUserId);
+    _replaceWishlist(wishlist);
+    return wishlist;
+  }
+
+  @override
   Future<Wishlist> createWishlist({
     required String title,
     required String description,

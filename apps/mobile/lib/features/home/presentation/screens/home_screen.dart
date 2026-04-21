@@ -4,7 +4,7 @@ import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_app_bar.dart';
-import 'package:wishiz/core/widgets/wishiz_wordmark.dart';
+
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/account_screen.dart';
@@ -141,12 +141,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final wishlist = widget.repository.findById(wishlistId);
+    var wishlist = widget.repository.findById(wishlistId);
     _handledInitialWishlistId = wishlistId;
     widget.onInitialWishlistHandled?.call();
 
     if (wishlist == null) {
-      _showFeedback('That shared list is not available on this device yet.');
+      try {
+        wishlist = await widget.repository.joinWishlist(wishlistId);
+      } catch (e) {
+        if (!mounted) return;
+        _showFeedback('That shared list is not available on this device yet.');
+        return;
+      }
+    }
+
+    if (!mounted || wishlist == null) {
+      if (mounted) {
+        _showFeedback('That shared list is not available on this device yet.');
+      }
       return;
     }
 
@@ -298,9 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => RemindersScreen(
-          repository: widget.repository,
           authRepository: widget.authRepository,
-          sharedProductRepository: widget.sharedProductRepository,
         ),
       ),
     );

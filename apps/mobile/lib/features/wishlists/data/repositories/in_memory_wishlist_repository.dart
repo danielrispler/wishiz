@@ -38,6 +38,11 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
+  Future<Wishlist?> joinWishlist(String id) async {
+    return findById(id);
+  }
+
+  @override
   Future<Wishlist> createWishlist({
     required String title,
     required String description,

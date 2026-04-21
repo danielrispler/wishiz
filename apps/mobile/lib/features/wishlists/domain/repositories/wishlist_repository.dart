@@ -9,6 +9,8 @@ abstract class WishlistRepository {
 
   Wishlist? findById(String id);
 
+  Future<Wishlist?> joinWishlist(String id);
+
   Future<Wishlist> createWishlist({
     required String title,
     required String description,

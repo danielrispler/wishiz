@@ -26,6 +26,7 @@ type Service interface {
 	PatchItem(ctx context.Context, wishlistID, itemID string, input *application.PatchItemInput) (domain.WishlistItem, error)
 	DeleteItem(ctx context.Context, wishlistID string, itemID string) error
 	ReorderItems(ctx context.Context, wishlistID string, orderedItemIDs []string) (domain.Wishlist, error)
+	Join(ctx context.Context, id string) (domain.Wishlist, error)
 }
 
 type handler struct {
@@ -143,6 +144,7 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, au
 	mux.HandleFunc("POST /wishlists/{id}/items/reorder", authMiddleware(withAuthenticatedUser(h.reorderItems)))
 	mux.HandleFunc("POST /wishlists/{id}/shared-users", authMiddleware(withAuthenticatedUser(h.addSharedUser)))
 	mux.HandleFunc("DELETE /wishlists/{id}/shared-users/{userId}", authMiddleware(withAuthenticatedUser(h.removeSharedUser)))
+	mux.HandleFunc("POST /wishlists/{id}/join", authMiddleware(withAuthenticatedUser(h.joinWishlist)))
 }
 
 func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
@@ -194,6 +196,16 @@ func (h handler) createWishlist(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) getWishlist(w http.ResponseWriter, r *http.Request) {
 	wishlist, err := h.service.GetByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+}
+
+func (h handler) joinWishlist(w http.ResponseWriter, r *http.Request) {
+	wishlist, err := h.service.Join(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.writeError(w, r, err)
 		return

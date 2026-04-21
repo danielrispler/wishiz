@@ -97,6 +97,15 @@ class PersistentWishlistRepository implements WishlistRepository {
   Wishlist? findById(String id) => _repository.findById(id);
 
   @override
+  Future<Wishlist?> joinWishlist(String id) async {
+    final wishlist = await _repository.joinWishlist(id);
+    if (wishlist != null) {
+      return _persistAndReturn(wishlist);
+    }
+    return wishlist;
+  }
+
+  @override
   Future<Wishlist> createWishlist({
     required String title,
     required String description,

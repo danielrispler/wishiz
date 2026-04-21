@@ -107,6 +107,51 @@ func (s *Service) checkOwner(ctx context.Context, wishlist domain.Wishlist) erro
 	return nil
 }
 
+func (s *Service) Join(ctx context.Context, id string) (domain.Wishlist, error) {
+	if err := validateUUID("wishlistId", id); err != nil {
+		return domain.Wishlist{}, err
+	}
+
+	wishlist, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, ports.ErrNotFound) {
+		return domain.Wishlist{}, WishlistNotFound()
+	}
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
+
+	if !wishlist.IsShared {
+		return domain.Wishlist{}, WishlistNotFound()
+	}
+
+	uid := s.userID(ctx)
+	if wishlist.OwnerID == uid {
+		return ensureWishlist(wishlist), nil
+	}
+
+	uemail := s.userEmail(ctx)
+	if uemail == "" {
+		return domain.Wishlist{}, errors.New("email is required to join a shared wishlist")
+	}
+
+	for _, u := range wishlist.SharedUsers {
+		if strings.ToLower(u.Email) == uemail {
+			return ensureWishlist(wishlist), nil
+		}
+	}
+
+	err = s.repo.AddSharedUser(ctx, id, domain.SharedUser{
+		Name:  "Member",
+		Email: uemail,
+		Role:  "editor",
+	})
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
+
+	return s.GetByID(ctx, id)
+}
+
 func (s *Service) List(ctx context.Context) ([]domain.Wishlist, error) {
 	wishlists, err := s.repo.List(ctx, s.userID(ctx), s.userEmail(ctx))
 	if err != nil {

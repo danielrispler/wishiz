@@ -203,8 +203,7 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			title,
 			description,
 			year,
-			cover_image_url,
-			is_archived
+			cover_image_url
 		)
 		VALUES ($1::uuid, $2, $3, $4, $5)
 		RETURNING
@@ -660,6 +659,7 @@ func (r *Repository) AddSharedUser(ctx context.Context, wishlistID string, user 
 			role
 		)
 		VALUES ($1::uuid, $2, $3, $4)
+		ON CONFLICT (wishlist_id, email) DO UPDATE SET name = EXCLUDED.name
 		RETURNING id::text
 	`, wishlistID, user.Name, user.Email, user.Role)
 

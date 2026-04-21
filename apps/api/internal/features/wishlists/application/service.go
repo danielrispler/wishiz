@@ -129,7 +129,7 @@ func (s *Service) Join(ctx context.Context, id string) (domain.Wishlist, error) 
 	}
 
 	for _, u := range wishlist.SharedUsers {
-		if strings.ToLower(u.Email) == uemail {
+		if strings.EqualFold(strings.TrimSpace(u.Email), uemail) {
 			return ensureWishlist(wishlist), nil
 		}
 	}

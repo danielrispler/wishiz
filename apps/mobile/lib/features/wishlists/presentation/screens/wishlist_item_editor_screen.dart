@@ -260,6 +260,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     try {
       final draft = await sharedProductRepository.createDraftFromSharedText(
         productUrl,
+        targetCurrencyCode: widget.preferredCurrencyCode,
       );
 
       if (!mounted) {

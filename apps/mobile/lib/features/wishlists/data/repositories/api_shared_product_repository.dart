@@ -3,15 +3,16 @@ import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.d
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 
 class ApiSharedProductRepository implements SharedProductRepository {
-  ApiSharedProductRepository({
-    required SharedProductApiClient apiClient,
-  }) : _apiClient = apiClient;
+  ApiSharedProductRepository({required SharedProductApiClient apiClient})
+    : _apiClient = apiClient;
 
   final SharedProductApiClient _apiClient;
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-      String sharedText) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     final normalizedText = sharedText.trim();
     if (normalizedText.isEmpty) {
       return null;
@@ -23,15 +24,20 @@ class ApiSharedProductRepository implements SharedProductRepository {
     }
 
     final sharedLines = _extractSharedLines(normalizedText, productUrl);
-    final scrapedProduct = await _apiClient.scrapeProduct(productUrl);
-    final title =
-        scrapedProduct.name.trim().isEmpty ? null : scrapedProduct.name;
+    final scrapedProduct = await _apiClient.scrapeProduct(
+      productUrl,
+      targetCurrencyCode: targetCurrencyCode,
+    );
+    final title = scrapedProduct.name.trim().isEmpty
+        ? null
+        : scrapedProduct.name;
     final notes = _extractSharedNotes(sharedLines, resolvedTitle: title);
     final priceLabel =
         '${scrapedProduct.priceCurrency.trim()} ${scrapedProduct.priceAmount.trim()}'
             .trim();
-    final imageUrl =
-        scrapedProduct.imageUrl.trim().isEmpty ? null : scrapedProduct.imageUrl;
+    final imageUrl = scrapedProduct.imageUrl.trim().isEmpty
+        ? null
+        : scrapedProduct.imageUrl;
 
     return SharedProductDraft(
       productUrl: productUrl,
@@ -71,10 +77,7 @@ class ApiSharedProductRepository implements SharedProductRepository {
         .toList(growable: false);
   }
 
-  String? _extractSharedNotes(
-    List<String> lines, {
-    String? resolvedTitle,
-  }) {
+  String? _extractSharedNotes(List<String> lines, {String? resolvedTitle}) {
     final remainingLines = lines
         .where((line) => resolvedTitle == null || line != resolvedTitle)
         .toList(growable: false);

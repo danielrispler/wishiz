@@ -2,22 +2,28 @@ import 'dart:convert';
 import 'dart:io';
 
 class SharedProductApiClient {
-  SharedProductApiClient({
-    required Uri baseUri,
-    HttpClient? httpClient,
-  })  : _baseUri = _normalizeBaseUri(baseUri),
-        _httpClient = httpClient ?? HttpClient() {
+  SharedProductApiClient({required Uri baseUri, HttpClient? httpClient})
+    : _baseUri = _normalizeBaseUri(baseUri),
+      _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = const Duration(seconds: 10);
   }
 
   final Uri _baseUri;
   final HttpClient _httpClient;
 
-  Future<ScrapedProductResponse> scrapeProduct(String productUrl) async {
+  Future<ScrapedProductResponse> scrapeProduct(
+    String productUrl, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     final request = await _httpClient.getUrl(
-      _baseUri.resolve('scrape').replace(queryParameters: {
-        'url': productUrl,
-      }),
+      _baseUri
+          .resolve('scrape')
+          .replace(
+            queryParameters: {
+              'url': productUrl,
+              'targetCurrencyCode': targetCurrencyCode,
+            },
+          ),
     );
     request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
 
@@ -37,8 +43,9 @@ class SharedProductApiClient {
   }
 
   static Uri _normalizeBaseUri(Uri baseUri) {
-    final normalizedPath =
-        baseUri.path.endsWith('/') ? baseUri.path : '${baseUri.path}/';
+    final normalizedPath = baseUri.path.endsWith('/')
+        ? baseUri.path
+        : '${baseUri.path}/';
     return baseUri.replace(path: normalizedPath.isEmpty ? '/' : normalizedPath);
   }
 }

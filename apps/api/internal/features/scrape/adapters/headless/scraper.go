@@ -55,6 +55,7 @@ func (s *Scraper) Scrape(_ context.Context, rawURL string) (scrapeapp.Product, e
 	requestCtx, requestCancel := context.WithTimeout(tabCtx, 30*time.Second)
 	defer requestCancel()
 
+	pageURL := rawURL
 	var html string
 
 	err := chromedp.Run(requestCtx,
@@ -62,14 +63,35 @@ func (s *Scraper) Scrape(_ context.Context, rawURL string) (scrapeapp.Product, e
 		chromedp.Emulate(device.IPhone13ProMax),
 		chromedp.Navigate(rawURL),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
-		chromedp.Sleep(2*time.Second),
-		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			deadline := time.Now().Add(3 * time.Second)
+			for {
+				if err := chromedp.Location(&pageURL).Do(ctx); err != nil {
+					return err
+				}
+				if err := chromedp.OuterHTML("html", &html, chromedp.ByQuery).Do(ctx); err != nil {
+					return err
+				}
+				product, err := fastpath.ExtractProduct(pageURL, html)
+				if err == nil && product.IsComplete() {
+					return nil
+				}
+				if time.Now().After(deadline) {
+					return nil
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(200 * time.Millisecond):
+				}
+			}
+		}),
 	)
 	if err != nil {
 		return scrapeapp.Product{}, err
 	}
 
-	return fastpath.ExtractProduct(rawURL, html)
+	return fastpath.ExtractProduct(pageURL, html)
 }
 
 var _ scrapeapp.Scraper = (*Scraper)(nil)

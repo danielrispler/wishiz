@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 )
@@ -38,9 +43,47 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, rawURL, http.NoBody)
+	currentURL := rawURL
+	var lastProduct scrapeapp.Product
+
+	for redirects := 0; redirects < 3; redirects++ {
+		product, finalURL, body, err := s.fetchAndExtract(requestCtx, currentURL)
+		if err != nil {
+			return scrapeapp.Product{}, err
+		}
+		if product.IsComplete() {
+			return product, nil
+		}
+		lastProduct = product
+
+		redirectURL := clientRedirectURL(finalURL, body)
+		if redirectURL == "" {
+			return product, nil
+		}
+		parsedRedirect, err := url.Parse(redirectURL)
+		if err != nil {
+			return product, nil
+		}
+		if !parsedRedirect.IsAbs() {
+			base, parseErr := url.Parse(finalURL)
+			if parseErr != nil {
+				return product, nil
+			}
+			parsedRedirect = base.ResolveReference(parsedRedirect)
+		}
+		if err := scrapeapp.IsRedirectAllowed(requestCtx, s.resolver, parsedRedirect); err != nil {
+			return product, nil
+		}
+		currentURL = parsedRedirect.String()
+	}
+
+	return lastProduct, nil
+}
+
+func (s *Scraper) fetchAndExtract(ctx context.Context, rawURL string) (scrapeapp.Product, string, string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
-		return scrapeapp.Product{}, err
+		return scrapeapp.Product{}, "", "", err
 	}
 
 	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -49,17 +92,17 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 
 	response, err := s.client.Do(request)
 	if err != nil {
-		return scrapeapp.Product{}, err
+		return scrapeapp.Product{}, "", "", err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusBadRequest {
-		return scrapeapp.Product{}, fmt.Errorf("fast path returned status %d", response.StatusCode)
+		return scrapeapp.Product{}, "", "", fmt.Errorf("fast path returned status %d", response.StatusCode)
 	}
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return scrapeapp.Product{}, err
+		return scrapeapp.Product{}, "", "", err
 	}
 
 	pageURL := rawURL
@@ -67,7 +110,63 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 		pageURL = response.Request.URL.String()
 	}
 
-	return ExtractProduct(pageURL, string(body))
+	bodyText := string(body)
+	product, err := ExtractProduct(pageURL, bodyText)
+	return product, pageURL, bodyText, err
 }
+
+func clientRedirectURL(pageURL string, html string) string {
+	metaRedirect := metaRefreshRedirect(pageURL, html)
+	if metaRedirect != "" {
+		return metaRedirect
+	}
+	return javascriptRedirect(html)
+}
+
+func metaRefreshRedirect(pageURL string, html string) string {
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return ""
+	}
+
+	var destination string
+	document.Find(`meta[http-equiv]`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
+		equiv, _ := selection.Attr("http-equiv")
+		if !strings.EqualFold(strings.TrimSpace(equiv), "refresh") {
+			return true
+		}
+		content, _ := selection.Attr("content")
+		match := metaRefreshPattern.FindStringSubmatch(content)
+		if len(match) < 2 {
+			return true
+		}
+		destination = strings.TrimSpace(match[1])
+		return false
+	})
+	if destination == "" {
+		return ""
+	}
+
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		return destination
+	}
+	parsed, err := url.Parse(destination)
+	if err != nil {
+		return destination
+	}
+	return base.ResolveReference(parsed).String()
+}
+
+func javascriptRedirect(html string) string {
+	match := javascriptRedirectPattern.FindStringSubmatch(html)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
+var metaRefreshPattern = regexp.MustCompile(`(?i)url\s*=\s*['"]?([^'";]+)`)
+var javascriptRedirectPattern = regexp.MustCompile(`(?i)(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]`)
 
 var _ scrapeapp.Scraper = (*Scraper)(nil)

@@ -17,9 +17,12 @@ func TestScrapeRouteReturnsProductJSON(t *testing.T) {
 	t.Parallel()
 
 	service := stubService{
-		scrape: func(_ context.Context, rawURL string) (scrapeapp.Product, error) {
+		scrape: func(_ context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error) {
 			if rawURL != "https://example.com/product" {
 				t.Fatalf("unexpected url %q", rawURL)
+			}
+			if targetCurrencyCode != "ILS" {
+				t.Fatalf("unexpected target currency %q", targetCurrencyCode)
 			}
 			return scrapeapp.Product{
 				Name:          "Nike Shox TL",
@@ -34,7 +37,7 @@ func TestScrapeRouteReturnsProductJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, testLogger(), service)
 
-	request := httptest.NewRequest(http.MethodGet, "/scrape?url=https://example.com/product", http.NoBody)
+	request := httptest.NewRequest(http.MethodGet, "/scrape?url=https://example.com/product&targetCurrencyCode=ILS", http.NoBody)
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, request)
 
@@ -55,7 +58,7 @@ func TestScrapeRouteReturnsValidationError(t *testing.T) {
 	t.Parallel()
 
 	service := stubService{
-		scrape: func(context.Context, string) (scrapeapp.Product, error) {
+		scrape: func(context.Context, string, string) (scrapeapp.Product, error) {
 			return scrapeapp.Product{}, scrapeapp.BadRequest("url is required")
 		},
 	}
@@ -76,7 +79,7 @@ func TestScrapeRouteReturnsTimeout(t *testing.T) {
 	t.Parallel()
 
 	service := stubService{
-		scrape: func(ctx context.Context, _ string) (scrapeapp.Product, error) {
+		scrape: func(ctx context.Context, _ string, _ string) (scrapeapp.Product, error) {
 			<-ctx.Done()
 			return scrapeapp.Product{}, ctx.Err()
 		},
@@ -100,11 +103,11 @@ func TestScrapeRouteReturnsTimeout(t *testing.T) {
 }
 
 type stubService struct {
-	scrape func(ctx context.Context, rawURL string) (scrapeapp.Product, error)
+	scrape func(ctx context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error)
 }
 
-func (s stubService) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product, error) {
-	return s.scrape(ctx, rawURL)
+func (s stubService) Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error) {
+	return s.scrape(ctx, rawURL, targetCurrencyCode)
 }
 
 func testLogger() *slog.Logger {

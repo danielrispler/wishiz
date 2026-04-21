@@ -58,6 +58,7 @@ void main() {
       expect(sharedProductRepository.requestedSharedTexts, [
         'https://example.com/products/lamp',
       ]);
+      expect(sharedProductRepository.requestedTargetCurrencyCodes, ['USD']);
       expect(find.text('Preview Item'), findsOneWidget);
       expect(find.text('Imported details may have problems'), findsOneWidget);
       expect(find.text('Verify And Save'), findsOneWidget);
@@ -107,12 +108,15 @@ Widget _buildSubject({
 
 class _FakeSharedProductRepository implements SharedProductRepository {
   final List<String> requestedSharedTexts = [];
+  final List<String> requestedTargetCurrencyCodes = [];
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-    String sharedText,
-  ) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     requestedSharedTexts.add(sharedText);
+    requestedTargetCurrencyCodes.add(targetCurrencyCode);
     return SharedProductDraft(
       productUrl: sharedText,
       title: 'Generated lamp',

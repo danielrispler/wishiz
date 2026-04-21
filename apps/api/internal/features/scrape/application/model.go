@@ -49,3 +49,7 @@ func (p Product) WithSource(source string) Product {
 type Scraper interface {
 	Scrape(ctx context.Context, rawURL string) (Product, error)
 }
+
+type PriceConverter interface {
+	Convert(amount string, fromCurrency string, toCurrency string) (string, string, error)
+}

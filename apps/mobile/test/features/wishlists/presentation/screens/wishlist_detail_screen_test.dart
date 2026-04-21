@@ -35,9 +35,7 @@ void main() {
       final repository = InMemoryWishlistRepository(
         ownerUserId: _sampleUser.id,
         initialWishlists: [
-          _buildWishlist(
-            items: [itemOne, itemTwo],
-          ),
+          _buildWishlist(items: [itemOne, itemTwo]),
         ],
       );
 
@@ -138,8 +136,9 @@ Wishlist _buildWishlist({List<WishlistItem> items = const []}) {
 class _FakeSharedProductRepository implements SharedProductRepository {
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-    String sharedText,
-  ) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     return null;
   }
 }

@@ -18,16 +18,19 @@ void main() {
           request.uri.queryParameters['url'],
           'https://www.nike.com/il/t/shox-tl-older-shoes-LbcQ88p0/IO4645-006',
         );
+        expect(request.uri.queryParameters['targetCurrencyCode'], 'ILS');
 
         request.response.statusCode = HttpStatus.ok;
         request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode({
-          'name': 'Nike Shox TL',
-          'priceAmount': '599.90',
-          'priceCurrency': 'ILS',
-          'imageUrl': 'https://static.nike.com/hero.png',
-          'source': 'headless',
-        }));
+        request.response.write(
+          jsonEncode({
+            'name': 'Nike Shox TL',
+            'priceAmount': '599.90',
+            'priceCurrency': 'ILS',
+            'imageUrl': 'https://static.nike.com/hero.png',
+            'source': 'headless',
+          }),
+        );
         await request.response.close();
       });
 
@@ -39,6 +42,7 @@ void main() {
 
       final draft = await repository.createDraftFromSharedText(
         'Check this out\nhttps://www.nike.com/il/t/shox-tl-older-shoes-LbcQ88p0/IO4645-006',
+        targetCurrencyCode: 'ILS',
       );
 
       expect(draft, isNotNull);

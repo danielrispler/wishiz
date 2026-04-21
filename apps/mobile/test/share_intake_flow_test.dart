@@ -253,8 +253,9 @@ class FakeSharedProductRepository implements SharedProductRepository {
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-    String sharedText,
-  ) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     requestedSharedTexts.add(sharedText);
     return SharedProductDraft(
       productUrl: sharedText,

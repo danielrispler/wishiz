@@ -14,27 +14,37 @@ const (
 )
 
 type Service struct {
-	logger   *slog.Logger
-	fast     Scraper
-	headless Scraper
-	resolver HostResolver
+	logger    *slog.Logger
+	fast      Scraper
+	headless  Scraper
+	resolver  HostResolver
+	converter PriceConverter
 }
 
-func NewService(logger *slog.Logger, fast Scraper, headless Scraper, resolver HostResolver) *Service {
+func NewService(logger *slog.Logger, fast Scraper, headless Scraper, resolver HostResolver, converter PriceConverter) *Service {
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
+	if converter == nil {
+		converter = IdentityPriceConverter{}
+	}
 
 	return &Service{
-		logger:   logger,
-		fast:     fast,
-		headless: headless,
-		resolver: resolver,
+		logger:    logger,
+		fast:      fast,
+		headless:  headless,
+		resolver:  resolver,
+		converter: converter,
 	}
 }
 
-func (s *Service) Scrape(ctx context.Context, rawURL string) (Product, error) {
-	validatedURL, err := ValidateProductURL(ctx, s.resolver, rawURL)
+func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (Product, error) {
+	targetCurrency, err := NormalizeCurrencyCode(targetCurrencyCode)
+	if err != nil {
+		return Product{}, err
+	}
+
+	validatedURL, err := NormalizeProductURL(ctx, s.resolver, rawURL)
 	if err != nil {
 		return Product{}, err
 	}
@@ -45,13 +55,17 @@ func (s *Service) Scrape(ctx context.Context, rawURL string) (Product, error) {
 	if fastErr == nil {
 		fastResult = fastResult.WithSource(sourceFast)
 		if fastResult.IsComplete() {
-			s.logger.Info(
-				"scrape completed",
-				"url", validatedURL.String(),
-				"source", sourceFast,
-				"duration_ms", time.Since(startedAt).Milliseconds(),
-			)
-			return fastResult, nil
+			converted, convertErr := s.convertProductPrice(fastResult, targetCurrency)
+			if convertErr == nil {
+				s.logger.Info(
+					"scrape completed",
+					"url", validatedURL.String(),
+					"source", sourceFast,
+					"duration_ms", time.Since(startedAt).Milliseconds(),
+				)
+				return converted, nil
+			}
+			fastErr = convertErr
 		}
 	}
 
@@ -59,27 +73,31 @@ func (s *Service) Scrape(ctx context.Context, rawURL string) (Product, error) {
 	if headlessErr == nil {
 		headlessResult = headlessResult.WithSource(sourceHeadless)
 		if headlessResult.IsComplete() {
-			s.logger.Info(
-				"scrape completed",
-				"url", validatedURL.String(),
-				"source", sourceHeadless,
-				"duration_ms", time.Since(startedAt).Milliseconds(),
-			)
-			return headlessResult, nil
+			converted, convertErr := s.convertProductPrice(headlessResult, targetCurrency)
+			if convertErr == nil {
+				s.logger.Info(
+					"scrape completed",
+					"url", validatedURL.String(),
+					"source", sourceHeadless,
+					"duration_ms", time.Since(startedAt).Milliseconds(),
+				)
+				return converted, nil
+			}
+			headlessErr = convertErr
 		}
 	}
 
 	bestEffort := chooseBestProduct(fastResult, headlessResult)
 	if bestEffort.HasAnyData() {
 		s.logger.Warn(
-			"scrape completed with partial data",
+			"scrape failed with partial data",
 			"url", validatedURL.String(),
 			"source", bestEffort.Source,
 			"duration_ms", time.Since(startedAt).Milliseconds(),
 			"fast_error", errorMessage(fastErr),
 			"headless_error", errorMessage(headlessErr),
 		)
-		return bestEffort, nil
+		return Product{}, ScrapeFailed("could not extract complete product details")
 	}
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -95,6 +113,16 @@ func (s *Service) Scrape(ctx context.Context, rawURL string) (Product, error) {
 	)
 
 	return Product{}, ScrapeFailed("could not extract complete product details")
+}
+
+func (s *Service) convertProductPrice(product Product, targetCurrencyCode string) (Product, error) {
+	amount, currency, err := s.converter.Convert(product.PriceAmount, product.PriceCurrency, targetCurrencyCode)
+	if err != nil {
+		return Product{}, err
+	}
+	product.PriceAmount = amount
+	product.PriceCurrency = currency
+	return product, nil
 }
 
 func errorMessage(err error) string {

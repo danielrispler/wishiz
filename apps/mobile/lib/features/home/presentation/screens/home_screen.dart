@@ -222,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       return await widget.sharedProductRepository.createDraftFromSharedText(
         sharedText,
+        targetCurrencyCode: widget.currentUser.preferredCurrencyCode,
       );
     } catch (error) {
       if (mounted) {
@@ -310,9 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openRemindersScreen() {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => RemindersScreen(
-          authRepository: widget.authRepository,
-        ),
+        builder: (_) => RemindersScreen(authRepository: widget.authRepository),
       ),
     );
   }
@@ -392,22 +391,17 @@ class _HomeScreenState extends State<HomeScreen> {
               right: 4,
               top: 4,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 5,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
                   color: colorScheme.primary,
-                  borderRadius: BorderRadius.circular(
-                    AppConstants.radiusFull,
-                  ),
+                  borderRadius: BorderRadius.circular(AppConstants.radiusFull),
                 ),
                 child: Text(
                   reminderCount > 9 ? '9+' : '$reminderCount',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),

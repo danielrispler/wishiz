@@ -12,7 +12,7 @@ import (
 )
 
 type Service interface {
-	Scrape(ctx context.Context, rawURL string) (scrapeapp.Product, error)
+	Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error)
 }
 
 type handler struct {
@@ -35,7 +35,11 @@ func (h handler) scrapeProduct(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
 	defer cancel()
 
-	product, err := h.service.Scrape(ctx, r.URL.Query().Get("url"))
+	product, err := h.service.Scrape(
+		ctx,
+		r.URL.Query().Get("url"),
+		r.URL.Query().Get("targetCurrencyCode"),
+	)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

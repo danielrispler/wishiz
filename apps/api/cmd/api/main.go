@@ -64,7 +64,15 @@ func run() error {
 	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath)
 	defer headlessScraper.Close()
 
-	scrapeService := scrapeapp.NewService(appLogger, fastScraper, headlessScraper, resolver)
+	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
+	if err := exchangeConverter.Refresh(); err != nil {
+		appLogger.Warn("initial exchange rate refresh failed", "error", err)
+	}
+	exchangeStop := make(chan struct{})
+	defer close(exchangeStop)
+	exchangeConverter.Start(exchangeStop)
+
+	scrapeService := scrapeapp.NewService(appLogger, fastScraper, headlessScraper, resolver, exchangeConverter)
 	scrapehttp.RegisterRoutes(mux, appLogger, scrapeService)
 
 	if cfg.DatabaseURL != "" {

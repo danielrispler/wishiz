@@ -9,15 +9,16 @@ import 'package:wishiz/features/wishlists/domain/repositories/shared_product_rep
 final RegExp _titleSeparatorPattern = RegExp(r'\s+\|\s+|\s+-\s+|\s+:\s+');
 
 class HttpSharedProductRepository implements SharedProductRepository {
-  HttpSharedProductRepository({
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  HttpSharedProductRepository({http.Client? client})
+    : _client = client ?? http.Client();
 
   final http.Client _client;
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-      String sharedText) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     final normalizedText = sharedText.trim();
     if (normalizedText.isEmpty) {
       return null;
@@ -63,7 +64,8 @@ class HttpSharedProductRepository implements SharedProductRepository {
   }
 
   Future<_ResolvedProductMetadata> _fetchProductMetadata(
-      String productUrl) async {
+    String productUrl,
+  ) async {
     final uri = Uri.parse(productUrl);
     final response = await _client.get(
       uri,
@@ -143,10 +145,16 @@ class HttpSharedProductRepository implements SharedProductRepository {
     final image = _firstNonEmpty([
       _metaContent(document, property: 'og:image'),
       _metaContent(document, name: 'twitter:image'),
-      _attributeContent(document,
-          selector: '[itemprop="image"]', attribute: 'content'),
-      _attributeContent(document,
-          selector: '[itemprop="image"]', attribute: 'src'),
+      _attributeContent(
+        document,
+        selector: '[itemprop="image"]',
+        attribute: 'content',
+      ),
+      _attributeContent(
+        document,
+        selector: '[itemprop="image"]',
+        attribute: 'src',
+      ),
       schemaImage,
       _attributeContent(
         document,
@@ -167,8 +175,11 @@ class HttpSharedProductRepository implements SharedProductRepository {
       _metaContent(document, property: 'product:price:amount'),
       _metaContent(document, property: 'og:price:amount'),
       _metaContent(document, name: 'price'),
-      _attributeContent(document,
-          selector: '[itemprop="price"]', attribute: 'content'),
+      _attributeContent(
+        document,
+        selector: '[itemprop="price"]',
+        attribute: 'content',
+      ),
       _normalizeText(document.querySelector('[itemprop="price"]')?.text),
     ]);
     final metaCurrency = _firstNonEmpty([
@@ -180,7 +191,8 @@ class HttpSharedProductRepository implements SharedProductRepository {
         attribute: 'content',
       ),
       _normalizeText(
-          document.querySelector('[itemprop="priceCurrency"]')?.text),
+        document.querySelector('[itemprop="priceCurrency"]')?.text,
+      ),
     ]);
 
     if (_looksLikePrice(metaAmount)) {
@@ -249,8 +261,9 @@ class HttpSharedProductRepository implements SharedProductRepository {
     required bool Function(Map<String, dynamic> node) predicate,
     required T? Function(Map<String, dynamic> node) value,
   }) {
-    for (final script
-        in document.querySelectorAll('script[type="application/ld+json"]')) {
+    for (final script in document.querySelectorAll(
+      'script[type="application/ld+json"]',
+    )) {
       final raw = script.text.trim();
       if (raw.isEmpty) {
         continue;
@@ -306,8 +319,11 @@ class HttpSharedProductRepository implements SharedProductRepository {
       return type.toLowerCase() == expectedType.toLowerCase();
     }
     if (type is List) {
-      return type.any((entry) =>
-          entry is String && entry.toLowerCase() == expectedType.toLowerCase());
+      return type.any(
+        (entry) =>
+            entry is String &&
+            entry.toLowerCase() == expectedType.toLowerCase(),
+      );
     }
     return false;
   }
@@ -375,17 +391,20 @@ class HttpSharedProductRepository implements SharedProductRepository {
       }
 
       final normalized = candidate.toLowerCase();
-      final looksLikeRealImage = normalized.startsWith('http') ||
+      final looksLikeRealImage =
+          normalized.startsWith('http') ||
           normalized.startsWith('/') ||
           normalized.startsWith('//');
-      final isLikelyAsset = normalized.endsWith('.jpg') ||
+      final isLikelyAsset =
+          normalized.endsWith('.jpg') ||
           normalized.endsWith('.jpeg') ||
           normalized.endsWith('.png') ||
           normalized.endsWith('.webp') ||
           normalized.contains('image') ||
           normalized.contains('product') ||
           normalized.contains('main');
-      final isIgnored = normalized.contains('logo') ||
+      final isIgnored =
+          normalized.contains('logo') ||
           normalized.contains('icon') ||
           normalized.contains('sprite') ||
           normalized.contains('avatar') ||
@@ -400,15 +419,15 @@ class HttpSharedProductRepository implements SharedProductRepository {
     return null;
   }
 
-  String? _metaContent(
-    Document document, {
-    String? property,
-    String? name,
-  }) {
-    final selector =
-        property != null ? 'meta[property="$property"]' : 'meta[name="$name"]';
-    return _attributeContent(document,
-        selector: selector, attribute: 'content');
+  String? _metaContent(Document document, {String? property, String? name}) {
+    final selector = property != null
+        ? 'meta[property="$property"]'
+        : 'meta[name="$name"]';
+    return _attributeContent(
+      document,
+      selector: selector,
+      attribute: 'content',
+    );
   }
 
   String? _attributeContent(
@@ -421,8 +440,10 @@ class HttpSharedProductRepository implements SharedProductRepository {
   }
 
   String? _extractProductUrl(String sharedText) {
-    final urlPattern =
-        RegExp(r'https?:\/\/[^\s<>"\)\]]+', caseSensitive: false);
+    final urlPattern = RegExp(
+      r'https?:\/\/[^\s<>"\)\]]+',
+      caseSensitive: false,
+    );
     final match = urlPattern.firstMatch(sharedText);
     if (match == null) {
       return null;
@@ -447,10 +468,7 @@ class HttpSharedProductRepository implements SharedProductRepository {
         .toList(growable: false);
   }
 
-  String? _extractSharedNotes(
-    List<String> lines, {
-    String? resolvedTitle,
-  }) {
+  String? _extractSharedNotes(List<String> lines, {String? resolvedTitle}) {
     final remainingLines = lines
         .where((line) => resolvedTitle == null || line != resolvedTitle)
         .toList(growable: false);
@@ -636,12 +654,15 @@ class HttpSharedProductRepository implements SharedProductRepository {
   }
 
   String _toTitleCase(String value) {
-    return value.split(' ').map((part) {
-      if (part.isEmpty) {
-        return part;
-      }
-      return '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}';
-    }).join(' ');
+    return value
+        .split(' ')
+        .map((part) {
+          if (part.isEmpty) {
+            return part;
+          }
+          return '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}';
+        })
+        .join(' ');
   }
 
   String? _buildProductTitle({
@@ -649,11 +670,10 @@ class HttpSharedProductRepository implements SharedProductRepository {
     required List<String?> rawCandidates,
     String? brandCandidate,
   }) {
-    final brand = _normalizeBrand(brandCandidate) ??
+    final brand =
+        _normalizeBrand(brandCandidate) ??
         _inferBrandFromTitle(rawCandidates) ??
-        _inferBrandFromHost(
-          Uri.tryParse(productUrl)?.host ?? '',
-        );
+        _inferBrandFromHost(Uri.tryParse(productUrl)?.host ?? '');
 
     for (final candidate in rawCandidates) {
       final type = _extractProductType(candidate, brand: brand);
@@ -881,8 +901,9 @@ class HttpSharedProductRepository implements SharedProductRepository {
 
   bool _isLikelyCurrentPriceContext(String bodyText, int matchStart) {
     final start = matchStart < 40 ? 0 : matchStart - 40;
-    final end =
-        matchStart + 60 > bodyText.length ? bodyText.length : matchStart + 60;
+    final end = matchStart + 60 > bodyText.length
+        ? bodyText.length
+        : matchStart + 60;
     final context = bodyText.substring(start, end).toLowerCase();
     return !_looksLikeNonPrimaryPrice(context);
   }
@@ -893,8 +914,10 @@ class HttpSharedProductRepository implements SharedProductRepository {
       return match.group(1);
     }
 
-    final codeMatch = RegExp(r'\b(USD|EUR|GBP|ILS)\b', caseSensitive: false)
-        .firstMatch(value);
+    final codeMatch = RegExp(
+      r'\b(USD|EUR|GBP|ILS)\b',
+      caseSensitive: false,
+    ).firstMatch(value);
     return codeMatch?.group(1)?.toUpperCase();
   }
 

@@ -30,7 +30,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(capturedBaseUrl, 'https://wishiz.app');
-    expect(find.text('Could not connect to the wishlist backend.'), findsNothing);
+    expect(
+      find.text('Could not connect to the wishlist backend.'),
+      findsNothing,
+    );
   });
 
   testWidgets('shows a blocking error when startup cannot reach the backend', (
@@ -128,8 +131,9 @@ class _FakeSharedProductRepository implements SharedProductRepository {
 
   @override
   Future<SharedProductDraft?> createDraftFromSharedText(
-    String sharedText,
-  ) async {
+    String sharedText, {
+    String targetCurrencyCode = 'USD',
+  }) async {
     return null;
   }
 }

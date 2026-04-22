@@ -417,6 +417,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             );
             productImportSyncService = ProductImportSyncService(
               repository: productImportRepository,
+              onJobCompleted: (_) => repository.refresh(),
             )..start();
           } catch (error) {
             setState(() {

@@ -22,6 +22,9 @@ class InMemoryWishlistRepository implements WishlistRepository {
   final ValueNotifier<List<Wishlist>> _wishlists;
 
   @override
+  Future<void> refresh() async {}
+
+  @override
   ValueListenable<List<Wishlist>> watchWishlists() => _wishlists;
 
   @override

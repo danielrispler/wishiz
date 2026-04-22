@@ -23,6 +23,7 @@ class HttpWishlistRepository implements WishlistRepository {
   final ValueNotifier<List<Wishlist>> _wishlists =
       ValueNotifier<List<Wishlist>>(const []);
 
+  @override
   Future<void> refresh() async {
     final wishlists = await _apiClient.listWishlists();
     _wishlists.value = List<Wishlist>.unmodifiable(

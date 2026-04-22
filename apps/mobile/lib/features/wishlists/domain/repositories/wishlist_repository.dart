@@ -5,6 +5,8 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 
 abstract class WishlistRepository {
+  Future<void> refresh();
+
   ValueListenable<List<Wishlist>> watchWishlists();
 
   List<Wishlist> getWishlists();

@@ -109,6 +109,51 @@ void main() {
       service.dispose();
     });
 
+    test('notifies once when a job completes with a created item', () async {
+      final repository = _FakeProductImportRepository();
+      final completedJobs = <String>[];
+      final service = ProductImportSyncService(
+        repository: repository,
+        onJobCompleted: (job) async {
+          completedJobs.add(job.id);
+        },
+      );
+
+      service.start();
+      await _flushMicrotasks();
+
+      repository.setJobs([_job(status: 'completed', createdItemId: 'item-1')]);
+      await _flushMicrotasks();
+
+      repository.setJobs([_job(status: 'completed', createdItemId: 'item-1')]);
+      await _flushMicrotasks();
+
+      expect(completedJobs, ['job-completed']);
+
+      service.dispose();
+    });
+
+    test('does not notify for completed jobs without a created item', () async {
+      final repository = _FakeProductImportRepository();
+      final completedJobs = <String>[];
+      final service = ProductImportSyncService(
+        repository: repository,
+        onJobCompleted: (job) async {
+          completedJobs.add(job.id);
+        },
+      );
+
+      service.start();
+      await _flushMicrotasks();
+
+      repository.setJobs([_job(status: 'completed')]);
+      await _flushMicrotasks();
+
+      expect(completedJobs, isEmpty);
+
+      service.dispose();
+    });
+
     test('disposes cleanly without calling refresh again', () async {
       final repository = _FakeProductImportRepository();
       repository.onRefresh = () {
@@ -138,7 +183,7 @@ void main() {
 
 Future<void> _flushMicrotasks() => Future<void>.delayed(Duration.zero);
 
-ProductImportJob _job({required String status}) {
+ProductImportJob _job({required String status, String? createdItemId}) {
   final now = DateTime(2026, 1, 1);
   return ProductImportJob(
     id: 'job-$status',
@@ -151,6 +196,7 @@ ProductImportJob _job({required String status}) {
     attemptCount: 0,
     retryable: status == 'failed',
     completeness: 0,
+    createdItemId: createdItemId,
     createdAt: now,
     updatedAt: now,
   );

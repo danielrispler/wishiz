@@ -76,6 +76,9 @@ class PersistentWishlistRepository implements WishlistRepository {
 
   Future<void> flush() => _pendingWrite;
 
+  @override
+  Future<void> refresh() => _repository.refresh();
+
   Future<T> _persistAndReturn<T>(T value) async {
     _persist();
     await _pendingWrite;

@@ -37,9 +37,15 @@ void main() {
           shareIntakeService: shareIntakeService,
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump();
 
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+      expect(productImportRepository.requestedSharedTexts, isEmpty);
+      expect(find.text('Choose a wishlist'), findsOneWidget);
+
+      await chooseFirstWishlist(tester);
+
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/mug',
       ]);
@@ -74,7 +80,14 @@ void main() {
       expect(productImportRepository.requestedSharedTexts, isEmpty);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(productImportRepository.requestedSharedTexts, isEmpty);
+      expect(find.text('Choose a wishlist'), findsOneWidget);
+
+      await chooseFirstWishlist(tester);
 
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/chair',
@@ -112,7 +125,13 @@ void main() {
       expect(productImportRepository.requestedSharedTexts, isEmpty);
 
       authRepository.setCurrentUser(sampleUser);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump();
+
+      expect(productImportRepository.requestedSharedTexts, isEmpty);
+      expect(find.text('Choose a wishlist'), findsOneWidget);
+
+      await chooseFirstWishlist(tester);
 
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/lamp',
@@ -304,6 +323,11 @@ void main() {
       expect(find.text('Maya Birthday Ideas'), findsNothing);
     });
   });
+}
+
+Future<void> chooseFirstWishlist(WidgetTester tester) async {
+  await tester.tap(find.byType(SimpleDialogOption).first);
+  await tester.pumpAndSettle();
 }
 
 Widget buildTestApp({

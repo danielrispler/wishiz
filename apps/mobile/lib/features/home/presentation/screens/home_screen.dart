@@ -247,10 +247,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return _openWishlistEditor(openDetailsOnCreate: false);
     }
 
-    if (wishlists.length == 1) {
-      return wishlists.single.id;
-    }
-
     return showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(

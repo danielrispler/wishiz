@@ -17,6 +17,10 @@ services:
   api:
     build:
       context: ./apps/api
+      cache_from:
+        - type=local,src=.docker-cache/api
+      cache_to:
+        - type=local,dest=.docker-cache/api,mode=max
     restart: unless-stopped
     depends_on:
       postgres:

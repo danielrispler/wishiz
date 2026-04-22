@@ -492,52 +492,57 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                     ),
                   ),
                   const SizedBox(height: AppConstants.itemGap),
-                  if (_imageUrlController.text.isNotEmpty) ...[
-                    _buildImagePreview(context),
-                    const SizedBox(height: AppConstants.itemGap),
-                  ],
-                  Wrap(
-                    spacing: AppConstants.spacing2,
-                    runSpacing: AppConstants.spacing2,
-                    children: [
-                      TextButton.icon(
-                        onPressed: _pickItemImage,
-                        icon: const Icon(Icons.photo_library_outlined),
-                        label: const Text('Choose From Gallery'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _imageUrlController.clear();
-                            _showImageValidationError = false;
-                          });
-                        },
-                        icon: const Icon(Icons.clear_outlined),
-                        label: const Text('Clear Image'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
-                    child: TextFormField(
-                      controller: _imageUrlController,
-                      keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'Image URL or local path',
-                        hintText: 'https://image.jpg or local file path',
-                        border: InputBorder.none,
-                      ),
-                      validator: _validateImageSource,
-                      onChanged: (_) {
-                        if (_showImageValidationError) {
-                          setState(() {
-                            _showImageValidationError = false;
-                          });
-                        } else {
-                          setState(() {});
-                        }
-                      },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_imageUrlController.text.isNotEmpty) ...[
+                          _buildImagePreview(context),
+                          const SizedBox(height: AppConstants.itemGap),
+                        ],
+                        TextFormField(
+                          controller: _imageUrlController,
+                          keyboardType: TextInputType.url,
+                          decoration: InputDecoration(
+                            labelText: 'Image',
+                            hintText: 'Paste a URL or choose from gallery',
+                            border: InputBorder.none,
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  onPressed: _pickItemImage,
+                                  icon:
+                                      const Icon(Icons.photo_library_outlined),
+                                  tooltip: 'Choose From Gallery',
+                                ),
+                                if (_imageUrlController.text.isNotEmpty)
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _imageUrlController.clear();
+                                        _showImageValidationError = false;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.clear_outlined),
+                                    tooltip: 'Clear Image',
+                                  ),
+                              ],
+                            ),
+                          ),
+                          validator: _validateImageSource,
+                          onChanged: (_) {
+                            if (_showImageValidationError) {
+                              setState(() {
+                                _showImageValidationError = false;
+                              });
+                            } else {
+                              setState(() {});
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ),
                   if (_showImageValidationError) ...[

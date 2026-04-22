@@ -16,6 +16,7 @@ type Service interface {
 	CreateInvite(ctx context.Context, wishlistID string, input *application.CreateInviteInput) (domain.WishlistInvite, error)
 	DeleteInvite(ctx context.Context, wishlistID string, inviteID string) error
 	RemoveMember(ctx context.Context, wishlistID string, userID string) error
+	UpdateMemberRole(ctx context.Context, wishlistID string, userID string, input *application.PatchWishlistMemberInput) error
 	List(ctx context.Context) ([]domain.Wishlist, error)
 	GetByID(ctx context.Context, id string) (domain.Wishlist, error)
 	Create(ctx context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error)
@@ -83,9 +84,14 @@ type joinWishlistRequest struct {
 	Token string `json:"token"`
 }
 
+type patchMemberRequest struct {
+	Role string `json:"role"`
+}
+
 type wishlistResponse struct {
 	ID            string           `json:"id"`
 	OwnerUserID   string           `json:"ownerUserId"`
+	OwnerFullName string           `json:"ownerFullName"`
 	Title         string           `json:"title"`
 	Description   string           `json:"description"`
 	Year          int              `json:"year"`
@@ -163,6 +169,7 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, au
 	mux.HandleFunc("POST /wishlists/{id}/invites", authMiddleware(withAuthenticatedUser(h.createInvite)))
 	mux.HandleFunc("DELETE /wishlists/{id}/invites/{inviteId}", authMiddleware(withAuthenticatedUser(h.deleteInvite)))
 	mux.HandleFunc("DELETE /wishlists/{id}/members/{userId}", authMiddleware(withAuthenticatedUser(h.removeMember)))
+	mux.HandleFunc("PATCH /wishlists/{id}/members/{userId}", authMiddleware(withAuthenticatedUser(h.patchMember)))
 	mux.HandleFunc("POST /wishlists/{id}/join", authMiddleware(withAuthenticatedUser(h.joinWishlist)))
 }
 
@@ -413,6 +420,7 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 	return wishlistResponse{
 		ID:            wishlist.ID,
 		OwnerUserID:   wishlist.OwnerID,
+		OwnerFullName: wishlist.OwnerFullName,
 		Title:         wishlist.Title,
 		Description:   wishlist.Description,
 		Year:          wishlist.Year,
@@ -477,6 +485,23 @@ func (h handler) removeMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h handler) patchMember(w http.ResponseWriter, r *http.Request) {
+	var request patchMemberRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+
+	if err := h.service.UpdateMemberRole(r.Context(), r.PathValue("id"), r.PathValue("userId"), &application.PatchWishlistMemberInput{
+		Role: request.Role,
+	}); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func mapItemResponse(item domain.WishlistItem) itemResponse {

@@ -75,6 +75,10 @@ type JoinWishlistInput struct {
 	Token string
 }
 
+type PatchWishlistMemberInput struct {
+	Role string
+}
+
 func (s *Service) userID(ctx context.Context) string {
 	user, ok := authctx.UserFromContext(ctx)
 	if !ok {
@@ -141,7 +145,7 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 	var inviteID *string
 
 	if wishlist.ShareToken == token {
-		role = domain.MemberRoleViewer
+		role = domain.MemberRoleEditor
 	} else {
 		invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
 		if err != nil {
@@ -649,6 +653,38 @@ func (s *Service) RemoveMember(ctx context.Context, wishlistID, userID string) e
 		return nil
 	}
 	return err
+}
+
+func (s *Service) UpdateMemberRole(ctx context.Context, wishlistID string, userID string, input *PatchWishlistMemberInput) error {
+	if err := validateUUID("wishlistId", wishlistID); err != nil {
+		return err
+	}
+	if err := validateUUID("userId", userID); err != nil {
+		return err
+	}
+	if input == nil {
+		return ValidationError("input", "input is required")
+	}
+
+	role, err := validateRole(strings.TrimSpace(strings.ToLower(input.Role)))
+	if err != nil {
+		return err
+	}
+
+	current, err := s.GetByID(ctx, wishlistID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.checkOwner(ctx, current); err != nil {
+		return err
+	}
+
+	if s.userID(ctx) == userID {
+		return ValidationError("userId", "cannot change your own role")
+	}
+
+	return s.repo.UpdateMemberRole(ctx, wishlistID, userID, role)
 }
 
 func ensureWishlists(wishlists []domain.Wishlist) []domain.Wishlist {

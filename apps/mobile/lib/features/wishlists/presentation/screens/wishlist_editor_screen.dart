@@ -202,42 +202,47 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.itemGap),
-              if (_coverImageUrlController.text.isNotEmpty) ...[
-                _buildImagePreview(context),
-                const SizedBox(height: AppConstants.itemGap),
-              ],
-              Wrap(
-                spacing: AppConstants.spacing2,
-                runSpacing: AppConstants.spacing2,
-                children: [
-                  TextButton.icon(
-                    onPressed: _pickCoverImage,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Choose From Gallery'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _coverImageUrlController.clear();
-                      });
-                    },
-                    icon: const Icon(Icons.clear_outlined),
-                    label: const Text('Clear Image'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppConstants.itemGap),
               _buildFieldCard(
                 context,
-                child: TextFormField(
-                  controller: _coverImageUrlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Cover image path or URL',
-                    hintText: 'https:// or local image path',
-                    border: InputBorder.none,
-                  ),
-                  validator: _validateOptionalImageSource,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_coverImageUrlController.text.isNotEmpty) ...[
+                      _buildImagePreview(context),
+                      const SizedBox(height: AppConstants.itemGap),
+                    ],
+                    TextFormField(
+                      controller: _coverImageUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: InputDecoration(
+                        labelText: 'Cover image',
+                        hintText: 'Paste a URL or choose from gallery',
+                        border: InputBorder.none,
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              onPressed: _pickCoverImage,
+                              icon: const Icon(Icons.photo_library_outlined),
+                              tooltip: 'Choose From Gallery',
+                            ),
+                            if (_coverImageUrlController.text.isNotEmpty)
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _coverImageUrlController.clear();
+                                  });
+                                },
+                                icon: const Icon(Icons.clear_outlined),
+                                tooltip: 'Clear Image',
+                              ),
+                          ],
+                        ),
+                      ),
+                      validator: _validateOptionalImageSource,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: AppConstants.itemGap),

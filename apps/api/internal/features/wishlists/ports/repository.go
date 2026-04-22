@@ -28,6 +28,7 @@ type Repository interface {
 	AcceptInvite(ctx context.Context, params AcceptInviteParams) error
 	AddMember(ctx context.Context, wishlistID string, userID string, role string) error
 	RemoveMember(ctx context.Context, wishlistID string, userID string) error
+	UpdateMemberRole(ctx context.Context, wishlistID string, userID string, role string) error
 }
 
 type CreateWishlistParams struct {

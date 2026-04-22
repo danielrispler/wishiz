@@ -326,6 +326,27 @@ paths:
           $ref: '#/components/responses/WishlistNotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+    patch:
+      summary: Update a wishlist member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchWishlistMemberRequest'
+      responses:
+        '200':
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistMember'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     WishlistID:
@@ -391,6 +412,8 @@ components:
         ownerUserId:
           type: string
           format: uuid
+        ownerFullName:
+          type: string
         title:
           type: string
         description:
@@ -652,6 +675,14 @@ components:
           format: date-time
       required:
         - email
+        - role
+    PatchWishlistMemberRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [viewer, editor]
+      required:
         - role
     ScrapedProduct:
       type: object

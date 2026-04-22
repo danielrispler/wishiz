@@ -31,6 +31,7 @@ func (r *Repository) List(ctx context.Context, requestUserID string) ([]domain.W
 		SELECT
 			id::text,
 			owner_id::text,
+			(SELECT full_name FROM app_users u WHERE u.id = wishlists.owner_id) as owner_full_name,
 			title,
 			description,
 			year,
@@ -88,6 +89,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 		SELECT
 			id::text,
 			owner_id::text,
+			(SELECT full_name FROM app_users u WHERE u.id = wishlists.owner_id) as owner_full_name,
 			title,
 			description,
 			year,
@@ -143,6 +145,7 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 		RETURNING
 			id::text,
 			owner_id::text,
+			(SELECT full_name FROM app_users u WHERE u.id = wishlists.owner_id) as owner_full_name,
 			title,
 			description,
 			year,
@@ -173,6 +176,7 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 		RETURNING
 			id::text,
 			owner_id::text,
+			(SELECT full_name FROM app_users u WHERE u.id = wishlists.owner_id) as owner_full_name,
 			title,
 			description,
 			year,
@@ -595,6 +599,22 @@ func (r *Repository) RemoveMember(ctx context.Context, wishlistID string, userID
 	return nil
 }
 
+func (r *Repository) UpdateMemberRole(ctx context.Context, wishlistID string, userID string, role string) error {
+	commandTag, err := r.pool.Exec(ctx, `
+		UPDATE wishlist_members
+		SET role = $3
+		WHERE wishlist_id = $1::uuid AND user_id = $2::uuid
+	`, wishlistID, userID, role)
+	if err != nil {
+		return fmt.Errorf("update role for member %s in wishlist %s: %w", userID, wishlistID, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+
+	return nil
+}
+
 func (r *Repository) setArchivedState(ctx context.Context, id string, archived bool) (domain.Wishlist, error) {
 	row := r.pool.QueryRow(ctx, `
 		UPDATE wishlists
@@ -603,6 +623,7 @@ func (r *Repository) setArchivedState(ctx context.Context, id string, archived b
 		RETURNING
 			id::text,
 			owner_id::text,
+			(SELECT full_name FROM app_users u WHERE u.id = wishlists.owner_id) as owner_full_name,
 			title,
 			description,
 			year,
@@ -880,6 +901,7 @@ func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) 
 	err := row.Scan(
 		&wishlist.ID,
 		&wishlist.OwnerID,
+		&wishlist.OwnerFullName,
 		&wishlist.Title,
 		&wishlist.Description,
 		&wishlist.Year,

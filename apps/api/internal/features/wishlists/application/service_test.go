@@ -712,6 +712,26 @@ func (r *fakeRepository) RemoveMember(_ context.Context, wishlistID string, user
 	return nil
 }
 
+func (r *fakeRepository) UpdateMemberRole(_ context.Context, wishlistID string, userID string, role string) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+	found := false
+	for i, member := range wishlist.Members {
+		if member.UserID == userID {
+			wishlist.Members[i].Role = role
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ports.ErrNotFound
+	}
+	r.wishlists[wishlistID] = wishlist
+	return nil
+}
+
 func (r *fakeRepository) AddMember(_ context.Context, wishlistID string, userID string, role string) error {
 	wishlist, ok := r.wishlists[wishlistID]
 	if !ok {

@@ -262,6 +262,42 @@ func TestExtractProductVuoriSelectors(t *testing.T) {
 	}
 }
 
+func TestExtractProductVuoriNumericalPriceJSONLD(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://vuoriclothing.com/products/womens-vuori-alltheform-micro-bra-riviera-blue",
+		`<html><head><script type="application/ld+json">{
+			"@type": "Product",
+			"name": "Vuori AllTheForm™ Micro Bra",
+			"offers": {"@type": "Offer", "price": 128, "priceCurrency": "USD"}
+		}</script></head><body></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.PriceAmount != "128" || product.PriceCurrency != "USD" {
+		t.Fatalf("unexpected price: %+v", product)
+	}
+}
+
+func TestExtractProductVuoriDataTestIdSelector(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://vuoriclothing.com/products/womens-villa-wideleg-short-black",
+		`<html><body><h1>Villa Wideleg Pant - Short</h1><span data-testid="productdescriptionprice-price">$128</span></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.PriceAmount != "128" || product.PriceCurrency != "USD" {
+		t.Fatalf("unexpected price: %+v", product)
+	}
+}
+
 func TestExtractProductDeRococoSelectors(t *testing.T) {
 	t.Parallel()
 

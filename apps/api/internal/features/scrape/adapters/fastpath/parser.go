@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -142,6 +143,7 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 		}
 	case "crazyyoga", "addict", "vuori", "derococo":
 		priceText := firstNonEmpty(
+			textOf(document, `[data-testid="productdescriptionprice-price"]`),
 			textOf(document, `[data-testid="product-price"]`),
 			textOf(document, `[itemprop="price"]`),
 			textOf(document, ".price"),
@@ -578,8 +580,21 @@ func isProductNode(node map[string]any) bool {
 }
 
 func stringValue(value any) string {
-	text, _ := value.(string)
-	return normalizeText(text)
+	if value == nil {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return normalizeText(v)
+	case float64:
+		return normalizeText(strconv.FormatFloat(v, 'f', -1, 64))
+	case int:
+		return normalizeText(strconv.Itoa(v))
+	case int64:
+		return normalizeText(strconv.FormatInt(v, 10))
+	default:
+		return ""
+	}
 }
 
 func readImage(value any) string {

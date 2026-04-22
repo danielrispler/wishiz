@@ -129,28 +129,55 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 		return domain.Wishlist{}, ValidationError("token", "invite token is required")
 	}
 
-	invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
-	if errors.Is(err, ports.ErrNotFound) {
-		return domain.Wishlist{}, WishlistNotFound()
-	}
+	wishlist, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return domain.Wishlist{}, WishlistNotFound()
+		}
 		return domain.Wishlist{}, err
-	}
-	if invite.AcceptedAt != nil {
-		return domain.Wishlist{}, ValidationError("token", "invite has already been accepted")
-	}
-	if !invite.ExpiresAt.After(s.nowFn().UTC()) {
-		return domain.Wishlist{}, ValidationError("token", "invite has expired")
 	}
 
-	if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
-		InviteID:   invite.ID,
-		WishlistID: id,
-		UserID:     s.userID(ctx),
-		Role:       invite.Role,
-		AcceptedAt: s.nowFn().UTC(),
-	}); err != nil {
-		return domain.Wishlist{}, err
+	var role string
+	var inviteID *string
+
+	if wishlist.ShareToken == token {
+		role = domain.MemberRoleViewer
+	} else {
+		invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
+		if err != nil {
+			if errors.Is(err, ports.ErrNotFound) {
+				return domain.Wishlist{}, WishlistNotFound()
+			}
+			return domain.Wishlist{}, err
+		}
+
+		if invite.AcceptedAt != nil {
+			return domain.Wishlist{}, ValidationError("token", "invite has already been accepted")
+		}
+		if !invite.ExpiresAt.After(s.nowFn().UTC()) {
+			return domain.Wishlist{}, ValidationError("token", "invite has expired")
+		}
+
+		role = invite.Role
+		inviteID = &invite.ID
+	}
+
+	uid := s.userID(ctx)
+
+	if inviteID != nil {
+		if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
+			InviteID:   *inviteID,
+			WishlistID: id,
+			UserID:     uid,
+			Role:       role,
+			AcceptedAt: s.nowFn().UTC(),
+		}); err != nil {
+			return domain.Wishlist{}, err
+		}
+	} else {
+		if err := s.repo.AddMember(ctx, id, uid, role); err != nil {
+			return domain.Wishlist{}, err
+		}
 	}
 
 	return s.GetByID(ctx, id)

@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS wishlists (
     description TEXT NOT NULL DEFAULT '',
     year INTEGER NOT NULL,
     cover_image_url TEXT,
+    share_token TEXT NOT NULL UNIQUE,
     is_archived BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

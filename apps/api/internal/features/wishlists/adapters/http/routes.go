@@ -93,6 +93,7 @@ type wishlistResponse struct {
 	CreatedAt     time.Time        `json:"createdAt"`
 	UpdatedAt     time.Time        `json:"updatedAt"`
 	IsArchived    bool             `json:"isArchived"`
+	ShareToken    string           `json:"shareToken"`
 	Members       []memberResponse `json:"members"`
 	Invites       []inviteResponse `json:"invites"`
 	Items         []itemResponse   `json:"items"`
@@ -419,6 +420,7 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		CreatedAt:     wishlist.CreatedAt,
 		UpdatedAt:     wishlist.UpdatedAt,
 		IsArchived:    wishlist.IsArchived,
+		ShareToken:    wishlist.ShareToken,
 		Members:       members,
 		Invites:       invites,
 		Items:         items,

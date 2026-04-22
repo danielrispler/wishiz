@@ -22,6 +22,7 @@ type Wishlist struct {
 	Description   string
 	Year          int
 	CoverImageURL *string
+	ShareToken    string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	IsArchived    bool

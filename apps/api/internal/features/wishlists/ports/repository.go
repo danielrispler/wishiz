@@ -26,6 +26,7 @@ type Repository interface {
 	DeleteInvite(ctx context.Context, wishlistID string, inviteID string) error
 	GetInviteByTokenHash(ctx context.Context, wishlistID string, tokenHash string) (domain.WishlistInvite, error)
 	AcceptInvite(ctx context.Context, params AcceptInviteParams) error
+	AddMember(ctx context.Context, wishlistID string, userID string, role string) error
 	RemoveMember(ctx context.Context, wishlistID string, userID string) error
 }
 

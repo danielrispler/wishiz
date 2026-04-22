@@ -8,7 +8,10 @@ class WishizShareText {
   static String buildWishlistShareText({required Wishlist wishlist}) {
     final lines = <String>[
       'Open this Wishiz list.',
-      WishizAppLink.wishlistShareLink(wishlist.id),
+      WishizAppLink.wishlistShareLink(
+        wishlist.id,
+        inviteToken: wishlist.shareToken,
+      ),
     ];
 
     return lines.join('\n');

@@ -303,6 +303,34 @@ func TestServiceJoinAcceptsInviteAndAddsMember(t *testing.T) {
 	}
 }
 
+func TestServiceJoinViaShareToken(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:         wishlistID1,
+		OwnerID:    ownerID,
+		Title:      "Shared List",
+		Year:       2026,
+		ShareToken: "permanent-token",
+		CreatedAt:  fixedTime,
+		UpdatedAt:  fixedTime,
+		Members:    []domain.WishlistMember{},
+	}
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime }
+
+	wishlist, err := service.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: "permanent-token"})
+	if err != nil {
+		t.Fatalf("Join returned error: %v", err)
+	}
+	if len(wishlist.Members) != 1 {
+		t.Fatalf("expected one member, got %d", len(wishlist.Members))
+	}
+	if wishlist.Members[0].UserID != viewerID || wishlist.Members[0].Role != domain.MemberRoleViewer {
+		t.Fatalf("unexpected member: %+v", wishlist.Members[0])
+	}
+}
+
 func TestServiceJoinRequiresInviteToken(t *testing.T) {
 	t.Parallel()
 	service := NewService(newFakeRepository())
@@ -680,6 +708,25 @@ func (r *fakeRepository) RemoveMember(_ context.Context, wishlistID string, user
 		return ports.ErrNotFound
 	}
 	wishlist.Members = next
+	r.wishlists[wishlistID] = wishlist
+	return nil
+}
+
+func (r *fakeRepository) AddMember(_ context.Context, wishlistID string, userID string, role string) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+
+	wishlist.Members = append(wishlist.Members, domain.WishlistMember{
+		WishlistID: wishlistID,
+		UserID:     userID,
+		Email:      "viewer@example.com",
+		FullName:   "Viewer",
+		Role:       role,
+		CreatedAt:  fixedTime,
+		UpdatedAt:  fixedTime,
+	})
 	r.wishlists[wishlistID] = wishlist
 	return nil
 }

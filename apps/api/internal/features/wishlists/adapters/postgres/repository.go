@@ -35,6 +35,7 @@ func (r *Repository) List(ctx context.Context, requestUserID string) ([]domain.W
 			description,
 			year,
 			cover_image_url,
+			share_token,
 			created_at,
 			updated_at,
 			is_archived
@@ -91,6 +92,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 			description,
 			year,
 			cover_image_url,
+			share_token,
 			created_at,
 			updated_at,
 			is_archived
@@ -134,9 +136,10 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			title,
 			description,
 			year,
-			cover_image_url
+			cover_image_url,
+			share_token
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5)
+		VALUES ($1::uuid, $2, $3, $4, $5, encode(gen_random_bytes(16), 'hex'))
 		RETURNING
 			id::text,
 			owner_id::text,
@@ -144,6 +147,7 @@ func (r *Repository) Create(ctx context.Context, params ports.CreateWishlistPara
 			description,
 			year,
 			cover_image_url,
+			share_token,
 			created_at,
 			updated_at,
 			is_archived
@@ -173,6 +177,7 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 			description,
 			year,
 			cover_image_url,
+			share_token,
 			created_at,
 			updated_at,
 			is_archived
@@ -554,6 +559,27 @@ func (r *Repository) AcceptInvite(ctx context.Context, params ports.AcceptInvite
 	return nil
 }
 
+func (r *Repository) AddMember(ctx context.Context, wishlistID string, userID string, role string) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO wishlist_members (
+			wishlist_id,
+			user_id,
+			role
+		)
+		VALUES ($1::uuid, $2::uuid, $3)
+		ON CONFLICT (wishlist_id, user_id) DO UPDATE
+		SET role = EXCLUDED.role
+	`, wishlistID, userID, role)
+	if isForeignKeyViolation(err) {
+		return ports.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("add member %s to wishlist %s: %w", userID, wishlistID, err)
+	}
+
+	return nil
+}
+
 func (r *Repository) RemoveMember(ctx context.Context, wishlistID string, userID string) error {
 	commandTag, err := r.pool.Exec(ctx, `
 		DELETE FROM wishlist_members
@@ -581,6 +607,7 @@ func (r *Repository) setArchivedState(ctx context.Context, id string, archived b
 			description,
 			year,
 			cover_image_url,
+			share_token,
 			created_at,
 			updated_at,
 			is_archived
@@ -857,6 +884,7 @@ func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) 
 		&wishlist.Description,
 		&wishlist.Year,
 		&wishlist.CoverImageURL,
+		&wishlist.ShareToken,
 		&wishlist.CreatedAt,
 		&wishlist.UpdatedAt,
 		&wishlist.IsArchived,

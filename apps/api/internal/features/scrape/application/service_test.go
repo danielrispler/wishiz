@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 )
 
 func TestServiceFallsBackToHeadlessWhenFastIsIncomplete(t *testing.T) {
@@ -153,6 +154,74 @@ func TestServiceReturnsConvertedFastResultWithoutHeadless(t *testing.T) {
 	}
 	if product.PriceAmount != "360.00" || product.PriceCurrency != "ILS" || product.Source != sourceFast {
 		t.Fatalf("unexpected converted product: %+v", product)
+	}
+}
+
+func TestServiceAppliesFifteenSecondScrapeDeadline(t *testing.T) {
+	t.Parallel()
+
+	var remaining time.Duration
+	service := NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		stubScraper{scrape: func(ctx context.Context, _ string) (Product, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatalf("expected scrape deadline")
+			}
+			remaining = time.Until(deadline)
+			return Product{
+				Name:            "Sneakers",
+				PriceAmount:     "100.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://example.com/sneakers.png",
+			}, nil
+		}},
+		stubScraper{},
+		stubResolver{},
+		nil,
+	)
+
+	_, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if remaining < 14*time.Second || remaining > defaultScrapeTimeout {
+		t.Fatalf("expected about %s remaining, got %s", defaultScrapeTimeout, remaining)
+	}
+}
+
+func TestServiceReturnsTimeoutWhenScrapeDeadlineExpires(t *testing.T) {
+	t.Parallel()
+
+	headlessCalled := false
+	parentCtx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	service := NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		stubScraper{scrape: func(ctx context.Context, _ string) (Product, error) {
+			<-ctx.Done()
+			return Product{Name: "Slow product"}, ctx.Err()
+		}},
+		stubScraper{scrape: func(context.Context, string) (Product, error) {
+			headlessCalled = true
+			return Product{}, nil
+		}},
+		stubResolver{},
+		nil,
+	)
+
+	_, err := service.Scrape(parentCtx, "https://example.com/product", "USD")
+	if err == nil {
+		t.Fatalf("expected timeout error")
+	}
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeTimeout {
+		t.Fatalf("expected timeout error, got %v", err)
+	}
+	if headlessCalled {
+		t.Fatalf("expected headless scrape to be skipped after timeout")
 	}
 }
 

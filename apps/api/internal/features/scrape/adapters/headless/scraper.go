@@ -45,7 +45,11 @@ func (s *Scraper) Close() error {
 	return nil
 }
 
-func (s *Scraper) Scrape(_ context.Context, rawURL string) (scrapeapp.Product, error) {
+func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product, error) {
+	if err := ctx.Err(); err != nil {
+		return scrapeapp.Product{}, err
+	}
+
 	browserCtx, browserCancel := chromedp.NewContext(s.allocatorCtx)
 	defer browserCancel()
 
@@ -54,6 +58,8 @@ func (s *Scraper) Scrape(_ context.Context, rawURL string) (scrapeapp.Product, e
 
 	requestCtx, requestCancel := context.WithTimeout(tabCtx, 30*time.Second)
 	defer requestCancel()
+	stopParentCancel := context.AfterFunc(ctx, requestCancel)
+	defer stopParentCancel()
 
 	pageURL := rawURL
 	var html string

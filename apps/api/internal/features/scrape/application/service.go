@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	sourceFast     = "fast"
-	sourceHeadless = "headless"
+	sourceFast           = "fast"
+	sourceHeadless       = "headless"
+	defaultScrapeTimeout = 15 * time.Second
 )
 
 type Service struct {
@@ -39,19 +40,22 @@ func NewService(logger *slog.Logger, fast Scraper, headless Scraper, resolver Ho
 }
 
 func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (Product, error) {
+	scrapeCtx, cancel := context.WithTimeout(ctx, defaultScrapeTimeout)
+	defer cancel()
+
 	targetCurrency, err := NormalizeCurrencyCode(targetCurrencyCode)
 	if err != nil {
 		return Product{}, err
 	}
 
-	validatedURL, err := NormalizeProductURL(ctx, s.resolver, rawURL)
+	validatedURL, err := NormalizeProductURL(scrapeCtx, s.resolver, rawURL)
 	if err != nil {
 		return Product{}, err
 	}
 
 	startedAt := time.Now()
 
-	fastResult, fastErr := s.fast.Scrape(ctx, validatedURL.String())
+	fastResult, fastErr := s.fast.Scrape(scrapeCtx, validatedURL.String())
 	if fastErr == nil {
 		fastResult = fastResult.WithSource(sourceFast)
 		if fastResult.IsComplete() {
@@ -73,7 +77,17 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 		}
 	}
 
-	headlessResult, headlessErr := s.headless.Scrape(ctx, validatedURL.String())
+	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
+		s.logger.Warn(
+			"scrape timed out",
+			"url", validatedURL.String(),
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"fast_error", errorMessage(fastErr),
+		)
+		return fastResult, Timeout("scrape timed out")
+	}
+
+	headlessResult, headlessErr := s.headless.Scrape(scrapeCtx, validatedURL.String())
 	if headlessErr == nil {
 		headlessResult = headlessResult.WithSource(sourceHeadless)
 		if headlessResult.IsComplete() {
@@ -96,6 +110,18 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 	}
 
 	bestEffort := chooseBestProduct(fastResult, headlessResult)
+	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
+		s.logger.Warn(
+			"scrape timed out",
+			"url", validatedURL.String(),
+			"source", bestEffort.Source,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"fast_error", errorMessage(fastErr),
+			"headless_error", errorMessage(headlessErr),
+		)
+		return bestEffort, Timeout("scrape timed out")
+	}
+
 	if bestEffort.IsComplete() {
 		s.logger.Info(
 			"scrape completed with price review metadata",
@@ -118,7 +144,7 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 		return bestEffort, ScrapeFailed("could not extract complete product details")
 	}
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
 		return Product{}, Timeout("scrape timed out")
 	}
 

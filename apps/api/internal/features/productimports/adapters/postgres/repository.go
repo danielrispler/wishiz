@@ -37,7 +37,7 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 	if err == nil {
 		return job, true, tx.Commit(ctx)
 	}
-	if err != nil && !errors.Is(err, ports.ErrNotFound) {
+	if !errors.Is(err, ports.ErrNotFound) {
 		return domain.Job{}, false, err
 	}
 
@@ -45,7 +45,7 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 	if err == nil {
 		return job, true, tx.Commit(ctx)
 	}
-	if err != nil && !errors.Is(err, ports.ErrNotFound) {
+	if !errors.Is(err, ports.ErrNotFound) {
 		return domain.Job{}, false, err
 	}
 

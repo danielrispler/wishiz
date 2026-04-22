@@ -173,3 +173,112 @@ func TestExtractProductNikeSelectors(t *testing.T) {
 		t.Fatalf("unexpected product: %+v", product)
 	}
 }
+
+func TestExtractProductMassimoDuttiSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://www.massimodutti.com/il/linen-bomber-jacket-l06725460?pelement=59717182",
+		`<html><body><h1>ג'קט BOMBER מבד פשתן</h1><span class="price-amount">999 ₪</span></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "ג'קט BOMBER מבד פשתן" || product.PriceAmount != "999" || product.PriceCurrency != "ILS" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
+func TestExtractProductCosSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://www2.hm.com/hw_il/productpage.0960679129.html",
+		`<html><body><h1>טי-שירט רגילה חתוכה נקייה</h1><div data-testid="formatted-value">180 ₪</div></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "טי-שירט רגילה חתוכה נקייה" || product.PriceAmount != "180" || product.PriceCurrency != "ILS" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
+func TestExtractProductCrazyYogaSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://us.crzyoga.com/collections/sports-bras/products/h228pu2",
+		`<html><head><script type="application/ld+json">{
+			"@type": "Product",
+			"name": "Butterluxe Built in Bra Halter Tank",
+			"offers": {"@type": "Offer", "price": "26.60", "priceCurrency": "USD"}
+		}</script></head><body></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "Butterluxe Built in Bra Halter Tank" || product.PriceAmount != "26.60" || product.PriceCurrency != "USD" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
+func TestExtractProductAddictSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://addictonline.co.il/products/גקט-טומי-בלונד",
+		`<html><head><meta property="og:title" content="ג'קט טומי בלונד"></head><body><div class="price">260 ₪</div></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "ג'קט טומי בלונד" || product.PriceAmount != "260" || product.PriceCurrency != "ILS" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
+func TestExtractProductVuoriSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://vuoriclothing.com/products/womens-vuori-alltheform-micro-bra-riviera-blue",
+		`<html><head><script type="application/ld+json">{
+			"@type": "Product",
+			"name": "Vuori AllTheForm™ Micro Bra",
+			"offers": {"@type": "Offer", "price": "64", "priceCurrency": "USD"}
+		}</script></head><body></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "Vuori AllTheForm™ Micro Bra" || product.PriceAmount != "64" || product.PriceCurrency != "USD" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
+func TestExtractProductDeRococoSelectors(t *testing.T) {
+	t.Parallel()
+
+	product, err := ExtractProduct(
+		"https://www.de-rococo.co.il/apps/shopeaks/shop/de_rococo/googleshop?inventory_id=14927782510961",
+		`<html><head>
+			<meta property="og:title" content="CROPPED VEGAN LEATHER JACKET">
+			<meta property="og:image" content="https://www.de-rococo.co.il/apps/shopeaks/shop/de_rococo/googleshop?inventory_id=14927782510961">
+			<meta property="product:price:amount" content="400">
+			<meta property="product:price:currency" content="ILS">
+		</head><body></body></html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "CROPPED VEGAN LEATHER JACKET" || product.PriceAmount != "400" || product.PriceCurrency != "ILS" || product.ImageURL != "https://www.de-rococo.co.il/apps/shopeaks/shop/de_rococo/googleshop?inventory_id=14927782510961" {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}

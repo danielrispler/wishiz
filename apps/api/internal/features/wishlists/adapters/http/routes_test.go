@@ -356,6 +356,7 @@ type stubService struct {
 	deleteItem     func(context.Context, string, string) error
 	reorderItems   func(context.Context, string, []string) (domain.Wishlist, error)
 	join           func(context.Context, string, *application.JoinWishlistInput) (domain.Wishlist, error)
+	updateMemberRole func(context.Context, string, string, *application.PatchWishlistMemberInput) error
 }
 
 func (s *stubService) CreateInvite(ctx context.Context, wishlistID string, input *application.CreateInviteInput) (domain.WishlistInvite, error) {
@@ -461,4 +462,11 @@ func (s *stubService) Join(ctx context.Context, id string, input *application.Jo
 		return domain.Wishlist{}, nil
 	}
 	return s.join(ctx, id, input)
+}
+
+func (s *stubService) UpdateMemberRole(ctx context.Context, wishlistID string, userID string, input *application.PatchWishlistMemberInput) error {
+	if s.updateMemberRole == nil {
+		return nil
+	}
+	return s.updateMemberRole(ctx, wishlistID, userID, input)
 }

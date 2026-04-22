@@ -326,7 +326,7 @@ func TestServiceJoinViaShareToken(t *testing.T) {
 	if len(wishlist.Members) != 1 {
 		t.Fatalf("expected one member, got %d", len(wishlist.Members))
 	}
-	if wishlist.Members[0].UserID != viewerID || wishlist.Members[0].Role != domain.MemberRoleViewer {
+	if wishlist.Members[0].UserID != viewerID || wishlist.Members[0].Role != domain.MemberRoleEditor {
 		t.Fatalf("unexpected member: %+v", wishlist.Members[0])
 	}
 }

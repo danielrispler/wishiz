@@ -53,6 +53,16 @@ func detectMerchant(host string) string {
 		return "uniqlo"
 	case strings.Contains(normalized, "nike.com"):
 		return "nike"
+	case strings.Contains(normalized, "massimodutti.com"):
+		return "massimodutti"
+	case strings.Contains(normalized, "crzyoga.com"):
+		return "crazyyoga"
+	case strings.Contains(normalized, "addictonline.co.il"):
+		return "addict"
+	case strings.Contains(normalized, "vuoriclothing.com"):
+		return "vuori"
+	case strings.Contains(normalized, "de-rococo.co.il"):
+		return "derococo"
 	default:
 		return ""
 	}
@@ -109,6 +119,45 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 		return scrapeapp.Product{
 			Name:            textOf(document, `h1#pdp_product_title`),
 			ImageURL:        firstSource(document, `[data-test="hero-image"] img`, "src", "srcset"),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
+		}
+	case "massimodutti":
+		priceText := firstNonEmpty(
+			textOf(document, "span.price__amount"),
+			textOf(document, "span.price-amount"),
+			textOf(document, ".price-amount"),
+		)
+		return scrapeapp.Product{
+			Name:            textOf(document, "h1"),
+			ImageURL:        firstSource(document, `[data-qa-action="product-slide"] img`, "src", "srcset", "data-src"),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
+		}
+	case "crazyyoga", "addict", "vuori", "derococo":
+		priceText := firstNonEmpty(
+			textOf(document, `[data-testid="product-price"]`),
+			textOf(document, `[itemprop="price"]`),
+			textOf(document, ".price"),
+			textOf(document, ".product-price"),
+			textOf(document, ".current-price"),
+		)
+		return scrapeapp.Product{
+			Name: firstNonEmpty(
+				textOf(document, "h1"),
+				metaContent(document, "og:title", "property"),
+			),
+			ImageURL: firstNonEmpty(
+				metaContent(document, "og:image", "property"),
+				firstSource(document, `img[class*="product"]`, "src", "srcset"),
+				firstSource(document, `img`, "src", "srcset"),
+			),
 			PriceAmount:     amountFromText(priceText),
 			PriceCurrency:   currencyFromText(priceText),
 			PriceConfidence: scrapeapp.PriceConfidenceHigh,
@@ -198,6 +247,8 @@ func fillFromGenericDOM(product scrapeapp.Product, document *goquery.Document) (
 	candidates = append(candidates, selectorPriceCandidates(document, ".sale-price", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
 	candidates = append(candidates, selectorPriceCandidates(document, ".price-current", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
 	candidates = append(candidates, selectorPriceCandidates(document, ".price__current", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".price-amount", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".price__amount", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
 	candidates = append(candidates, selectorPriceCandidates(document, ".price", scrapeapp.PriceSourceGenericDOM, scrapeapp.PriceConfidenceLow)...)
 	candidates = append(candidates, selectorPriceCandidates(document, ".product-price", scrapeapp.PriceSourceGenericDOM, scrapeapp.PriceConfidenceLow)...)
 

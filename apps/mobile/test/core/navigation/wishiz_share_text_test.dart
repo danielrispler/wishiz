@@ -44,6 +44,20 @@ void main() {
       expect(text, isNot(contains('Rank:')));
       expect(text, isNot(contains('wishiz://lists/')));
     });
+
+    test('builds invite share text with a tokenized https link', () {
+      final wishlist = _buildWishlist();
+
+      final text = WishizShareText.buildWishlistInviteShareText(
+        wishlist: wishlist,
+        inviteToken: 'invite-token',
+      );
+
+      expect(text.split('\n'), [
+        'Join my Wishiz list.',
+        'https://wishiz.app/lists/wishlist-42?token=invite-token',
+      ]);
+    });
   });
 }
 

@@ -102,6 +102,32 @@ func TestWishlistLandingPageContainsHttpsAndCustomSchemeLinks(t *testing.T) {
 	}
 }
 
+func TestWishlistLandingPagePreservesInviteToken(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, sampleOptions())
+
+	request := httptest.NewRequest(http.MethodGet, "/lists/wishlist-42?token=invite-token", http.NoBody)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "https://wishiz.app/lists/wishlist-42?token=invite-token") {
+		t.Fatalf("expected landing page to include tokenized https share link, got %s", body)
+	}
+	if !strings.Contains(body, "wishiz://lists/wishlist-42?token=invite-token") {
+		t.Fatalf("expected landing page to include tokenized custom scheme fallback, got %s", body)
+	}
+	if !strings.Contains(body, "window.location.replace('wishiz:\\/\\/lists\\/wishlist-42?token=invite-token')") {
+		t.Fatalf("expected landing page to actively attempt tokenized app handoff, got %s", body)
+	}
+}
+
 func sampleOptions() Options {
 	return Options{
 		ShareBaseURL:                 "https://wishiz.app",

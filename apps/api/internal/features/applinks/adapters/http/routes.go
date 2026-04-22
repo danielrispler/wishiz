@@ -39,6 +39,10 @@ func RegisterRoutes(mux *http.ServeMux, options Options) {
 		shareBaseURL := strings.TrimRight(options.ShareBaseURL, "/")
 		appLink := fmt.Sprintf("%s/lists/%s", shareBaseURL, wishlistID)
 		customSchemeLink := fmt.Sprintf("wishiz://lists/%s", wishlistID)
+		if r.URL.RawQuery != "" {
+			appLink = fmt.Sprintf("%s?%s", appLink, r.URL.RawQuery)
+			customSchemeLink = fmt.Sprintf("%s?%s", customSchemeLink, r.URL.RawQuery)
+		}
 
 		const page = `<!DOCTYPE html>
 <html lang="en">
@@ -68,7 +72,7 @@ func RegisterRoutes(mux *http.ServeMux, options Options) {
     <section class="card">
       <h1>Open in Wishiz</h1>
       <p>Wishiz should open automatically if the app is installed.</p>
-      <a class="button" href="{{.CustomSchemeLink}}">Open the app</a>
+      <a class="button" href="{{.CustomSchemeLinkURL}}">Open the app</a>
       <p>If nothing happens, make sure the app is installed and try the link again.</p>
       <p class="link">{{.ShareLink}}</p>
     </section>
@@ -78,11 +82,13 @@ func RegisterRoutes(mux *http.ServeMux, options Options) {
 
 		tmpl := template.Must(template.New("wishlist-landing-page").Parse(page))
 		_ = tmpl.Execute(w, struct {
-			ShareLink        string
-			CustomSchemeLink template.URL
+			ShareLink           string
+			CustomSchemeLink    string
+			CustomSchemeLinkURL template.URL
 		}{
-			ShareLink:        appLink,
-			CustomSchemeLink: template.URL(customSchemeLink),
+			ShareLink:           appLink,
+			CustomSchemeLink:    customSchemeLink,
+			CustomSchemeLinkURL: template.URL(customSchemeLink),
 		})
 	})
 }

@@ -13,20 +13,24 @@ class WishizAppLink {
     );
   }
 
-  static Uri wishlistShareUri(String wishlistId) {
+  static Uri wishlistShareUri(String wishlistId, {String? inviteToken}) {
+    final normalizedInviteToken = inviteToken?.trim();
     return _shareBaseUri.replace(
       pathSegments: [
         ..._shareBaseUri.pathSegments.where((segment) => segment.isNotEmpty),
         'lists',
         wishlistId,
       ],
-      queryParameters: null,
+      queryParameters:
+          normalizedInviteToken == null || normalizedInviteToken.isEmpty
+          ? null
+          : {'token': normalizedInviteToken},
       fragment: null,
     );
   }
 
-  static String wishlistShareLink(String wishlistId) {
-    return wishlistShareUri(wishlistId).toString();
+  static String wishlistShareLink(String wishlistId, {String? inviteToken}) {
+    return wishlistShareUri(wishlistId, inviteToken: inviteToken).toString();
   }
 
   static Uri wishlistUri(String wishlistId) {

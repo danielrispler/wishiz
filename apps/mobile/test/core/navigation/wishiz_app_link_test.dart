@@ -17,6 +17,16 @@ void main() {
       );
     });
 
+    test('builds a tokenized https wishlist invite link', () {
+      expect(
+        WishizAppLink.wishlistShareLink(
+          'wishlist-42',
+          inviteToken: 'invite token',
+        ),
+        'https://wishiz.app/lists/wishlist-42?token=invite+token',
+      );
+    });
+
     test('extracts a wishlist id from a direct deep link', () {
       expect(
         WishizAppLink.extractWishlistId('wishiz://lists/wishlist-42'),
@@ -35,6 +45,15 @@ void main() {
       expect(
         WishizAppLink.extractInviteToken(
           'https://wishiz.app/lists/wishlist-42?token=invite-token',
+        ),
+        'invite-token',
+      );
+    });
+
+    test('extracts an invite token from a custom-scheme link', () {
+      expect(
+        WishizAppLink.extractInviteToken(
+          'wishiz://lists/wishlist-42?token=invite-token',
         ),
         'invite-token',
       );

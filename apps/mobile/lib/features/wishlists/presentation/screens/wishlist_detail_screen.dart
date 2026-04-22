@@ -1028,7 +1028,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     }
 
     try {
-      await widget.repository.createInvite(
+      final invite = await widget.repository.createInvite(
         wishlistId: wishlist.id,
         email: collaborator.email,
         role: collaborator.role,
@@ -1036,7 +1036,21 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       if (!context.mounted) {
         return;
       }
-      _showFeedback(context, 'Collaborator invited.');
+      final inviteToken = invite.token?.trim();
+      if (inviteToken == null || inviteToken.isEmpty) {
+        _showFeedback(context, 'Collaborator invited.');
+        return;
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(
+          text: WishizShareText.buildWishlistInviteShareText(
+            wishlist: wishlist,
+            inviteToken: inviteToken,
+          ),
+          subject: wishlist.title,
+        ),
+      );
     } catch (error) {
       if (!mounted) {
         return;

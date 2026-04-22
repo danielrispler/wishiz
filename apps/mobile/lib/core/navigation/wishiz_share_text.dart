@@ -14,6 +14,21 @@ class WishizShareText {
     return lines.join('\n');
   }
 
+  static String buildWishlistInviteShareText({
+    required Wishlist wishlist,
+    required String inviteToken,
+  }) {
+    final lines = <String>[
+      'Join my Wishiz list.',
+      WishizAppLink.wishlistShareLink(
+        wishlist.id,
+        inviteToken: inviteToken,
+      ),
+    ];
+
+    return lines.join('\n');
+  }
+
   static String buildWishlistItemShareText({
     required Wishlist wishlist,
     required WishlistItem item,

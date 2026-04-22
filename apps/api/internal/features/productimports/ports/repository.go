@@ -71,6 +71,7 @@ type NeedsReviewJobParams struct {
 	Completeness int
 	LastError    string
 	ErrorCode    string
+	Retryable    bool
 }
 
 type FailJobParams struct {

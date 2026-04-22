@@ -145,7 +145,7 @@ func (r *Repository) Retry(ctx context.Context, id string) (domain.Job, error) {
 			retryable = FALSE,
 			locked_at = NULL
 		WHERE id = $1::uuid
-			AND status = 'failed'
+			AND status IN ('failed', 'needs_review')
 			AND retryable = TRUE
 		RETURNING `+jobColumns,
 		id,
@@ -224,7 +224,7 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 			WHERE (
 					status = 'pending'
 					OR (
-						status = 'failed'
+						status IN ('failed', 'needs_review')
 						AND retryable = TRUE
 						AND attempt_count < $2
 						AND COALESCE(last_attempted_at, created_at) <= $1::timestamptz - make_interval(secs => 30 * (attempt_count + 1))
@@ -282,7 +282,7 @@ func (r *Repository) MarkNeedsReview(ctx context.Context, params ports.NeedsRevi
 			completeness = $5,
 			last_error = $6,
 			error_code = $7,
-			retryable = FALSE,
+			retryable = $8,
 			locked_at = NULL
 		WHERE id = $1::uuid AND status = 'processing'
 		RETURNING `+jobColumns,
@@ -293,6 +293,7 @@ func (r *Repository) MarkNeedsReview(ctx context.Context, params ports.NeedsRevi
 		params.Completeness,
 		params.LastError,
 		params.ErrorCode,
+		params.Retryable,
 	)
 }
 

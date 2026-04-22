@@ -201,6 +201,57 @@ void main() {
       expect(find.text('Imported mug'), findsNothing);
     });
 
+    testWidgets('needs review import can be retried or hidden', (tester) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository()
+        ..setJobs([
+          buildProductImportJob(
+            id: 'needs-review-import',
+            title: 'example.com',
+            status: 'needs_review',
+            retryable: true,
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
+          shareIntakeService: FakeShareIntakeService(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Needs review before saving'), findsOneWidget);
+      expect(find.byTooltip('Retry'), findsOneWidget);
+      expect(find.byTooltip('Review'), findsOneWidget);
+      expect(find.byTooltip('Hide'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Retry'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(productImportRepository.retriedIds, ['needs-review-import']);
+
+      productImportRepository.setJobs([
+        buildProductImportJob(
+          id: 'needs-review-import',
+          title: 'example.com',
+          status: 'needs_review',
+          retryable: true,
+        ),
+      ]);
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Hide'));
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.acknowledgedIds, ['needs-review-import']);
+      expect(find.text('Needs review before saving'), findsNothing);
+    });
+
     testWidgets(
       'opens a shared wishlist link instead of importing it as a product',
       (tester) async {

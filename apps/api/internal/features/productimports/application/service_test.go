@@ -47,6 +47,9 @@ func TestServiceMarksNeedsReviewWhenScrapeReturnsTwoFields(t *testing.T) {
 	if repo.needsReview.Completeness != 2 || value(repo.needsReview.Title) != "Desk lamp" || value(repo.needsReview.ImageURL) == "" {
 		t.Fatalf("unexpected needs review snapshot: %+v", repo.needsReview)
 	}
+	if !repo.needsReview.Retryable {
+		t.Fatalf("expected needs_review job to be retryable")
+	}
 }
 
 func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {

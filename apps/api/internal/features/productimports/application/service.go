@@ -236,6 +236,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 				Completeness: snapshot.Completeness,
 				LastError:    "product details need review",
 				ErrorCode:    ErrorCodeIncomplete,
+				Retryable:    code != string(scrapeapp.ErrorCodeBadRequest) && job.AttemptCount+1 < s.maxAttempts,
 			})
 			return markErr
 		}
@@ -247,7 +248,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness: snapshot.Completeness,
 			LastError:    err.Error(),
 			ErrorCode:    code,
-			Retryable:    retryable && job.AttemptCount < s.maxAttempts,
+			Retryable:    retryable && job.AttemptCount+1 < s.maxAttempts,
 		})
 		return markErr
 	}
@@ -261,6 +262,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 				Completeness: snapshot.Completeness,
 				LastError:    "product details need review",
 				ErrorCode:    ErrorCodeIncomplete,
+				Retryable:    job.AttemptCount+1 < s.maxAttempts,
 			})
 			return markErr
 		}
@@ -296,7 +298,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness: snapshot.Completeness,
 			LastError:    createErr.Error(),
 			ErrorCode:    ErrorCodeItemCreate,
-			Retryable:    retryable && job.AttemptCount < s.maxAttempts,
+			Retryable:    retryable && job.AttemptCount+1 < s.maxAttempts,
 		})
 		return markErr
 	}

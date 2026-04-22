@@ -70,10 +70,21 @@ class ImportJobTile extends StatelessWidget {
     }
     if (job.needsReview) {
       return [
+        if (job.retryable)
+          IconButton(
+            tooltip: 'Retry',
+            onPressed: () => onRetry(job),
+            icon: const Icon(Icons.refresh, size: 20),
+          ),
         IconButton(
           tooltip: 'Review',
           onPressed: () => onReview(job),
           icon: const Icon(Icons.edit_outlined, size: 20),
+        ),
+        IconButton(
+          tooltip: 'Hide',
+          onPressed: () => onAcknowledge(job),
+          icon: const Icon(Icons.close, size: 20),
         ),
       ];
     }

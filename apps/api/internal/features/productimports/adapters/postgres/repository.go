@@ -227,7 +227,7 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 						status = 'failed'
 						AND retryable = TRUE
 						AND attempt_count < $2
-						AND COALESCE(last_attempted_at, created_at) <= $1 - ((attempt_count + 1) * INTERVAL '30 seconds')
+						AND COALESCE(last_attempted_at, created_at) <= $1::timestamptz - make_interval(secs => 30 * (attempt_count + 1))
 					)
 				)
 				AND attempt_count < $2

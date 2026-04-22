@@ -142,6 +142,9 @@ class ProductImportJobDto {
     required this.retryable,
     this.title,
     this.priceLabel,
+    this.priceConfidence,
+    this.priceSource,
+    this.priceWarnings = const [],
     this.imageUrl,
     required this.completeness,
     this.createdItemId,
@@ -166,6 +169,11 @@ class ProductImportJobDto {
       retryable: json['retryable'] as bool? ?? false,
       title: json['title'] as String?,
       priceLabel: json['priceLabel'] as String?,
+      priceConfidence: json['priceConfidence'] as String?,
+      priceSource: json['priceSource'] as String?,
+      priceWarnings: (json['priceWarnings'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
       imageUrl: json['imageUrl'] as String?,
       completeness: json['completeness'] as int? ?? 0,
       createdItemId: json['createdItemId'] as String?,
@@ -189,6 +197,9 @@ class ProductImportJobDto {
   final bool retryable;
   final String? title;
   final String? priceLabel;
+  final String? priceConfidence;
+  final String? priceSource;
+  final List<String> priceWarnings;
   final String? imageUrl;
   final int completeness;
   final String? createdItemId;
@@ -212,6 +223,9 @@ class ProductImportJobDto {
       retryable: retryable,
       title: title,
       priceLabel: priceLabel,
+      priceConfidence: priceConfidence,
+      priceSource: priceSource,
+      priceWarnings: priceWarnings,
       imageUrl: imageUrl,
       completeness: completeness,
       createdItemId: createdItemId,

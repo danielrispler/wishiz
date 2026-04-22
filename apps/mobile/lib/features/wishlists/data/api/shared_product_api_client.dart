@@ -57,6 +57,10 @@ class ScrapedProductResponse {
     required this.priceCurrency,
     required this.imageUrl,
     required this.source,
+    required this.priceConfidence,
+    required this.priceSource,
+    required this.priceRawText,
+    required this.priceWarnings,
   });
 
   factory ScrapedProductResponse.fromJson(Map<String, dynamic> json) {
@@ -66,6 +70,12 @@ class ScrapedProductResponse {
       priceCurrency: json['priceCurrency'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
       source: json['source'] as String? ?? '',
+      priceConfidence: json['priceConfidence'] as String? ?? '',
+      priceSource: json['priceSource'] as String? ?? '',
+      priceRawText: json['priceRawText'] as String? ?? '',
+      priceWarnings: (json['priceWarnings'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 
@@ -74,6 +84,10 @@ class ScrapedProductResponse {
   final String priceCurrency;
   final String imageUrl;
   final String source;
+  final String priceConfidence;
+  final String priceSource;
+  final String priceRawText;
+  final List<String> priceWarnings;
 }
 
 class SharedProductApiException implements IOException {

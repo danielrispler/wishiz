@@ -55,32 +55,41 @@ type ClaimParams struct {
 }
 
 type CompleteJobParams struct {
-	ID            string
-	Title         string
-	PriceLabel    string
-	ImageURL      string
-	Completeness  int
-	CreatedItemID string
+	ID              string
+	Title           string
+	PriceLabel      string
+	PriceConfidence *string
+	PriceSource     *string
+	PriceWarnings   []string
+	ImageURL        string
+	Completeness    int
+	CreatedItemID   string
 }
 
 type NeedsReviewJobParams struct {
-	ID           string
-	Title        *string
-	PriceLabel   *string
-	ImageURL     *string
-	Completeness int
-	LastError    string
-	ErrorCode    string
-	Retryable    bool
+	ID              string
+	Title           *string
+	PriceLabel      *string
+	PriceConfidence *string
+	PriceSource     *string
+	PriceWarnings   []string
+	ImageURL        *string
+	Completeness    int
+	LastError       string
+	ErrorCode       string
+	Retryable       bool
 }
 
 type FailJobParams struct {
-	ID           string
-	Title        *string
-	PriceLabel   *string
-	ImageURL     *string
-	Completeness int
-	LastError    string
-	ErrorCode    string
-	Retryable    bool
+	ID              string
+	Title           *string
+	PriceLabel      *string
+	PriceConfidence *string
+	PriceSource     *string
+	PriceWarnings   []string
+	ImageURL        *string
+	Completeness    int
+	LastError       string
+	ErrorCode       string
+	Retryable       bool
 }

@@ -52,6 +52,9 @@ type jobResponse struct {
 	Retryable          bool       `json:"retryable"`
 	Title              *string    `json:"title"`
 	PriceLabel         *string    `json:"priceLabel"`
+	PriceConfidence    *string    `json:"priceConfidence"`
+	PriceSource        *string    `json:"priceSource"`
+	PriceWarnings      []string   `json:"priceWarnings"`
 	ImageURL           *string    `json:"imageUrl"`
 	Completeness       int        `json:"completeness"`
 	CreatedItemID      *string    `json:"createdItemId"`
@@ -200,6 +203,9 @@ func mapJob(job domain.Job) jobResponse {
 		Retryable:          job.Retryable,
 		Title:              job.Title,
 		PriceLabel:         job.PriceLabel,
+		PriceConfidence:    job.PriceConfidence,
+		PriceSource:        job.PriceSource,
+		PriceWarnings:      job.PriceWarnings,
 		ImageURL:           job.ImageURL,
 		Completeness:       job.Completeness,
 		CreatedItemID:      job.CreatedItemID,

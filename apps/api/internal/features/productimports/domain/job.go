@@ -26,6 +26,9 @@ type Job struct {
 	Retryable          bool
 	Title              *string
 	PriceLabel         *string
+	PriceConfidence    *string
+	PriceSource        *string
+	PriceWarnings      []string
 	ImageURL           *string
 	Completeness       int
 	CreatedItemID      *string

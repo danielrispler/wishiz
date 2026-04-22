@@ -140,6 +140,9 @@ String _jobTitle(ProductImportJob job) {
 }
 
 String _jobSubtitle(ProductImportJob job) {
+  if (job.needsReview && job.priceConfidence != 'high') {
+    return 'Price needs verification before saving';
+  }
   return switch (job.status) {
     'pending' => 'Waiting to process',
     'processing' => 'Processing details',

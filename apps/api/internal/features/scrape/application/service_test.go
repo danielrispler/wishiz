@@ -21,10 +21,11 @@ func TestServiceFallsBackToHeadlessWhenFastIsIncomplete(t *testing.T) {
 		}},
 		stubScraper{scrape: func(context.Context, string) (Product, error) {
 			return Product{
-				Name:          "Nike Shox TL",
-				PriceAmount:   "599.90",
-				PriceCurrency: "ILS",
-				ImageURL:      "https://example.com/nike.png",
+				Name:            "Nike Shox TL",
+				PriceAmount:     "599.90",
+				PriceCurrency:   "ILS",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://example.com/nike.png",
 			}, nil
 		}},
 		stubResolver{},
@@ -128,10 +129,11 @@ func TestServiceReturnsConvertedFastResultWithoutHeadless(t *testing.T) {
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		stubScraper{scrape: func(context.Context, string) (Product, error) {
 			return Product{
-				Name:          "Sneakers",
-				PriceAmount:   "100.00",
-				PriceCurrency: "USD",
-				ImageURL:      "https://example.com/sneakers.png",
+				Name:            "Sneakers",
+				PriceAmount:     "100.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://example.com/sneakers.png",
 			}, nil
 		}},
 		stubScraper{scrape: func(context.Context, string) (Product, error) {
@@ -154,6 +156,72 @@ func TestServiceReturnsConvertedFastResultWithoutHeadless(t *testing.T) {
 	}
 }
 
+func TestServiceFallsBackToHeadlessWhenFastPriceIsNotHighConfidence(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		stubScraper{scrape: func(context.Context, string) (Product, error) {
+			return Product{
+				Name:            "Sneakers",
+				PriceAmount:     "10.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceSuspicious,
+				ImageURL:        "https://example.com/fast.png",
+			}, nil
+		}},
+		stubScraper{scrape: func(context.Context, string) (Product, error) {
+			return Product{
+				Name:            "Sneakers",
+				PriceAmount:     "100.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://example.com/headless.png",
+			}, nil
+		}},
+		stubResolver{},
+		nil,
+	)
+
+	product, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if product.Source != sourceHeadless || product.PriceAmount != "100.00" {
+		t.Fatalf("expected high-confidence headless product, got %+v", product)
+	}
+}
+
+func TestServiceReturnsBestCompleteProductWhenPriceNeedsReview(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		stubScraper{scrape: func(context.Context, string) (Product, error) {
+			return Product{
+				Name:            "Sneakers",
+				PriceAmount:     "10.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceSuspicious,
+				ImageURL:        "https://example.com/fast.png",
+			}, nil
+		}},
+		stubScraper{scrape: func(context.Context, string) (Product, error) {
+			return Product{}, nil
+		}},
+		stubResolver{},
+		nil,
+	)
+
+	product, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
+	if err != nil {
+		t.Fatalf("expected reviewable product response, got %v", err)
+	}
+	if product.PriceConfidence != PriceConfidenceSuspicious || product.Source != sourceFast {
+		t.Fatalf("unexpected product: %+v", product)
+	}
+}
+
 func TestServiceFallsBackWhenFastConversionFails(t *testing.T) {
 	t.Parallel()
 
@@ -169,10 +237,11 @@ func TestServiceFallsBackWhenFastConversionFails(t *testing.T) {
 		}},
 		stubScraper{scrape: func(context.Context, string) (Product, error) {
 			return Product{
-				Name:          "Sneakers",
-				PriceAmount:   "320.00",
-				PriceCurrency: "ILS",
-				ImageURL:      "https://example.com/headless.png",
+				Name:            "Sneakers",
+				PriceAmount:     "320.00",
+				PriceCurrency:   "ILS",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://example.com/headless.png",
 			}, nil
 		}},
 		stubResolver{},
@@ -197,10 +266,11 @@ func TestServiceNormalizesGoogleURLBeforeScraping(t *testing.T) {
 		stubScraper{scrape: func(_ context.Context, rawURL string) (Product, error) {
 			scrapedURL = rawURL
 			return Product{
-				Name:          "Jacket",
-				PriceAmount:   "80.00",
-				PriceCurrency: "USD",
-				ImageURL:      "https://merchant.example/jacket.png",
+				Name:            "Jacket",
+				PriceAmount:     "80.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: PriceConfidenceHigh,
+				ImageURL:        "https://merchant.example/jacket.png",
 			}, nil
 		}},
 		stubScraper{},

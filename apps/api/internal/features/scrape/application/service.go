@@ -57,15 +57,19 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 		if fastResult.IsComplete() {
 			converted, convertErr := s.convertProductPrice(fastResult, targetCurrency)
 			if convertErr == nil {
-				s.logger.Info(
-					"scrape completed",
-					"url", validatedURL.String(),
-					"source", sourceFast,
-					"duration_ms", time.Since(startedAt).Milliseconds(),
-				)
-				return converted, nil
+				fastResult = converted
+				if converted.HasHighConfidencePrice() {
+					s.logger.Info(
+						"scrape completed",
+						"url", validatedURL.String(),
+						"source", sourceFast,
+						"duration_ms", time.Since(startedAt).Milliseconds(),
+					)
+					return converted, nil
+				}
+			} else {
+				fastErr = convertErr
 			}
-			fastErr = convertErr
 		}
 	}
 
@@ -75,19 +79,33 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 		if headlessResult.IsComplete() {
 			converted, convertErr := s.convertProductPrice(headlessResult, targetCurrency)
 			if convertErr == nil {
-				s.logger.Info(
-					"scrape completed",
-					"url", validatedURL.String(),
-					"source", sourceHeadless,
-					"duration_ms", time.Since(startedAt).Milliseconds(),
-				)
-				return converted, nil
+				headlessResult = converted
+				if converted.HasHighConfidencePrice() {
+					s.logger.Info(
+						"scrape completed",
+						"url", validatedURL.String(),
+						"source", sourceHeadless,
+						"duration_ms", time.Since(startedAt).Milliseconds(),
+					)
+					return converted, nil
+				}
+			} else {
+				headlessErr = convertErr
 			}
-			headlessErr = convertErr
 		}
 	}
 
 	bestEffort := chooseBestProduct(fastResult, headlessResult)
+	if bestEffort.IsComplete() {
+		s.logger.Info(
+			"scrape completed with price review metadata",
+			"url", validatedURL.String(),
+			"source", bestEffort.Source,
+			"price_confidence", bestEffort.PriceConfidence,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+		)
+		return bestEffort, nil
+	}
 	if bestEffort.HasAnyData() {
 		s.logger.Warn(
 			"scrape failed with partial data",
@@ -137,7 +155,7 @@ func chooseBestProduct(products ...Product) Product {
 	bestScore := -1
 
 	for _, product := range products {
-		score := product.FilledFieldCount()
+		score := product.FilledFieldCount()*10 + priceConfidenceScore(product.PriceConfidence)
 		if score > bestScore {
 			best = product
 			bestScore = score
@@ -149,4 +167,19 @@ func chooseBestProduct(products ...Product) Product {
 	}
 
 	return best
+}
+
+func priceConfidenceScore(confidence string) int {
+	switch confidence {
+	case PriceConfidenceHigh:
+		return 4
+	case PriceConfidenceMedium:
+		return 3
+	case PriceConfidenceLow:
+		return 2
+	case PriceConfidenceSuspicious:
+		return 1
+	default:
+		return 0
+	}
 }

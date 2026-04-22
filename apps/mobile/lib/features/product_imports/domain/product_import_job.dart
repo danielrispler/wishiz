@@ -14,6 +14,9 @@ class ProductImportJob {
     required this.retryable,
     this.title,
     this.priceLabel,
+    this.priceConfidence,
+    this.priceSource,
+    this.priceWarnings = const [],
     this.imageUrl,
     required this.completeness,
     this.createdItemId,
@@ -36,6 +39,9 @@ class ProductImportJob {
   final bool retryable;
   final String? title;
   final String? priceLabel;
+  final String? priceConfidence;
+  final String? priceSource;
+  final List<String> priceWarnings;
   final String? imageUrl;
   final int completeness;
   final String? createdItemId;

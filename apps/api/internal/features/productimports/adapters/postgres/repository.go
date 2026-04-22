@@ -254,9 +254,12 @@ func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJob
 		SET status = 'completed',
 			title = $2,
 			price_label = $3,
-			image_url = $4,
-			completeness = $5,
-			created_item_id = $6::uuid,
+			price_confidence = $4,
+			price_source = $5,
+			price_warnings = $6,
+			image_url = $7,
+			completeness = $8,
+			created_item_id = $9::uuid,
 			last_error = NULL,
 			error_code = NULL,
 			retryable = FALSE,
@@ -266,6 +269,9 @@ func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJob
 		params.ID,
 		params.Title,
 		params.PriceLabel,
+		params.PriceConfidence,
+		params.PriceSource,
+		params.PriceWarnings,
 		params.ImageURL,
 		params.Completeness,
 		params.CreatedItemID,
@@ -278,17 +284,23 @@ func (r *Repository) MarkNeedsReview(ctx context.Context, params ports.NeedsRevi
 		SET status = 'needs_review',
 			title = $2,
 			price_label = $3,
-			image_url = $4,
-			completeness = $5,
-			last_error = $6,
-			error_code = $7,
-			retryable = $8,
+			price_confidence = $4,
+			price_source = $5,
+			price_warnings = $6,
+			image_url = $7,
+			completeness = $8,
+			last_error = $9,
+			error_code = $10,
+			retryable = $11,
 			locked_at = NULL
 		WHERE id = $1::uuid AND status = 'processing'
 		RETURNING `+jobColumns,
 		params.ID,
 		params.Title,
 		params.PriceLabel,
+		params.PriceConfidence,
+		params.PriceSource,
+		params.PriceWarnings,
 		params.ImageURL,
 		params.Completeness,
 		params.LastError,
@@ -303,17 +315,23 @@ func (r *Repository) MarkFailed(ctx context.Context, params ports.FailJobParams)
 		SET status = 'failed',
 			title = $2,
 			price_label = $3,
-			image_url = $4,
-			completeness = $5,
-			last_error = $6,
-			error_code = $7,
-			retryable = $8,
+			price_confidence = $4,
+			price_source = $5,
+			price_warnings = $6,
+			image_url = $7,
+			completeness = $8,
+			last_error = $9,
+			error_code = $10,
+			retryable = $11,
 			locked_at = NULL
 		WHERE id = $1::uuid AND status = 'processing'
 		RETURNING `+jobColumns,
 		params.ID,
 		params.Title,
 		params.PriceLabel,
+		params.PriceConfidence,
+		params.PriceSource,
+		params.PriceWarnings,
 		params.ImageURL,
 		params.Completeness,
 		params.LastError,
@@ -384,6 +402,8 @@ func scanJob(row scanner) (domain.Job, error) {
 	var errorCode sql.NullString
 	var title sql.NullString
 	var priceLabel sql.NullString
+	var priceConfidence sql.NullString
+	var priceSource sql.NullString
 	var imageURL sql.NullString
 	var createdItemID sql.NullString
 	var acknowledgedAt sql.NullTime
@@ -405,6 +425,9 @@ func scanJob(row scanner) (domain.Job, error) {
 		&job.Retryable,
 		&title,
 		&priceLabel,
+		&priceConfidence,
+		&priceSource,
+		&job.PriceWarnings,
 		&imageURL,
 		&job.Completeness,
 		&createdItemID,
@@ -422,6 +445,8 @@ func scanJob(row scanner) (domain.Job, error) {
 	job.ErrorCode = nullableString(errorCode)
 	job.Title = nullableString(title)
 	job.PriceLabel = nullableString(priceLabel)
+	job.PriceConfidence = nullableString(priceConfidence)
+	job.PriceSource = nullableString(priceSource)
 	job.ImageURL = nullableString(imageURL)
 	job.CreatedItemID = nullableString(createdItemID)
 	job.AcknowledgedAt = nullableTime(acknowledgedAt)
@@ -464,6 +489,9 @@ const jobColumns = `
 	retryable,
 	title,
 	price_label,
+	price_confidence,
+	price_source,
+	COALESCE(price_warnings, ARRAY[]::text[]),
 	image_url,
 	completeness,
 	created_item_id::text,

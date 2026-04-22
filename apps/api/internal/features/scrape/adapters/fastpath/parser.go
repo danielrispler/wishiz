@@ -25,12 +25,19 @@ func ExtractProduct(pageURL string, html string) (scrapeapp.Product, error) {
 	merchant := detectMerchant(parsedURL.Hostname())
 
 	product := extractMerchantProduct(document, merchant)
-	product = fillFromJSONLD(product, document)
-	product = fillFromMeta(product, document)
-	product = fillFromGenericDOM(product, document)
+	priceCandidates := priceCandidatesFromProduct(product)
+
+	var candidates []priceCandidate
+	product, candidates = fillFromJSONLD(product, document)
+	priceCandidates = append(priceCandidates, candidates...)
+	product, candidates = fillFromMeta(product, document)
+	priceCandidates = append(priceCandidates, candidates...)
+	product, candidates = fillFromGenericDOM(product, document)
+	priceCandidates = append(priceCandidates, candidates...)
 
 	product.Name = normalizeText(product.Name)
 	product.ImageURL = resolveURL(parsedURL, product.ImageURL)
+	product = applyBestPrice(product, priceCandidates)
 
 	return product, nil
 }
@@ -55,10 +62,13 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 	switch merchant {
 	case "zara":
 		return scrapeapp.Product{
-			Name:          firstNonEmpty(textOf(document, "h1"), metaContent(document, "og:title", "property")),
-			ImageURL:      firstSource(document, `[data-qa-action="product-slide"] img`, "src", "srcset", "data-src"),
-			PriceAmount:   amountFromText(textOf(document, "span.price__amount")),
-			PriceCurrency: currencyFromText(textOf(document, "span.price__amount")),
+			Name:            firstNonEmpty(textOf(document, "h1"), metaContent(document, "og:title", "property")),
+			ImageURL:        firstSource(document, `[data-qa-action="product-slide"] img`, "src", "srcset", "data-src"),
+			PriceAmount:     amountFromText(textOf(document, "span.price__amount")),
+			PriceCurrency:   currencyFromText(textOf(document, "span.price__amount")),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    textOf(document, "span.price__amount"),
 		}
 	case "hm":
 		priceText := firstNonEmpty(
@@ -77,29 +87,41 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 				firstSource(document, `.product-detail-main-image img`, "src", "srcset", "data-src"),
 				firstSource(document, `[class*="product"] img`, "src", "srcset", "data-src"),
 			),
-			PriceAmount:   amountFromText(priceText),
-			PriceCurrency: currencyFromText(priceText),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
 		}
 	case "uniqlo":
+		priceText := textOf(document, ".price-box")
 		return scrapeapp.Product{
-			Name:          textOf(document, "h1"),
-			ImageURL:      firstSource(document, "picture source", "srcset", "src"),
-			PriceAmount:   amountFromText(textOf(document, ".price-box")),
-			PriceCurrency: currencyFromText(textOf(document, ".price-box")),
+			Name:            textOf(document, "h1"),
+			ImageURL:        firstSource(document, "picture source", "srcset", "src"),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
 		}
 	case "nike":
+		priceText := textOf(document, `[data-test="product-price"]`)
 		return scrapeapp.Product{
-			Name:          textOf(document, `h1#pdp_product_title`),
-			ImageURL:      firstSource(document, `[data-test="hero-image"] img`, "src", "srcset"),
-			PriceAmount:   amountFromText(textOf(document, `[data-test="product-price"]`)),
-			PriceCurrency: currencyFromText(textOf(document, `[data-test="product-price"]`)),
+			Name:            textOf(document, `h1#pdp_product_title`),
+			ImageURL:        firstSource(document, `[data-test="hero-image"] img`, "src", "srcset"),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
 		}
 	default:
 		return scrapeapp.Product{}
 	}
 }
 
-func fillFromJSONLD(product scrapeapp.Product, document *goquery.Document) scrapeapp.Product {
+func fillFromJSONLD(product scrapeapp.Product, document *goquery.Document) (scrapeapp.Product, []priceCandidate) {
+	var candidates []priceCandidate
 	document.Find(`script[type="application/ld+json"]`).EachWithBreak(func(_ int, selection *goquery.Selection) bool {
 		payload := strings.TrimSpace(selection.Text())
 		if payload == "" {
@@ -119,11 +141,7 @@ func fillFromJSONLD(product scrapeapp.Product, document *goquery.Document) scrap
 			product.Name = firstNonEmpty(product.Name, stringValue(node["name"]))
 			product.ImageURL = firstNonEmpty(product.ImageURL, readImage(node["image"]))
 
-			if product.PriceAmount == "" || product.PriceCurrency == "" {
-				amount, currency := readOfferPrice(node["offers"])
-				product.PriceAmount = firstNonEmpty(product.PriceAmount, amount)
-				product.PriceCurrency = firstNonEmpty(product.PriceCurrency, currency)
-			}
+			candidates = append(candidates, readOfferPrices(node["offers"])...)
 
 			if product.IsComplete() {
 				return false
@@ -133,10 +151,10 @@ func fillFromJSONLD(product scrapeapp.Product, document *goquery.Document) scrap
 		return true
 	})
 
-	return product
+	return product, candidates
 }
 
-func fillFromMeta(product scrapeapp.Product, document *goquery.Document) scrapeapp.Product {
+func fillFromMeta(product scrapeapp.Product, document *goquery.Document) (scrapeapp.Product, []priceCandidate) {
 	product.Name = firstNonEmpty(
 		product.Name,
 		metaContent(document, "og:title", "property"),
@@ -151,6 +169,7 @@ func fillFromMeta(product scrapeapp.Product, document *goquery.Document) scrapea
 		metaContent(document, "image", "name"),
 	)
 
+	var candidates []priceCandidate
 	priceText := firstNonEmpty(
 		metaContent(document, "product:price:amount", "property"),
 		metaContent(document, "og:price:amount", "property"),
@@ -162,34 +181,27 @@ func fillFromMeta(product scrapeapp.Product, document *goquery.Document) scrapea
 	)
 
 	if priceText != "" {
-		amount, currency, ok := scrapeapp.NormalizePrice(priceText)
-		if ok {
-			product.PriceAmount = firstNonEmpty(product.PriceAmount, amount)
-			product.PriceCurrency = firstNonEmpty(product.PriceCurrency, firstNonEmpty(priceCurrency, currency))
-		}
+		raw := strings.TrimSpace(strings.TrimSpace(priceCurrency) + " " + priceText)
+		candidates = append(candidates, newPriceCandidate(raw, scrapeapp.PriceSourceMeta, scrapeapp.PriceConfidenceHigh, raw))
 	}
 
-	return product
+	return product, candidates
 }
 
-func fillFromGenericDOM(product scrapeapp.Product, document *goquery.Document) scrapeapp.Product {
+func fillFromGenericDOM(product scrapeapp.Product, document *goquery.Document) (scrapeapp.Product, []priceCandidate) {
 	product.Name = firstNonEmpty(product.Name, textOf(document, "h1"))
 	product.ImageURL = firstNonEmpty(product.ImageURL, firstSource(document, "img", "src", "srcset", "data-src"))
 
-	if product.PriceAmount == "" || product.PriceCurrency == "" {
-		priceText := firstNonEmpty(
-			textOf(document, `[itemprop="price"]`),
-			textOf(document, ".price"),
-			textOf(document, ".product-price"),
-		)
-		amount, currency, ok := scrapeapp.NormalizePrice(priceText)
-		if ok {
-			product.PriceAmount = firstNonEmpty(product.PriceAmount, amount)
-			product.PriceCurrency = firstNonEmpty(product.PriceCurrency, currency)
-		}
-	}
+	var candidates []priceCandidate
+	candidates = append(candidates, selectorPriceCandidates(document, `[itemprop="price"]`, scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".current-price", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".sale-price", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".price-current", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".price__current", scrapeapp.PriceSourceSelector, scrapeapp.PriceConfidenceMedium)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".price", scrapeapp.PriceSourceGenericDOM, scrapeapp.PriceConfidenceLow)...)
+	candidates = append(candidates, selectorPriceCandidates(document, ".product-price", scrapeapp.PriceSourceGenericDOM, scrapeapp.PriceConfidenceLow)...)
 
-	return product
+	return product, candidates
 }
 
 func normalizeText(value string) string {
@@ -299,6 +311,187 @@ func currencyFromText(value string) string {
 	return currency
 }
 
+type priceCandidate struct {
+	amount     string
+	currency   string
+	raw        string
+	source     string
+	confidence string
+	warnings   []string
+}
+
+func priceCandidatesFromProduct(product scrapeapp.Product) []priceCandidate {
+	if product.PriceAmount == "" || product.PriceCurrency == "" {
+		return nil
+	}
+	return []priceCandidate{{
+		amount:     product.PriceAmount,
+		currency:   product.PriceCurrency,
+		raw:        product.PriceRawText,
+		source:     product.PriceSource,
+		confidence: product.PriceConfidence,
+		warnings:   product.PriceWarnings,
+	}}
+}
+
+func selectorPriceCandidates(document *goquery.Document, selector string, source string, confidence string) []priceCandidate {
+	var candidates []priceCandidate
+	document.Find(selector).Each(func(_ int, selection *goquery.Selection) {
+		raw := firstNonEmpty(
+			attributeValue(selection, "content"),
+			attributeValue(selection, "data-price"),
+			attributeValue(selection, "aria-label"),
+			selection.Text(),
+		)
+		if raw == "" {
+			return
+		}
+		context := normalizeText(strings.Join([]string{
+			attributeValue(selection, "class"),
+			attributeValue(selection, "id"),
+			raw,
+		}, " "))
+		candidates = append(candidates, newPriceCandidate(raw, source, confidence, context))
+	})
+	return candidates
+}
+
+func attributeValue(selection *goquery.Selection, name string) string {
+	value, _ := selection.Attr(name)
+	return value
+}
+
+func newPriceCandidate(raw string, source string, confidence string, context string) priceCandidate {
+	amount, currency, ok := scrapeapp.NormalizePrice(raw)
+	candidate := priceCandidate{
+		raw:        normalizeText(raw),
+		source:     source,
+		confidence: confidence,
+	}
+	if ok {
+		candidate.amount = amount
+		candidate.currency = currency
+	}
+	if candidate.currency == "" {
+		candidate.warnings = append(candidate.warnings, scrapeapp.PriceWarningMissingCurrency)
+		candidate.confidence = scrapeapp.PriceConfidenceSuspicious
+	}
+	if confidence == scrapeapp.PriceConfidenceLow {
+		candidate.warnings = append(candidate.warnings, scrapeapp.PriceWarningLowTrustSource)
+	}
+	if looksLikeNonPrimaryPrice(context) {
+		candidate.warnings = append(candidate.warnings, scrapeapp.PriceWarningNonPrimaryContext)
+		candidate.confidence = scrapeapp.PriceConfidenceSuspicious
+	}
+	return candidate
+}
+
+func applyBestPrice(product scrapeapp.Product, candidates []priceCandidate) scrapeapp.Product {
+	candidates = usablePriceCandidates(candidates)
+	if len(candidates) == 0 {
+		product.PriceAmount = ""
+		product.PriceCurrency = ""
+		product.PriceConfidence = ""
+		product.PriceSource = ""
+		product.PriceRawText = ""
+		product.PriceWarnings = nil
+		return product
+	}
+
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if confidenceRank(candidate.confidence) > confidenceRank(best.confidence) {
+			best = candidate
+		}
+	}
+
+	warnings := append([]string{}, best.warnings...)
+	if hasConflictingTrustedCandidates(candidates) {
+		best.confidence = scrapeapp.PriceConfidenceSuspicious
+		warnings = append(warnings, scrapeapp.PriceWarningConflictingCandidates)
+	}
+
+	product.PriceAmount = best.amount
+	product.PriceCurrency = best.currency
+	product.PriceConfidence = best.confidence
+	product.PriceSource = best.source
+	product.PriceRawText = best.raw
+	product.PriceWarnings = uniqueStrings(warnings)
+	return product
+}
+
+func usablePriceCandidates(candidates []priceCandidate) []priceCandidate {
+	var usable []priceCandidate
+	for _, candidate := range candidates {
+		if candidate.amount == "" || candidate.currency == "" {
+			continue
+		}
+		if candidate.confidence == "" {
+			candidate.confidence = scrapeapp.PriceConfidenceLow
+		}
+		usable = append(usable, candidate)
+	}
+	return usable
+}
+
+func confidenceRank(confidence string) int {
+	switch confidence {
+	case scrapeapp.PriceConfidenceHigh:
+		return 4
+	case scrapeapp.PriceConfidenceMedium:
+		return 3
+	case scrapeapp.PriceConfidenceLow:
+		return 2
+	case scrapeapp.PriceConfidenceSuspicious:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func hasConflictingTrustedCandidates(candidates []priceCandidate) bool {
+	var trusted []priceCandidate
+	for _, candidate := range candidates {
+		if candidate.confidence == scrapeapp.PriceConfidenceHigh || candidate.confidence == scrapeapp.PriceConfidenceMedium {
+			trusted = append(trusted, candidate)
+		}
+	}
+	for i := 0; i < len(trusted); i++ {
+		for j := i + 1; j < len(trusted); j++ {
+			if trusted[i].amount != trusted[j].amount || trusted[i].currency != trusted[j].currency {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func looksLikeNonPrimaryPrice(context string) bool {
+	normalized := strings.ToLower(context)
+	return strings.Contains(normalized, "compare") ||
+		strings.Contains(normalized, "was ") ||
+		strings.Contains(normalized, "list price") ||
+		strings.Contains(normalized, "save ") ||
+		strings.Contains(normalized, "installment") ||
+		strings.Contains(normalized, "finance") ||
+		strings.Contains(normalized, "shipping") ||
+		strings.Contains(normalized, "per month") ||
+		strings.Contains(normalized, "monthly")
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	var result []string
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
 func flattenJSONMaps(value any) []map[string]any {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -354,32 +547,26 @@ func readImage(value any) string {
 	return ""
 }
 
-func readOfferPrice(value any) (amount string, currency string) {
+func readOfferPrices(value any) []priceCandidate {
 	switch typed := value.(type) {
 	case map[string]any:
-		amount = stringValue(typed["price"])
-		currency = stringValue(typed["priceCurrency"])
-		if amount != "" && currency != "" {
-			if normalizedAmount, normalizedCurrency, ok := scrapeapp.NormalizePrice(currency + " " + amount); ok {
-				return normalizedAmount, normalizedCurrency
-			}
-			return amount, currency
-		}
+		amount := stringValue(typed["price"])
+		currency := stringValue(typed["priceCurrency"])
 		if amount != "" {
-			if normalizedAmount, normalizedCurrency, ok := scrapeapp.NormalizePrice(amount); ok {
-				return normalizedAmount, normalizedCurrency
-			}
+			raw := strings.TrimSpace(strings.TrimSpace(currency) + " " + amount)
+			context := firstNonEmpty(stringValue(typed["name"]), raw)
+			return []priceCandidate{newPriceCandidate(raw, scrapeapp.PriceSourceJSONLD, scrapeapp.PriceConfidenceHigh, context)}
 		}
+		return nil
 	case []any:
+		var candidates []priceCandidate
 		for _, entry := range typed {
 			if offer, ok := entry.(map[string]any); ok {
-				nestedAmount, nestedCurrency := readOfferPrice(offer)
-				if nestedAmount != "" && nestedCurrency != "" {
-					return nestedAmount, nestedCurrency
-				}
+				candidates = append(candidates, readOfferPrices(offer)...)
 			}
 		}
+		return candidates
 	}
 
-	return "", ""
+	return nil
 }

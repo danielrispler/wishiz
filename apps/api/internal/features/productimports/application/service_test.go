@@ -65,10 +65,12 @@ func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {
 		wishlists,
 		fakeScraper{
 			product: scrapeapp.Product{
-				Name:          "Desk lamp",
-				PriceAmount:   "40.00",
-				PriceCurrency: "USD",
-				ImageURL:      "https://example.com/lamp.png",
+				Name:            "Desk lamp",
+				PriceAmount:     "40.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: scrapeapp.PriceConfidenceHigh,
+				PriceSource:     scrapeapp.PriceSourceJSONLD,
+				ImageURL:        "https://example.com/lamp.png",
 			},
 		},
 		nil,
@@ -89,6 +91,49 @@ func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {
 	}
 	if wishlists.added == nil || wishlists.added.Title != "Desk lamp" {
 		t.Fatalf("expected wishlist item creation, got %+v", wishlists.added)
+	}
+}
+
+func TestServiceMarksNeedsReviewWhenPriceIsNotHighConfidence(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{
+		claimedJob: productImportJob(),
+	}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:            "Desk lamp",
+				PriceAmount:     "10.00",
+				PriceCurrency:   "USD",
+				PriceConfidence: scrapeapp.PriceConfidenceSuspicious,
+				PriceSource:     scrapeapp.PriceSourceSelector,
+				PriceWarnings:   []string{scrapeapp.PriceWarningNonPrimaryContext},
+				ImageURL:        "https://example.com/lamp.png",
+			},
+		},
+		nil,
+	)
+
+	processed, err := service.ProcessNext(context.Background())
+	if err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected a job to be processed")
+	}
+	if repo.needsReview == nil {
+		t.Fatalf("expected job to be marked needs_review")
+	}
+	if repo.needsReview.PriceConfidence == nil || *repo.needsReview.PriceConfidence != scrapeapp.PriceConfidenceSuspicious {
+		t.Fatalf("expected suspicious confidence, got %+v", repo.needsReview)
+	}
+	if repo.completed != nil || wishlists.added != nil {
+		t.Fatalf("expected no item creation, completed=%+v added=%+v", repo.completed, wishlists.added)
 	}
 }
 

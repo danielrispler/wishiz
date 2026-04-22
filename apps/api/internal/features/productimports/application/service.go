@@ -229,52 +229,80 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 		retryable, code := classifyScrapeError(err)
 		if shouldNeedsReview(snapshot) {
 			_, markErr := s.repo.MarkNeedsReview(ctx, ports.NeedsReviewJobParams{
-				ID:           job.ID,
-				Title:        snapshot.Title,
-				PriceLabel:   snapshot.PriceLabel,
-				ImageURL:     snapshot.ImageURL,
-				Completeness: snapshot.Completeness,
-				LastError:    "product details need review",
-				ErrorCode:    ErrorCodeIncomplete,
-				Retryable:    code != string(scrapeapp.ErrorCodeBadRequest) && job.AttemptCount+1 < s.maxAttempts,
+				ID:              job.ID,
+				Title:           snapshot.Title,
+				PriceLabel:      snapshot.PriceLabel,
+				PriceConfidence: snapshot.PriceConfidence,
+				PriceSource:     snapshot.PriceSource,
+				PriceWarnings:   snapshot.PriceWarnings,
+				ImageURL:        snapshot.ImageURL,
+				Completeness:    snapshot.Completeness,
+				LastError:       "product details need review",
+				ErrorCode:       ErrorCodeIncomplete,
+				Retryable:       code != string(scrapeapp.ErrorCodeBadRequest) && job.AttemptCount+1 < s.maxAttempts,
 			})
 			return markErr
 		}
 		_, markErr := s.repo.MarkFailed(ctx, ports.FailJobParams{
-			ID:           job.ID,
-			Title:        snapshot.Title,
-			PriceLabel:   snapshot.PriceLabel,
-			ImageURL:     snapshot.ImageURL,
-			Completeness: snapshot.Completeness,
-			LastError:    err.Error(),
-			ErrorCode:    code,
-			Retryable:    retryable && job.AttemptCount+1 < s.maxAttempts,
+			ID:              job.ID,
+			Title:           snapshot.Title,
+			PriceLabel:      snapshot.PriceLabel,
+			PriceConfidence: snapshot.PriceConfidence,
+			PriceSource:     snapshot.PriceSource,
+			PriceWarnings:   snapshot.PriceWarnings,
+			ImageURL:        snapshot.ImageURL,
+			Completeness:    snapshot.Completeness,
+			LastError:       err.Error(),
+			ErrorCode:       code,
+			Retryable:       retryable && job.AttemptCount+1 < s.maxAttempts,
 		})
 		return markErr
 	}
 	if !isComplete(snapshot) {
 		if shouldNeedsReview(snapshot) {
 			_, markErr := s.repo.MarkNeedsReview(ctx, ports.NeedsReviewJobParams{
-				ID:           job.ID,
-				Title:        snapshot.Title,
-				PriceLabel:   snapshot.PriceLabel,
-				ImageURL:     snapshot.ImageURL,
-				Completeness: snapshot.Completeness,
-				LastError:    "product details need review",
-				ErrorCode:    ErrorCodeIncomplete,
-				Retryable:    job.AttemptCount+1 < s.maxAttempts,
+				ID:              job.ID,
+				Title:           snapshot.Title,
+				PriceLabel:      snapshot.PriceLabel,
+				PriceConfidence: snapshot.PriceConfidence,
+				PriceSource:     snapshot.PriceSource,
+				PriceWarnings:   snapshot.PriceWarnings,
+				ImageURL:        snapshot.ImageURL,
+				Completeness:    snapshot.Completeness,
+				LastError:       "product details need review",
+				ErrorCode:       ErrorCodeIncomplete,
+				Retryable:       job.AttemptCount+1 < s.maxAttempts,
 			})
 			return markErr
 		}
 		_, markErr := s.repo.MarkFailed(ctx, ports.FailJobParams{
-			ID:           job.ID,
-			Title:        snapshot.Title,
-			PriceLabel:   snapshot.PriceLabel,
-			ImageURL:     snapshot.ImageURL,
-			Completeness: snapshot.Completeness,
-			LastError:    "could not extract enough product details",
-			ErrorCode:    ErrorCodeIncomplete,
-			Retryable:    false,
+			ID:              job.ID,
+			Title:           snapshot.Title,
+			PriceLabel:      snapshot.PriceLabel,
+			PriceConfidence: snapshot.PriceConfidence,
+			PriceSource:     snapshot.PriceSource,
+			PriceWarnings:   snapshot.PriceWarnings,
+			ImageURL:        snapshot.ImageURL,
+			Completeness:    snapshot.Completeness,
+			LastError:       "could not extract enough product details",
+			ErrorCode:       ErrorCodeIncomplete,
+			Retryable:       false,
+		})
+		return markErr
+	}
+	if !snapshot.HasTrustedPrice {
+		_, markErr := s.repo.MarkNeedsReview(ctx, ports.NeedsReviewJobParams{
+			ID:              job.ID,
+			Title:           snapshot.Title,
+			PriceLabel:      snapshot.PriceLabel,
+			PriceConfidence: snapshot.PriceConfidence,
+			PriceSource:     snapshot.PriceSource,
+			PriceWarnings:   snapshot.PriceWarnings,
+			ImageURL:        snapshot.ImageURL,
+			Completeness:    snapshot.Completeness,
+			LastError:       "product price needs review",
+			ErrorCode:       ErrorCodeIncomplete,
+			Retryable:       false,
 		})
 		return markErr
 	}
@@ -291,24 +319,30 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 	if createErr != nil {
 		retryable := !isWishlistValidationError(createErr)
 		_, markErr := s.repo.MarkFailed(ctx, ports.FailJobParams{
-			ID:           job.ID,
-			Title:        snapshot.Title,
-			PriceLabel:   snapshot.PriceLabel,
-			ImageURL:     snapshot.ImageURL,
-			Completeness: snapshot.Completeness,
-			LastError:    createErr.Error(),
-			ErrorCode:    ErrorCodeItemCreate,
-			Retryable:    retryable && job.AttemptCount+1 < s.maxAttempts,
+			ID:              job.ID,
+			Title:           snapshot.Title,
+			PriceLabel:      snapshot.PriceLabel,
+			PriceConfidence: snapshot.PriceConfidence,
+			PriceSource:     snapshot.PriceSource,
+			PriceWarnings:   snapshot.PriceWarnings,
+			ImageURL:        snapshot.ImageURL,
+			Completeness:    snapshot.Completeness,
+			LastError:       createErr.Error(),
+			ErrorCode:       ErrorCodeItemCreate,
+			Retryable:       retryable && job.AttemptCount+1 < s.maxAttempts,
 		})
 		return markErr
 	}
 	_, markErr := s.repo.MarkCompleted(ctx, ports.CompleteJobParams{
-		ID:            job.ID,
-		Title:         *snapshot.Title,
-		PriceLabel:    *snapshot.PriceLabel,
-		ImageURL:      *snapshot.ImageURL,
-		Completeness:  snapshot.Completeness,
-		CreatedItemID: item.ID,
+		ID:              job.ID,
+		Title:           *snapshot.Title,
+		PriceLabel:      *snapshot.PriceLabel,
+		PriceConfidence: snapshot.PriceConfidence,
+		PriceSource:     snapshot.PriceSource,
+		PriceWarnings:   snapshot.PriceWarnings,
+		ImageURL:        *snapshot.ImageURL,
+		Completeness:    snapshot.Completeness,
+		CreatedItemID:   item.ID,
 	})
 	return markErr
 }
@@ -332,15 +366,22 @@ func (s *Service) requireUserJob(ctx context.Context, id string) (importdomain.J
 }
 
 type productSnapshot struct {
-	Title        *string
-	PriceLabel   *string
-	ImageURL     *string
-	Completeness int
+	Title           *string
+	PriceLabel      *string
+	PriceConfidence *string
+	PriceSource     *string
+	PriceWarnings   []string
+	ImageURL        *string
+	Completeness    int
+	HasTrustedPrice bool
 }
 
 func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 	title := optional(product.Name)
 	priceLabel := optional(strings.TrimSpace(strings.TrimSpace(product.PriceCurrency) + " " + strings.TrimSpace(product.PriceAmount)))
+	priceConfidence := optional(product.PriceConfidence)
+	priceSource := optional(product.PriceSource)
+	priceWarnings := append([]string(nil), product.PriceWarnings...)
 	imageURL := optional(product.ImageURL)
 	completeness := 0
 	if title != nil {
@@ -352,7 +393,16 @@ func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 	if imageURL != nil {
 		completeness++
 	}
-	return productSnapshot{Title: title, PriceLabel: priceLabel, ImageURL: imageURL, Completeness: completeness}
+	return productSnapshot{
+		Title:           title,
+		PriceLabel:      priceLabel,
+		PriceConfidence: priceConfidence,
+		PriceSource:     priceSource,
+		PriceWarnings:   priceWarnings,
+		ImageURL:        imageURL,
+		Completeness:    completeness,
+		HasTrustedPrice: priceLabel != nil && product.HasHighConfidencePrice(),
+	}
 }
 
 func isComplete(snapshot productSnapshot) bool {

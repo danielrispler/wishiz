@@ -698,6 +698,18 @@ components:
         source:
           type: string
           enum: [fast, headless]
+        priceConfidence:
+          type: string
+          enum: [high, medium, low, suspicious]
+        priceSource:
+          type: string
+          enum: [merchant_selector, json_ld, meta, selector, generic_dom]
+        priceRawText:
+          type: string
+        priceWarnings:
+          type: array
+          items:
+            type: string
       required:
         - name
         - priceAmount

@@ -7,6 +7,7 @@ class Wishlist {
   Wishlist({
     required this.id,
     required this.ownerUserId,
+    required this.ownerFullName,
     required this.title,
     required this.description,
     required this.year,
@@ -24,6 +25,7 @@ class Wishlist {
 
   final String id;
   final String ownerUserId;
+  final String ownerFullName;
   final String title;
   final String description;
   final int year;
@@ -49,6 +51,7 @@ class Wishlist {
   Wishlist copyWith({
     String? id,
     String? ownerUserId,
+    String? ownerFullName,
     String? title,
     String? description,
     int? year,
@@ -64,6 +67,7 @@ class Wishlist {
     return Wishlist(
       id: id ?? this.id,
       ownerUserId: ownerUserId ?? this.ownerUserId,
+      ownerFullName: ownerFullName ?? this.ownerFullName,
       title: title ?? this.title,
       description: description ?? this.description,
       year: year ?? this.year,

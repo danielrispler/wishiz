@@ -364,6 +364,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Sharing'),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacing4,
+            vertical: AppConstants.spacing5,
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -391,7 +395,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     wishlist,
                     WishlistMember(
                       userId: wishlist.ownerUserId,
-                      fullName: 'List Owner',
+                      fullName: wishlist.ownerFullName,
                       email: '',
                       role: WishlistMemberRole.editor,
                       createdAt: wishlist.createdAt,
@@ -415,14 +419,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             ),
           ),
           actions: [
-            if (isOwner)
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  _openInviteDialog(context, wishlist);
-                },
-                child: const Text('Invite'),
-              ),
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();

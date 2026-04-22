@@ -8,6 +8,7 @@ class WishlistDto {
   const WishlistDto({
     required this.id,
     required this.ownerUserId,
+    required this.ownerFullName,
     required this.title,
     required this.description,
     required this.year,
@@ -30,6 +31,7 @@ class WishlistDto {
     return WishlistDto(
       id: json['id'] as String,
       ownerUserId: ownerUserId,
+      ownerFullName: json['ownerFullName'] as String? ?? 'List Owner',
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       year: json['year'] as int,
@@ -60,6 +62,7 @@ class WishlistDto {
 
   final String id;
   final String ownerUserId;
+  final String ownerFullName;
   final String title;
   final String description;
   final int year;
@@ -79,6 +82,7 @@ class WishlistDto {
     return Wishlist(
       id: id,
       ownerUserId: ownerUserId,
+      ownerFullName: ownerFullName,
       title: title,
       description: description,
       year: year,

@@ -100,6 +100,11 @@ class ImportJobTile extends StatelessWidget {
         onPressed: () => onReview(job),
         icon: const Icon(Icons.edit_outlined, size: 20),
       ),
+      IconButton(
+        tooltip: 'Hide',
+        onPressed: () => onAcknowledge(job),
+        icon: const Icon(Icons.close, size: 20),
+      ),
     ];
   }
 }
@@ -148,7 +153,16 @@ String _jobSubtitle(ProductImportJob job) {
     'processing' => 'Processing details',
     'completed' => 'Added to wishlist',
     'needs_review' => 'Needs review before saving',
-    'failed' => job.lastError ?? 'Import failed',
+    'failed' => _failedSubtitle(job),
     _ => job.status,
   };
+}
+
+String _failedSubtitle(ProductImportJob job) {
+  final error = job.lastError?.trim();
+  final prefix = error == null || error.isEmpty ? 'Import failed' : error;
+  if (job.retryable) {
+    return '$prefix. Retry is available.';
+  }
+  return '$prefix. Add it manually.';
 }

@@ -211,6 +211,7 @@ void main() {
             title: 'example.com',
             status: 'needs_review',
             retryable: true,
+            priceConfidence: 'high',
           ),
         ]);
 
@@ -241,6 +242,7 @@ void main() {
           title: 'example.com',
           status: 'needs_review',
           retryable: true,
+          priceConfidence: 'high',
         ),
       ]);
       await tester.pump();
@@ -250,6 +252,37 @@ void main() {
 
       expect(productImportRepository.acknowledgedIds, ['needs-review-import']);
       expect(find.text('Needs review before saving'), findsNothing);
+    });
+
+    testWidgets('terminal failed import explains it will not retry', (
+      tester,
+    ) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository()
+        ..setJobs([
+          buildProductImportJob(
+            id: 'failed-import',
+            title: 'example.com',
+            status: 'failed',
+            retryable: false,
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
+          shareIntakeService: FakeShareIntakeService(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import failed. Add it manually.'), findsOneWidget);
+      expect(find.byTooltip('Retry'), findsNothing);
+      expect(find.byTooltip('Edit manually'), findsOneWidget);
+      expect(find.byTooltip('Hide'), findsOneWidget);
     });
 
     testWidgets(
@@ -557,6 +590,7 @@ ProductImportJob buildProductImportJob({
   bool retryable = false,
   String? title,
   String? priceLabel,
+  String? priceConfidence,
   String? imageUrl,
 }) {
   final now = DateTime.now();
@@ -572,6 +606,7 @@ ProductImportJob buildProductImportJob({
     retryable: retryable,
     title: title,
     priceLabel: priceLabel,
+    priceConfidence: priceConfidence,
     imageUrl: imageUrl,
     completeness: 3,
     createdAt: now,

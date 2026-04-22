@@ -99,6 +99,53 @@ CREATE TRIGGER wishlist_items_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE IF NOT EXISTS product_import_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE,
+    client_request_id TEXT NOT NULL,
+    normalized_url TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    target_currency_code TEXT NOT NULL DEFAULT 'USD',
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempted_at TIMESTAMPTZ,
+    last_error TEXT,
+    error_code TEXT,
+    retryable BOOLEAN NOT NULL DEFAULT FALSE,
+    title TEXT,
+    price_label TEXT,
+    image_url TEXT,
+    completeness INTEGER NOT NULL DEFAULT 0,
+    created_item_id UUID REFERENCES wishlist_items(id) ON DELETE SET NULL,
+    acknowledged_at TIMESTAMPTZ,
+    locked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT product_import_jobs_status_check CHECK (
+        status IN ('pending', 'processing', 'completed', 'needs_review', 'failed')
+    ),
+    CONSTRAINT product_import_jobs_attempt_count_check CHECK (attempt_count >= 0),
+    CONSTRAINT product_import_jobs_completeness_check CHECK (completeness BETWEEN 0 AND 3),
+    CONSTRAINT product_import_jobs_target_currency_code_check CHECK (target_currency_code ~ '^[A-Z]{3}$'),
+    CONSTRAINT product_import_jobs_client_request_unique UNIQUE (user_id, client_request_id)
+);
+
+CREATE INDEX IF NOT EXISTS product_import_jobs_user_status_updated_idx
+    ON product_import_jobs (user_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS product_import_jobs_claim_idx
+    ON product_import_jobs (status, updated_at)
+    WHERE status IN ('pending', 'processing');
+
+CREATE INDEX IF NOT EXISTS product_import_jobs_dedupe_idx
+    ON product_import_jobs (user_id, wishlist_id, normalized_url, created_at DESC);
+
+CREATE TRIGGER product_import_jobs_set_updated_at
+    BEFORE UPDATE ON product_import_jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION set_updated_at();
+
 CREATE TABLE IF NOT EXISTS wishlist_members (
     wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,

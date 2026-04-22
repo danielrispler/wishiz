@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS wishlist_invites;
 DROP TABLE IF EXISTS wishlist_members;
+DROP TABLE IF EXISTS product_import_jobs;
 DROP TABLE IF EXISTS wishlist_items;
 DROP TABLE IF EXISTS wishlists;
 DROP TABLE IF EXISTS app_sessions;

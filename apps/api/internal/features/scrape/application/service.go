@@ -97,7 +97,7 @@ func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode 
 			"fast_error", errorMessage(fastErr),
 			"headless_error", errorMessage(headlessErr),
 		)
-		return Product{}, ScrapeFailed("could not extract complete product details")
+		return bestEffort, ScrapeFailed("could not extract complete product details")
 	}
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {

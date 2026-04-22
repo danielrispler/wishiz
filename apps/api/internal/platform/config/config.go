@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,6 +15,8 @@ type Config struct {
 	ChromiumPath                        string
 	ExchangeRatesURL                    string
 	ExchangeRateRefreshInterval         time.Duration
+	ProductImportWorkerCount            int
+	ProductImportPollInterval           time.Duration
 	ShareBaseURL                        string
 	AndroidAppLinkSHA256CertFingerprint string
 }
@@ -30,6 +33,8 @@ func Load() (Config, error) {
 			"https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
 		),
 		ExchangeRateRefreshInterval: getEnvDuration("EXCHANGE_RATE_REFRESH_INTERVAL", 12*time.Hour),
+		ProductImportWorkerCount:    getEnvInt("PRODUCT_IMPORT_WORKER_COUNT", 5),
+		ProductImportPollInterval:   getEnvDuration("PRODUCT_IMPORT_POLL_INTERVAL", 2*time.Second),
 		ShareBaseURL:                getEnv("SHARE_BASE_URL", "https://wishiz.app"),
 		AndroidAppLinkSHA256CertFingerprint: getEnv(
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
@@ -63,6 +68,18 @@ func getEnvBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func getEnvDuration(key string, fallback time.Duration) time.Duration {

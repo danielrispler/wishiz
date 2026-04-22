@@ -15,6 +15,10 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
 import 'package:wishiz/features/auth/presentation/screens/signup_screen.dart';
 import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
+import 'package:wishiz/features/product_imports/data/api_product_import_repository.dart';
+import 'package:wishiz/features/product_imports/data/in_memory_product_import_repository.dart';
+import 'package:wishiz/features/product_imports/data/product_import_api_client.dart';
+import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
 import 'package:wishiz/features/wishlists/data/api/shared_product_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/api_shared_product_repository.dart';
@@ -30,6 +34,8 @@ Future<void> main() async {
 
 typedef WishlistRepositoryLoader =
     Future<WishlistRepository> Function(AppUser user);
+typedef ProductImportRepositoryFactory =
+    ProductImportRepository Function(AppUser user);
 
 Future<Widget> createApp({
   String? baseUrlOverride,
@@ -55,12 +61,37 @@ Future<Widget> createApp({
         authRepository,
         baseUrl,
       ),
+      productImportRepositoryFactory: _createProductImportRepositoryFactory(
+        authRepository,
+        baseUrl,
+      ),
       authRepository: authRepository,
       sharedProductRepository: sharedProductRepository,
     );
   } catch (error) {
     return _buildBootstrapApp(error: error);
   }
+}
+
+ProductImportRepositoryFactory _createProductImportRepositoryFactory(
+  AuthRepository authRepository,
+  String baseUrl,
+) {
+  return (user) {
+    final tokenProvider = authRepository is SessionTokenProvider
+        ? authRepository as SessionTokenProvider
+        : null;
+    final authToken = tokenProvider?.getSessionToken();
+    if (authToken == null || authToken.isEmpty) {
+      throw StateError('No authenticated API session is available.');
+    }
+    return ApiProductImportRepository(
+      apiClient: ProductImportApiClient(
+        baseUri: Uri.parse(baseUrl),
+        authToken: authToken,
+      ),
+    );
+  };
 }
 
 WishlistRepositoryLoader _createWishlistRepositoryLoader(
@@ -123,10 +154,13 @@ class WishizApp extends StatelessWidget {
     required this.wishlistRepositoryLoader,
     required this.authRepository,
     required this.sharedProductRepository,
+    ProductImportRepositoryFactory? productImportRepositoryFactory,
     this.shareIntakeService = const ShareIntakeService(),
-  });
+  }) : productImportRepositoryFactory =
+           productImportRepositoryFactory ?? _defaultProductImportRepository;
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
+  final ProductImportRepositoryFactory productImportRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -138,6 +172,7 @@ class WishizApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       home: _RootScreen(
         wishlistRepositoryLoader: wishlistRepositoryLoader,
+        productImportRepositoryFactory: productImportRepositoryFactory,
         authRepository: authRepository,
         sharedProductRepository: sharedProductRepository,
         shareIntakeService: shareIntakeService,
@@ -145,6 +180,10 @@ class WishizApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
     );
   }
+}
+
+ProductImportRepository _defaultProductImportRepository(AppUser user) {
+  return InMemoryProductImportRepository();
 }
 
 class BootstrapErrorApp extends StatelessWidget {
@@ -197,12 +236,14 @@ class BootstrapErrorApp extends StatelessWidget {
 class _RootScreen extends StatefulWidget {
   const _RootScreen({
     required this.wishlistRepositoryLoader,
+    required this.productImportRepositoryFactory,
     required this.authRepository,
     required this.sharedProductRepository,
     required this.shareIntakeService,
   });
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
+  final ProductImportRepositoryFactory productImportRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -218,6 +259,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   String? _pendingSharedText;
   StreamSubscription<String>? _sharedTextSubscription;
   WishlistRepository? _wishlistRepository;
+  ProductImportRepository? _productImportRepository;
   Object? _wishlistRepositoryError;
   String? _wishlistRepositoryUserId;
 
@@ -336,6 +378,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       }
       setState(() {
         _wishlistRepository = null;
+        _productImportRepository = null;
         _wishlistRepositoryError = null;
         _wishlistRepositoryUserId = null;
       });
@@ -349,6 +392,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     final requestedUserId = user.id;
     setState(() {
       _wishlistRepository = null;
+      _productImportRepository = null;
       _wishlistRepositoryError = null;
       _wishlistRepositoryUserId = requestedUserId;
     });
@@ -362,6 +406,9 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
           setState(() {
             _wishlistRepository = repository;
+            _productImportRepository = widget.productImportRepositoryFactory(
+              user,
+            );
           });
         })
         .catchError((error) {
@@ -415,6 +462,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
         return HomeScreen(
           repository: repository,
+          productImportRepository: _productImportRepository!,
           sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
           currentUser: user,

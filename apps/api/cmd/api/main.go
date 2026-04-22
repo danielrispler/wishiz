@@ -17,6 +17,9 @@ import (
 	authpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/postgres"
 	authapp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/application"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
+	productimporthttp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/http"
+	productimportpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/postgres"
+	productimportapp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/application"
 	scrapefastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
 	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
 	scrapehttp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/http"
@@ -95,6 +98,23 @@ func run() error {
 
 		wishlistRepo := wishlistpostgres.NewRepository(pool)
 		wishlistService := wishlistapp.NewService(wishlistRepo)
+		productImportRepo := productimportpostgres.NewRepository(pool)
+		productImportService := productimportapp.NewService(appLogger, productImportRepo, wishlistService, scrapeService, resolver)
+		productImportWorker := productimportapp.NewWorker(
+			appLogger,
+			productImportService,
+			cfg.ProductImportWorkerCount,
+			cfg.ProductImportPollInterval,
+		)
+		productImportWorker.Start(ctx)
+		productimporthttp.RegisterRoutes(
+			mux,
+			appLogger,
+			productImportService,
+			func(next http.HandlerFunc) http.HandlerFunc {
+				return authhttp.RequireAuth(authService, next)
+			},
+		)
 		wishlisthttp.RegisterRoutes(
 			mux,
 			appLogger,

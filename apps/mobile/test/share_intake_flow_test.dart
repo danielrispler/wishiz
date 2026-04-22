@@ -8,6 +8,8 @@ import 'package:wishiz/core/services/share_intake_service.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/entities/auth_result.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
+import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
+import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
@@ -22,6 +24,7 @@ void main() {
     testWidgets('imports a pending shared link on cold start', (tester) async {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
       final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository();
       final shareIntakeService = FakeShareIntakeService(
         pendingResponses: ['https://example.com/products/mug'],
       );
@@ -30,17 +33,21 @@ void main() {
         buildTestApp(
           authRepository: authRepository,
           sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
           shareIntakeService: shareIntakeService,
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(sharedProductRepository.requestedSharedTexts, [
+      expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+      expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/mug',
       ]);
-      expect(find.text('Preview Item'), findsOneWidget);
-      expect(find.text('Imported details may have problems'), findsOneWidget);
-      expect(find.text('Imported mug'), findsOneWidget);
+      expect(find.text('Shared item imports'), findsOneWidget);
+      expect(
+        find.text('Processing shared item. It will be added soon.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('imports a newly pending link after the app resumes', (
@@ -48,6 +55,7 @@ void main() {
     ) async {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
       final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository();
       final shareIntakeService = FakeShareIntakeService(
         pendingResponses: [null, 'https://example.com/products/chair'],
       );
@@ -56,24 +64,26 @@ void main() {
         buildTestApp(
           authRepository: authRepository,
           sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
           shareIntakeService: shareIntakeService,
         ),
       );
       await tester.pumpAndSettle();
 
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+      expect(productImportRepository.requestedSharedTexts, isEmpty);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
-      expect(sharedProductRepository.requestedSharedTexts, [
+      expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/chair',
       ]);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
-      expect(sharedProductRepository.requestedSharedTexts, [
+      expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/chair',
       ]);
     });
@@ -83,6 +93,7 @@ void main() {
     ) async {
       final authRepository = FakeAuthRepository();
       final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository();
       final shareIntakeService = FakeShareIntakeService(
         pendingResponses: ['https://example.com/products/lamp'],
       );
@@ -91,17 +102,19 @@ void main() {
         buildTestApp(
           authRepository: authRepository,
           sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
           shareIntakeService: shareIntakeService,
         ),
       );
       await tester.pumpAndSettle();
 
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+      expect(productImportRepository.requestedSharedTexts, isEmpty);
 
       authRepository.setCurrentUser(sampleUser);
       await tester.pumpAndSettle();
 
-      expect(sharedProductRepository.requestedSharedTexts, [
+      expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/lamp',
       ]);
     });
@@ -232,6 +245,7 @@ Widget buildTestApp({
   required FakeAuthRepository authRepository,
   required FakeSharedProductRepository sharedProductRepository,
   required FakeShareIntakeService shareIntakeService,
+  FakeProductImportRepository? productImportRepository,
   Future<WishlistRepository> Function(AppUser user)? wishlistRepositoryLoader,
 }) {
   final repository = InMemoryWishlistRepository(
@@ -252,6 +266,8 @@ Widget buildTestApp({
   return WishizApp(
     wishlistRepositoryLoader:
         wishlistRepositoryLoader ?? (_) async => repository,
+    productImportRepositoryFactory: (_) =>
+        productImportRepository ?? FakeProductImportRepository(),
     authRepository: authRepository,
     sharedProductRepository: sharedProductRepository,
     shareIntakeService: shareIntakeService,
@@ -310,6 +326,61 @@ class FakeSharedProductRepository implements SharedProductRepository {
       imageUrl: 'https://example.com/images/mug.png',
       sharedText: sharedText,
     );
+  }
+}
+
+class FakeProductImportRepository implements ProductImportRepository {
+  final List<String> requestedSharedTexts = [];
+  final ValueNotifier<List<ProductImportJob>> _jobs =
+      ValueNotifier<List<ProductImportJob>>(const []);
+
+  @override
+  ValueListenable<List<ProductImportJob>> watchJobs() => _jobs;
+
+  @override
+  List<ProductImportJob> getJobs() => _jobs.value;
+
+  @override
+  Future<ProductImportJob> enqueue({
+    required String wishlistId,
+    required String sharedText,
+    required String clientRequestId,
+    required String targetCurrencyCode,
+  }) async {
+    requestedSharedTexts.add(sharedText);
+    final now = DateTime.now();
+    final job = ProductImportJob(
+      id: clientRequestId,
+      wishlistId: wishlistId,
+      clientRequestId: clientRequestId,
+      normalizedUrl: sharedText,
+      domain: Uri.tryParse(sharedText)?.host ?? '',
+      targetCurrencyCode: targetCurrencyCode,
+      status: 'completed',
+      attemptCount: 0,
+      retryable: false,
+      title: 'Imported mug',
+      priceLabel: 'USD 24.00',
+      imageUrl: 'https://example.com/images/mug.png',
+      completeness: 3,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _jobs.value = [job, ..._jobs.value];
+    return job;
+  }
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  Future<ProductImportJob> retry(String id) async {
+    return _jobs.value.firstWhere((job) => job.id == id);
+  }
+
+  @override
+  Future<ProductImportJob> acknowledge(String id) async {
+    return _jobs.value.firstWhere((job) => job.id == id);
   }
 }
 

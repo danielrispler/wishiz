@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
@@ -11,6 +14,8 @@ import 'package:wishiz/features/auth/presentation/screens/account_screen.dart';
 import 'package:wishiz/features/home/presentation/screens/reminders_screen.dart';
 import 'package:wishiz/features/home/presentation/widgets/glassmorphic_bottom_nav.dart';
 import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
+import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
+import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
@@ -23,6 +28,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.repository,
+    required this.productImportRepository,
     required this.sharedProductRepository,
     required this.authRepository,
     required this.currentUser,
@@ -34,6 +40,7 @@ class HomeScreen extends StatefulWidget {
   });
 
   final WishlistRepository repository;
+  final ProductImportRepository productImportRepository;
   final SharedProductRepository sharedProductRepository;
   final AuthRepository authRepository;
   final AppUser currentUser;
@@ -49,6 +56,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const int _allYears = -1;
+  static const Uuid _uuid = Uuid();
 
   int _currentIndex = 0;
   String _searchQuery = '';
@@ -58,13 +66,37 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _handledInitialWishlistId;
   String? _handledInitialSharedText;
   bool _isImportingSharedProduct = false;
+  Timer? _importPollTimer;
 
   @override
   void initState() {
     super.initState();
+    _refreshImportJobs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handlePendingEntryPoints();
     });
+  }
+
+  @override
+  void dispose() {
+    _importPollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshImportJobs() async {
+    await widget.productImportRepository.refresh();
+    if (!mounted) {
+      return;
+    }
+    _scheduleImportRefreshIfNeeded();
+  }
+
+  void _scheduleImportRefreshIfNeeded() {
+    _importPollTimer?.cancel();
+    if (!widget.productImportRepository.getJobs().any((job) => job.isActive)) {
+      return;
+    }
+    _importPollTimer = Timer(const Duration(seconds: 5), _refreshImportJobs);
   }
 
   @override
@@ -195,29 +227,31 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.onInitialSharedTextHandled?.call();
 
     try {
-      final draft = await _resolveSharedProductDraft(sharedText);
-      if (!mounted) {
-        return true;
-      }
-
-      if (draft == null) {
-        _showFeedback('Wishiz could not find a product link in that share.');
-        return true;
-      }
-
       final wishlistId = await _selectWishlistForSharedImport();
       if (!mounted || wishlistId == null) {
         return true;
       }
-
-      if (!draft.hasCompleteRequiredFields) {
-        final missingFields = draft.missingFieldLabels.join(', ');
+      await widget.productImportRepository.enqueue(
+        wishlistId: wishlistId,
+        sharedText: sharedText,
+        clientRequestId: _uuid.v4(),
+        targetCurrencyCode: widget.currentUser.preferredCurrencyCode,
+      );
+      _scheduleImportRefreshIfNeeded();
+      if (!mounted) {
+        return true;
+      }
+      _showFeedback('Processing shared item. It will be added soon.');
+      return true;
+    } catch (error) {
+      if (mounted) {
         _showFeedback(
-          'Sorry, we could only fill part of this product. Please add the missing $missingFields before saving.',
+          formatErrorMessage(
+            error,
+            fallbackMessage: 'Could not queue that shared product yet.',
+          ),
         );
       }
-
-      await _openSharedProductEditor(wishlistId: wishlistId, draft: draft);
       return true;
     } finally {
       if (mounted) {
@@ -225,27 +259,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _isImportingSharedProduct = false;
         });
       }
-    }
-  }
-
-  Future<SharedProductDraft?> _resolveSharedProductDraft(
-    String sharedText,
-  ) async {
-    try {
-      return await widget.sharedProductRepository.createDraftFromSharedText(
-        sharedText,
-        targetCurrencyCode: widget.currentUser.preferredCurrencyCode,
-      );
-    } catch (error) {
-      if (mounted) {
-        _showFeedback(
-          formatErrorMessage(
-            error,
-            fallbackMessage: 'Could not import that shared product yet.',
-          ),
-        );
-      }
-      return null;
     }
   }
 
@@ -434,31 +447,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_isImportingSharedProduct)
-          Container(
-            margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
-            padding: const EdgeInsets.all(AppConstants.cardPadding),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Importing product details...',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        _buildImportQueue(),
         Text(
           'Create a New List',
           style: Theme.of(context).textTheme.titleLarge,
@@ -498,6 +487,206 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildImportQueue() {
+    return ValueListenableBuilder<List<ProductImportJob>>(
+      valueListenable: widget.productImportRepository.watchJobs(),
+      builder: (context, jobs, _) {
+        final visibleJobs = jobs
+            .where(
+              (job) =>
+                  job.isActive ||
+                  job.isCompleted ||
+                  job.needsReview ||
+                  job.failed,
+            )
+            .take(5)
+            .toList(growable: false);
+        if (!_isImportingSharedProduct && visibleJobs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
+          padding: const EdgeInsets.all(AppConstants.cardPadding),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (_isImportingSharedProduct)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    const Icon(Icons.cloud_sync_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _isImportingSharedProduct
+                          ? 'Queueing shared item...'
+                          : 'Shared item imports',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              ),
+              for (final job in visibleJobs) ...[
+                const SizedBox(height: AppConstants.itemGap),
+                _buildImportJobRow(job),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildImportJobRow(ProductImportJob job) {
+    final title = job.title?.trim().isNotEmpty == true
+        ? job.title!
+        : job.domain.isNotEmpty
+        ? job.domain
+        : job.normalizedUrl;
+    final subtitle = switch (job.status) {
+      'pending' => 'Waiting to process',
+      'processing' => 'Processing details',
+      'completed' => 'Added to wishlist',
+      'needs_review' => 'Needs review before saving',
+      'failed' => job.lastError ?? 'Import failed',
+      _ => job.status,
+    };
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _jobStatusIcon(job),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Wrap(spacing: 4, children: _jobActions(job)),
+      ],
+    );
+  }
+
+  Widget _jobStatusIcon(ProductImportJob job) {
+    if (job.isActive) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (job.isCompleted) {
+      return const Icon(Icons.check_circle_outline, size: 20);
+    }
+    if (job.needsReview) {
+      return const Icon(Icons.rate_review_outlined, size: 20);
+    }
+    return const Icon(Icons.error_outline, size: 20);
+  }
+
+  List<Widget> _jobActions(ProductImportJob job) {
+    if (job.isActive) {
+      return const [];
+    }
+    if (job.isCompleted) {
+      return [
+        IconButton(
+          tooltip: 'Open list',
+          onPressed: () => _openWishlistDetails(job.wishlistId),
+          icon: const Icon(Icons.open_in_new, size: 20),
+        ),
+        IconButton(
+          tooltip: 'Hide',
+          onPressed: () => _acknowledgeImportJob(job),
+          icon: const Icon(Icons.close, size: 20),
+        ),
+      ];
+    }
+    if (job.needsReview) {
+      return [
+        IconButton(
+          tooltip: 'Review',
+          onPressed: () => _openImportJobEditor(job),
+          icon: const Icon(Icons.edit_outlined, size: 20),
+        ),
+      ];
+    }
+    return [
+      if (job.retryable)
+        IconButton(
+          tooltip: 'Retry',
+          onPressed: () => _retryImportJob(job),
+          icon: const Icon(Icons.refresh, size: 20),
+        ),
+      IconButton(
+        tooltip: 'Edit manually',
+        onPressed: () => _openImportJobEditor(job),
+        icon: const Icon(Icons.edit_outlined, size: 20),
+      ),
+    ];
+  }
+
+  Future<void> _retryImportJob(ProductImportJob job) async {
+    try {
+      await widget.productImportRepository.retry(job.id);
+      _showFeedback('Import retry queued.');
+    } catch (error) {
+      if (!mounted) return;
+      _showFeedback(
+        formatErrorMessage(error, fallbackMessage: 'Could not retry import.'),
+      );
+    }
+  }
+
+  Future<void> _acknowledgeImportJob(ProductImportJob job) async {
+    try {
+      await widget.productImportRepository.acknowledge(job.id);
+    } catch (error) {
+      if (!mounted) return;
+      _showFeedback(
+        formatErrorMessage(error, fallbackMessage: 'Could not hide import.'),
+      );
+    }
+  }
+
+  Future<void> _openImportJobEditor(ProductImportJob job) {
+    return _openSharedProductEditor(
+      wishlistId: job.wishlistId,
+      draft: SharedProductDraft(
+        productUrl: job.normalizedUrl,
+        title: job.title,
+        priceLabel: job.priceLabel,
+        imageUrl: job.imageUrl,
+      ),
     );
   }
 

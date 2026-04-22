@@ -57,6 +57,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
     final wishlist = Wishlist(
       id: _uuid.v4(),
       ownerUserId: ownerUserId,
+      ownerFullName: 'List Owner',
       title: title,
       description: description,
       year: year,

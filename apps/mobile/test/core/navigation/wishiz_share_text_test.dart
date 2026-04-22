@@ -65,6 +65,7 @@ Wishlist _buildWishlist() {
   return Wishlist(
     id: 'wishlist-42',
     ownerUserId: 'user-1',
+    ownerFullName: 'Maya Chen',
     title: 'Hosting',
     description: 'Table setting ideas',
     year: 2026,

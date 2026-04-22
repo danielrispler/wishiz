@@ -15,6 +15,7 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
 import 'package:wishiz/features/auth/presentation/screens/signup_screen.dart';
 import 'package:wishiz/features/home/presentation/screens/home_screen.dart';
+import 'package:wishiz/features/product_imports/application/product_import_sync_service.dart';
 import 'package:wishiz/features/product_imports/data/api_product_import_repository.dart';
 import 'package:wishiz/features/product_imports/data/in_memory_product_import_repository.dart';
 import 'package:wishiz/features/product_imports/data/product_import_api_client.dart';
@@ -260,6 +261,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   StreamSubscription<String>? _sharedTextSubscription;
   WishlistRepository? _wishlistRepository;
   ProductImportRepository? _productImportRepository;
+  ProductImportSyncService? _productImportSyncService;
   Object? _wishlistRepositoryError;
   String? _wishlistRepositoryUserId;
 
@@ -288,6 +290,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       _handleCurrentUserChanged,
     );
     _sharedTextSubscription?.cancel();
+    _disposeProductImportSyncService();
     super.dispose();
   }
 
@@ -376,6 +379,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
+      _disposeProductImportSyncService();
       setState(() {
         _wishlistRepository = null;
         _productImportRepository = null;
@@ -390,6 +394,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     }
 
     final requestedUserId = user.id;
+    _disposeProductImportSyncService();
     setState(() {
       _wishlistRepository = null;
       _productImportRepository = null;
@@ -404,11 +409,26 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             return;
           }
 
-          setState(() {
-            _wishlistRepository = repository;
-            _productImportRepository = widget.productImportRepositoryFactory(
+          late final ProductImportRepository productImportRepository;
+          late final ProductImportSyncService productImportSyncService;
+          try {
+            productImportRepository = widget.productImportRepositoryFactory(
               user,
             );
+            productImportSyncService = ProductImportSyncService(
+              repository: productImportRepository,
+            )..start();
+          } catch (error) {
+            setState(() {
+              _wishlistRepositoryError = error;
+            });
+            return;
+          }
+
+          setState(() {
+            _wishlistRepository = repository;
+            _productImportRepository = productImportRepository;
+            _productImportSyncService = productImportSyncService;
           });
         })
         .catchError((error) {
@@ -420,6 +440,11 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             _wishlistRepositoryError = error;
           });
         });
+  }
+
+  void _disposeProductImportSyncService() {
+    _productImportSyncService?.dispose();
+    _productImportSyncService = null;
   }
 
   @override

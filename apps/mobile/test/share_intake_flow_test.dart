@@ -119,6 +119,69 @@ void main() {
       ]);
     });
 
+    testWidgets('retry starts product import sync polling', (tester) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository()
+        ..setJobs([
+          buildProductImportJob(
+            id: 'failed-import',
+            status: 'failed',
+            retryable: true,
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
+          shareIntakeService: FakeShareIntakeService(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.refreshCallCount, 1);
+
+      await tester.tap(find.byTooltip('Retry'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(productImportRepository.retriedIds, ['failed-import']);
+      expect(productImportRepository.refreshCallCount, 2);
+    });
+
+    testWidgets('acknowledge removes the visible import job', (tester) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final productImportRepository = FakeProductImportRepository()
+        ..setJobs([
+          buildProductImportJob(
+            id: 'completed-import',
+            title: 'Imported mug',
+            status: 'completed',
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          productImportRepository: productImportRepository,
+          shareIntakeService: FakeShareIntakeService(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Imported mug'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Hide'));
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.acknowledgedIds, ['completed-import']);
+      expect(find.text('Imported mug'), findsNothing);
+    });
+
     testWidgets(
       'opens a shared wishlist link instead of importing it as a product',
       (tester) async {
@@ -194,6 +257,7 @@ void main() {
             Wishlist(
               id: 'wishlist-1',
               ownerUserId: sampleUser.id,
+              ownerFullName: sampleUser.fullName,
               title: 'Maya Birthday Ideas',
               description: 'Family gifts',
               year: 2026,
@@ -208,6 +272,7 @@ void main() {
             Wishlist(
               id: 'wishlist-2',
               ownerUserId: secondUser.id,
+              ownerFullName: secondUser.fullName,
               title: 'Dana Travel List',
               description: 'Carry-on upgrades',
               year: 2026,
@@ -254,6 +319,7 @@ Widget buildTestApp({
       Wishlist(
         id: 'wishlist-1',
         ownerUserId: sampleUser.id,
+        ownerFullName: sampleUser.fullName,
         title: 'Birthdays',
         description: 'Family gifts',
         year: 2026,
@@ -331,8 +397,15 @@ class FakeSharedProductRepository implements SharedProductRepository {
 
 class FakeProductImportRepository implements ProductImportRepository {
   final List<String> requestedSharedTexts = [];
+  final List<String> retriedIds = [];
+  final List<String> acknowledgedIds = [];
   final ValueNotifier<List<ProductImportJob>> _jobs =
       ValueNotifier<List<ProductImportJob>>(const []);
+  int refreshCallCount = 0;
+
+  void setJobs(List<ProductImportJob> jobs) {
+    _jobs.value = List<ProductImportJob>.unmodifiable(jobs);
+  }
 
   @override
   ValueListenable<List<ProductImportJob>> watchJobs() => _jobs;
@@ -348,8 +421,7 @@ class FakeProductImportRepository implements ProductImportRepository {
     required String targetCurrencyCode,
   }) async {
     requestedSharedTexts.add(sharedText);
-    final now = DateTime.now();
-    final job = ProductImportJob(
+    final job = buildProductImportJob(
       id: clientRequestId,
       wishlistId: wishlistId,
       clientRequestId: clientRequestId,
@@ -357,31 +429,79 @@ class FakeProductImportRepository implements ProductImportRepository {
       domain: Uri.tryParse(sharedText)?.host ?? '',
       targetCurrencyCode: targetCurrencyCode,
       status: 'completed',
-      attemptCount: 0,
-      retryable: false,
       title: 'Imported mug',
       priceLabel: 'USD 24.00',
       imageUrl: 'https://example.com/images/mug.png',
-      completeness: 3,
-      createdAt: now,
-      updatedAt: now,
     );
     _jobs.value = [job, ..._jobs.value];
     return job;
   }
 
   @override
-  Future<void> refresh() async {}
+  Future<void> refresh() async {
+    refreshCallCount += 1;
+  }
 
   @override
   Future<ProductImportJob> retry(String id) async {
-    return _jobs.value.firstWhere((job) => job.id == id);
+    retriedIds.add(id);
+    final job = _jobs.value.firstWhere((job) => job.id == id);
+    final retried = buildProductImportJob(
+      id: job.id,
+      wishlistId: job.wishlistId,
+      clientRequestId: job.clientRequestId,
+      normalizedUrl: job.normalizedUrl,
+      domain: job.domain,
+      targetCurrencyCode: job.targetCurrencyCode,
+      status: 'pending',
+      title: job.title,
+      priceLabel: job.priceLabel,
+      imageUrl: job.imageUrl,
+    );
+    _jobs.value = [retried, ..._jobs.value.where((job) => job.id != id)];
+    return retried;
   }
 
   @override
   Future<ProductImportJob> acknowledge(String id) async {
-    return _jobs.value.firstWhere((job) => job.id == id);
+    acknowledgedIds.add(id);
+    final job = _jobs.value.firstWhere((job) => job.id == id);
+    _jobs.value = _jobs.value.where((job) => job.id != id).toList();
+    return job;
   }
+}
+
+ProductImportJob buildProductImportJob({
+  required String id,
+  String wishlistId = 'wishlist-1',
+  String? clientRequestId,
+  String normalizedUrl = 'https://example.com/products/mug',
+  String domain = 'example.com',
+  String targetCurrencyCode = 'USD',
+  String status = 'completed',
+  bool retryable = false,
+  String? title,
+  String? priceLabel,
+  String? imageUrl,
+}) {
+  final now = DateTime.now();
+  return ProductImportJob(
+    id: id,
+    wishlistId: wishlistId,
+    clientRequestId: clientRequestId ?? id,
+    normalizedUrl: normalizedUrl,
+    domain: domain,
+    targetCurrencyCode: targetCurrencyCode,
+    status: status,
+    attemptCount: 0,
+    retryable: retryable,
+    title: title,
+    priceLabel: priceLabel,
+    imageUrl: imageUrl,
+    completeness: 3,
+    createdAt: now,
+    updatedAt: now,
+  );
 }
 
 class FakeAuthRepository implements AuthRepository {

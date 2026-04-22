@@ -28,6 +28,7 @@ class WishlistStorageCodec {
     return {
       'id': wishlist.id,
       'ownerUserId': wishlist.ownerUserId,
+      'ownerFullName': wishlist.ownerFullName,
       'title': wishlist.title,
       'description': wishlist.description,
       'year': wishlist.year,
@@ -45,6 +46,7 @@ class WishlistStorageCodec {
     return Wishlist(
       id: json['id'] as String,
       ownerUserId: _requiredNonEmptyString(json, 'ownerUserId'),
+      ownerFullName: json['ownerFullName'] as String? ?? 'List Owner',
       title: json['title'] as String,
       description: json['description'] as String? ?? '',
       year: json['year'] as int? ?? DateTime.now().year,

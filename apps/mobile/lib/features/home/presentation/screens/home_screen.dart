@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -16,6 +14,7 @@ import 'package:wishiz/features/home/presentation/widgets/glassmorphic_bottom_na
 import 'package:wishiz/features/home/presentation/widgets/wishlist_summary_card.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
+import 'package:wishiz/features/product_imports/presentation/widgets/import_queue_view.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
@@ -66,37 +65,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _handledInitialWishlistId;
   String? _handledInitialSharedText;
   bool _isImportingSharedProduct = false;
-  Timer? _importPollTimer;
 
   @override
   void initState() {
     super.initState();
-    _refreshImportJobs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handlePendingEntryPoints();
     });
-  }
-
-  @override
-  void dispose() {
-    _importPollTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _refreshImportJobs() async {
-    await widget.productImportRepository.refresh();
-    if (!mounted) {
-      return;
-    }
-    _scheduleImportRefreshIfNeeded();
-  }
-
-  void _scheduleImportRefreshIfNeeded() {
-    _importPollTimer?.cancel();
-    if (!widget.productImportRepository.getJobs().any((job) => job.isActive)) {
-      return;
-    }
-    _importPollTimer = Timer(const Duration(seconds: 5), _refreshImportJobs);
   }
 
   @override
@@ -237,7 +212,6 @@ class _HomeScreenState extends State<HomeScreen> {
         clientRequestId: _uuid.v4(),
         targetCurrencyCode: widget.currentUser.preferredCurrencyCode,
       );
-      _scheduleImportRefreshIfNeeded();
       if (!mounted) {
         return true;
       }
@@ -491,168 +465,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildImportQueue() {
-    return ValueListenableBuilder<List<ProductImportJob>>(
-      valueListenable: widget.productImportRepository.watchJobs(),
-      builder: (context, jobs, _) {
-        final visibleJobs = jobs
-            .where(
-              (job) =>
-                  job.isActive ||
-                  job.isCompleted ||
-                  job.needsReview ||
-                  job.failed,
-            )
-            .take(5)
-            .toList(growable: false);
-        if (!_isImportingSharedProduct && visibleJobs.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
-          padding: const EdgeInsets.all(AppConstants.cardPadding),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  if (_isImportingSharedProduct)
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    const Icon(Icons.cloud_sync_outlined, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _isImportingSharedProduct
-                          ? 'Queueing shared item...'
-                          : 'Shared item imports',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                ],
-              ),
-              for (final job in visibleJobs) ...[
-                const SizedBox(height: AppConstants.itemGap),
-                _buildImportJobRow(job),
-              ],
-            ],
-          ),
-        );
-      },
+    return ImportQueueView(
+      repository: widget.productImportRepository,
+      isQueueing: _isImportingSharedProduct,
+      onOpenWishlist: (job) => _openWishlistDetails(job.wishlistId),
+      onReview: _openImportJobEditor,
+      onRetry: _retryImportJob,
+      onAcknowledge: _acknowledgeImportJob,
     );
-  }
-
-  Widget _buildImportJobRow(ProductImportJob job) {
-    final title = job.title?.trim().isNotEmpty == true
-        ? job.title!
-        : job.domain.isNotEmpty
-        ? job.domain
-        : job.normalizedUrl;
-    final subtitle = switch (job.status) {
-      'pending' => 'Waiting to process',
-      'processing' => 'Processing details',
-      'completed' => 'Added to wishlist',
-      'needs_review' => 'Needs review before saving',
-      'failed' => job.lastError ?? 'Import failed',
-      _ => job.status,
-    };
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _jobStatusIcon(job),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Wrap(spacing: 4, children: _jobActions(job)),
-      ],
-    );
-  }
-
-  Widget _jobStatusIcon(ProductImportJob job) {
-    if (job.isActive) {
-      return const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-    if (job.isCompleted) {
-      return const Icon(Icons.check_circle_outline, size: 20);
-    }
-    if (job.needsReview) {
-      return const Icon(Icons.rate_review_outlined, size: 20);
-    }
-    return const Icon(Icons.error_outline, size: 20);
-  }
-
-  List<Widget> _jobActions(ProductImportJob job) {
-    if (job.isActive) {
-      return const [];
-    }
-    if (job.isCompleted) {
-      return [
-        IconButton(
-          tooltip: 'Open list',
-          onPressed: () => _openWishlistDetails(job.wishlistId),
-          icon: const Icon(Icons.open_in_new, size: 20),
-        ),
-        IconButton(
-          tooltip: 'Hide',
-          onPressed: () => _acknowledgeImportJob(job),
-          icon: const Icon(Icons.close, size: 20),
-        ),
-      ];
-    }
-    if (job.needsReview) {
-      return [
-        IconButton(
-          tooltip: 'Review',
-          onPressed: () => _openImportJobEditor(job),
-          icon: const Icon(Icons.edit_outlined, size: 20),
-        ),
-      ];
-    }
-    return [
-      if (job.retryable)
-        IconButton(
-          tooltip: 'Retry',
-          onPressed: () => _retryImportJob(job),
-          icon: const Icon(Icons.refresh, size: 20),
-        ),
-      IconButton(
-        tooltip: 'Edit manually',
-        onPressed: () => _openImportJobEditor(job),
-        icon: const Icon(Icons.edit_outlined, size: 20),
-      ),
-    ];
   }
 
   Future<void> _retryImportJob(ProductImportJob job) async {

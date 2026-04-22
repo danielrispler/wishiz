@@ -81,6 +81,7 @@ Widget _buildSubject({
       Wishlist(
         id: 'wishlist-1',
         ownerUserId: 'user-1',
+        ownerFullName: 'Maya Chen',
         title: 'Birthdays',
         description: 'Family gifts',
         year: 2026,

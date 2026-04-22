@@ -7,7 +7,7 @@ class Wishlist {
   Wishlist({
     required this.id,
     required this.ownerUserId,
-    this.ownerFullName = '',
+    required this.ownerFullName,
     required this.title,
     required this.description,
     required this.year,

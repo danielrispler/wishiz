@@ -164,6 +164,7 @@ Wishlist _buildWishlist({List<WishlistItem> items = const []}) {
   return Wishlist(
     id: 'wishlist-1',
     ownerUserId: _sampleUser.id,
+    ownerFullName: _sampleUser.fullName,
     title: 'Hosting',
     description: 'Table setting ideas.',
     year: 2026,

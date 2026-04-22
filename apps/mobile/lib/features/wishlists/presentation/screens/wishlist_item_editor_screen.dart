@@ -232,7 +232,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _generateFromProductLink() async {

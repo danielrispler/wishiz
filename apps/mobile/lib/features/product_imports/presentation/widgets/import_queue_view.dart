@@ -30,10 +30,11 @@ class ImportQueueView extends StatelessWidget {
         final visibleJobs = jobs
             .where(
               (job) =>
-                  job.isActive ||
-                  job.isCompleted ||
-                  job.needsReview ||
-                  job.failed,
+                  job.acknowledgedAt == null &&
+                  (job.isActive ||
+                      job.isCompleted ||
+                      job.needsReview ||
+                      job.failed),
             )
             .take(5)
             .toList(growable: false);

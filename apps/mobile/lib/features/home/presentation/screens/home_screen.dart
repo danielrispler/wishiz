@@ -272,12 +272,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openSharedProductEditor({
+  Future<bool?> _openSharedProductEditor({
     required String wishlistId,
     required SharedProductDraft draft,
   }) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => WishlistItemEditorScreen(
           repository: widget.repository,
           wishlistId: wishlistId,
@@ -494,8 +494,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openImportJobEditor(ProductImportJob job) {
-    return _openSharedProductEditor(
+  Future<void> _openImportJobEditor(ProductImportJob job) async {
+    final success = await _openSharedProductEditor(
       wishlistId: job.wishlistId,
       draft: SharedProductDraft(
         productUrl: job.normalizedUrl,
@@ -504,6 +504,10 @@ class _HomeScreenState extends State<HomeScreen> {
         imageUrl: job.imageUrl,
       ),
     );
+
+    if (success == true) {
+      await _acknowledgeImportJob(job);
+    }
   }
 
   Widget _buildHomeTab({

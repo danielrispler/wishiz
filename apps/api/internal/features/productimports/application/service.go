@@ -171,9 +171,6 @@ func (s *Service) Retry(ctx context.Context, id string) (importdomain.Job, error
 	if !job.Retryable {
 		return importdomain.Job{}, Conflict("retryable", "product import job is not retryable")
 	}
-	if job.AttemptCount >= s.maxAttempts {
-		return importdomain.Job{}, Conflict("attemptCount", "product import job has no retry attempts left")
-	}
 	return s.repo.Retry(ctx, id)
 }
 
@@ -239,7 +236,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 				Completeness:    snapshot.Completeness,
 				LastError:       "product details need review",
 				ErrorCode:       ErrorCodeIncomplete,
-				Retryable:       code != string(scrapeapp.ErrorCodeBadRequest) && job.AttemptCount+1 < s.maxAttempts,
+				Retryable:       code != string(scrapeapp.ErrorCodeBadRequest),
 			})
 			return markErr
 		}
@@ -254,7 +251,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness:    snapshot.Completeness,
 			LastError:       err.Error(),
 			ErrorCode:       code,
-			Retryable:       retryable && job.AttemptCount+1 < s.maxAttempts,
+			Retryable:       retryable,
 		})
 		return markErr
 	}
@@ -271,7 +268,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 				Completeness:    snapshot.Completeness,
 				LastError:       "product details need review",
 				ErrorCode:       ErrorCodeIncomplete,
-				Retryable:       job.AttemptCount+1 < s.maxAttempts,
+				Retryable:       true,
 			})
 			return markErr
 		}
@@ -286,7 +283,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness:    snapshot.Completeness,
 			LastError:       "could not extract enough product details",
 			ErrorCode:       ErrorCodeIncomplete,
-			Retryable:       false,
+			Retryable:       true,
 		})
 		return markErr
 	}
@@ -302,7 +299,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness:    snapshot.Completeness,
 			LastError:       "product price needs review",
 			ErrorCode:       ErrorCodeIncomplete,
-			Retryable:       false,
+			Retryable:       true,
 		})
 		return markErr
 	}
@@ -329,7 +326,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 			Completeness:    snapshot.Completeness,
 			LastError:       createErr.Error(),
 			ErrorCode:       ErrorCodeItemCreate,
-			Retryable:       retryable && job.AttemptCount+1 < s.maxAttempts,
+			Retryable:       retryable,
 		})
 		return markErr
 	}
@@ -424,7 +421,7 @@ func classifyScrapeError(err error) (bool, string) {
 		case scrapeapp.ErrorCodeBadRequest:
 			return false, string(appErr.Code)
 		default:
-			return false, string(appErr.Code)
+			return true, string(appErr.Code)
 		}
 	}
 	return true, ErrorCodeTransientScrape

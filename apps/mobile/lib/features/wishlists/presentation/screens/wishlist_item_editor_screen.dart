@@ -381,10 +381,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   120,
                 ),
                 children: [
-                  if (isReviewingImportedDetails) ...[
-                    _buildImportedDetailsDisclaimer(context),
-                    const SizedBox(height: AppConstants.sectionGap),
-                  ],
                   Text(
                     widget.isEditing
                         ? 'Refresh the details of this saved piece without changing the surrounding look.'
@@ -676,51 +672,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
       child: child,
     );
   }
-
-  Widget _buildImportedDetailsDisclaimer(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colorScheme.tertiaryContainer,
-        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-        border: Border.all(color: colorScheme.tertiary.withValues(alpha: 0.4)),
-      ),
-      padding: const EdgeInsets.all(AppConstants.cardPadding),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            color: colorScheme.onTertiaryContainer,
-          ),
-          const SizedBox(width: AppConstants.spacing3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Imported details may have problems',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: colorScheme.onTertiaryContainer,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Please verify the title, price, image, and link before saving. You can edit everything in this preview.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onTertiaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String? _optionalValue(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;

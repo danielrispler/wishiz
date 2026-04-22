@@ -61,6 +61,30 @@ class WishizAppLink {
     return null;
   }
 
+  static String? extractInviteToken(String? rawValue) {
+    final normalized = rawValue?.trim() ?? '';
+    if (normalized.isEmpty || normalized == '/') {
+      return null;
+    }
+
+    if (!normalized.contains(RegExp(r'\s'))) {
+      final token = _extractInviteTokenFromUri(normalized);
+      if (token != null) {
+        return token;
+      }
+    }
+
+    for (final match in _wishlistLinkPattern.allMatches(normalized)) {
+      final link = _trimTrailingPunctuation(match.group(0)!);
+      final token = _extractInviteTokenFromUri(link);
+      if (token != null) {
+        return token;
+      }
+    }
+
+    return null;
+  }
+
   static String? _extractWishlistIdFromUri(String value) {
     final uri = Uri.tryParse(value);
     if (uri == null) {
@@ -89,6 +113,12 @@ class WishizAppLink {
     }
 
     return null;
+  }
+
+  static String? _extractInviteTokenFromUri(String value) {
+    final uri = Uri.tryParse(value);
+    final token = uri?.queryParameters['token']?.trim();
+    return token == null || token.isEmpty ? null : token;
   }
 
   static bool _matchesShareHost(String host) {

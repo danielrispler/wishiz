@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 
 void main() {
   group('HttpWishlistRepository', () {
@@ -62,7 +63,6 @@ void main() {
               title: decoded['title'] as String,
               description: decoded['description'] as String,
               year: decoded['year'] as int,
-              isShared: decoded['isShared'] as bool? ?? false,
             ),
           );
           return;
@@ -144,7 +144,7 @@ void main() {
     );
 
     test(
-      'falls back to the current user id when ownerUserId is missing',
+      'fails when ownerUserId is missing from the backend response',
       () async {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         addTearDown(server.close);
@@ -163,15 +163,16 @@ void main() {
           ]);
         });
 
-        final repository = await HttpWishlistRepository.create(
-          apiClient: WishlistApiClient(
-            baseUri: _serverUri(server),
-            authToken: 'test-token',
+        expect(
+          HttpWishlistRepository.create(
+            apiClient: WishlistApiClient(
+              baseUri: _serverUri(server),
+              authToken: 'test-token',
+            ),
+            currentUserId: 'fallback-user',
           ),
-          currentUserId: 'fallback-user',
+          throwsA(isA<FormatException>()),
         );
-
-        expect(repository.findById('travel')?.ownerUserId, 'fallback-user');
       },
     );
 
@@ -205,7 +206,7 @@ void main() {
                 id: 'lamp',
                 title: 'New lamp',
                 rank: 1,
-                status: 'Purchased',
+                status: 'purchased',
               ),
             );
             return;
@@ -230,13 +231,16 @@ void main() {
         final updatedItem = await repository.updateWishlistItemStatus(
           wishlistId: 'home',
           itemId: 'lamp',
-          status: 'Purchased',
+          status: WishlistItemStatus.purchased,
         );
 
         expect(detailRequestCount, 0);
         expect(updatedItem?.title, 'New lamp');
-        expect(updatedItem?.status, 'Purchased');
-        expect(repository.findById('home')?.items.first.status, 'Purchased');
+        expect(updatedItem?.status, WishlistItemStatus.purchased);
+        expect(
+          repository.findById('home')?.items.first.status,
+          WishlistItemStatus.purchased,
+        );
       },
     );
 
@@ -307,7 +311,6 @@ Map<String, dynamic> _wishlistJson({
   required String description,
   required int year,
   bool isArchived = false,
-  bool isShared = false,
   bool includeOwnerUserId = true,
   List<Map<String, dynamic>> items = const [],
 }) {
@@ -320,8 +323,8 @@ Map<String, dynamic> _wishlistJson({
     'createdAt': '2026-01-01T00:00:00Z',
     'updatedAt': '2026-01-02T00:00:00Z',
     'isArchived': isArchived,
-    'isShared': isShared,
-    'sharedUsers': const [],
+    'members': const [],
+    'invites': const [],
     'items': items,
   };
 
@@ -336,7 +339,7 @@ Map<String, dynamic> _itemJson({
   required String id,
   required String title,
   required int rank,
-  String status = 'Saved',
+  String status = 'saved',
 }) {
   return {
     'id': id,
@@ -344,7 +347,7 @@ Map<String, dynamic> _itemJson({
     'rank': rank,
     'notes': null,
     'priceLabel': null,
-    'priority': 'Medium',
+    'priority': 'medium',
     'status': status,
     'imageUrl': null,
     'productUrl': null,

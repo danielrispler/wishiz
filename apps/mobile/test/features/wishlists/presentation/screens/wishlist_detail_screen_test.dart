@@ -7,6 +7,7 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
@@ -20,7 +21,7 @@ void main() {
         id: 'item-1',
         title: 'Espresso cups',
         rank: 1,
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
         purchasedAt: null,
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
       );
@@ -28,7 +29,7 @@ void main() {
         id: 'item-2',
         title: 'Serving tray',
         rank: 2,
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
         purchasedAt: null,
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
       );
@@ -60,7 +61,7 @@ void main() {
                 id: 'item-1',
                 title: 'Espresso cups',
                 rank: 1,
-                status: 'Purchased',
+                status: WishlistItemStatus.purchased,
                 purchasedAt: null,
                 createdAt: DateTime.now().subtract(const Duration(days: 3)),
               ),
@@ -68,7 +69,7 @@ void main() {
                 id: 'item-2',
                 title: 'Serving tray',
                 rank: 2,
-                status: 'Purchased',
+                status: WishlistItemStatus.purchased,
                 purchasedAt: null,
                 createdAt: DateTime.now().subtract(const Duration(days: 1)),
               ),
@@ -106,16 +107,55 @@ void main() {
       );
     });
   });
+
+  group('WishlistDetailScreen sharing', () {
+    testWidgets('invite dialog collects email and role without a name field', (
+      tester,
+    ) async {
+      final repository = InMemoryWishlistRepository(
+        ownerUserId: _sampleUser.id,
+        initialWishlists: [_buildWishlist()],
+      );
+
+      await tester.pumpWidget(
+        _buildSubject(repository: repository, showPurchasedOnly: false),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Share list'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Invite'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Name'), findsNothing);
+      expect(find.text('Email'), findsOneWidget);
+      expect(find.text('Role'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Email'),
+        'maya@example.com',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Invite'));
+      await tester.pumpAndSettle();
+
+      final wishlist = repository.findById('wishlist-1');
+      expect(wishlist?.invites.single.email, 'maya@example.com');
+      expect(wishlist?.invites.single.role, WishlistMemberRole.editor);
+    });
+  });
 }
 
-Widget _buildSubject({required InMemoryWishlistRepository repository}) {
+Widget _buildSubject({
+  required InMemoryWishlistRepository repository,
+  bool showPurchasedOnly = true,
+}) {
   return MaterialApp(
     home: WishlistDetailScreen(
       repository: repository,
       authRepository: _FakeAuthRepository(currentUser: _sampleUser),
       sharedProductRepository: _FakeSharedProductRepository(),
       wishlistId: 'wishlist-1',
-      showPurchasedOnly: true,
+      showPurchasedOnly: showPurchasedOnly,
     ),
   );
 }

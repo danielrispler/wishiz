@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 
 abstract class WishlistRepository {
@@ -9,7 +11,7 @@ abstract class WishlistRepository {
 
   Wishlist? findById(String id);
 
-  Future<Wishlist?> joinWishlist(String id);
+  Future<Wishlist?> joinWishlist({required String id, required String token});
 
   Future<Wishlist> createWishlist({
     required String title,
@@ -32,14 +34,18 @@ abstract class WishlistRepository {
 
   Future<bool> deleteWishlist(String id);
 
-  Future<Wishlist?> addSharedUser({
+  Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String name,
     required String email,
-    required String role,
+    required WishlistMemberRole role,
   });
 
-  Future<bool> removeSharedUser({
+  Future<bool> deleteInvite({
+    required String wishlistId,
+    required String inviteId,
+  });
+
+  Future<bool> removeMember({
     required String wishlistId,
     required String userId,
   });
@@ -49,8 +55,8 @@ abstract class WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   });
@@ -63,7 +69,7 @@ abstract class WishlistRepository {
   Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
-    required String status,
+    required WishlistItemStatus status,
   });
 
   Future<WishlistItem?> updateWishlistItem({
@@ -72,8 +78,8 @@ abstract class WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   });

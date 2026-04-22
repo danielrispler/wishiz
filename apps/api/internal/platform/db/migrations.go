@@ -15,6 +15,13 @@ var migrationFiles embed.FS
 
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `
+		CREATE EXTENSION IF NOT EXISTS pgcrypto;
+		CREATE EXTENSION IF NOT EXISTS citext;
+	`); err != nil {
+		return fmt.Errorf("ensure schema extensions: %w", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version TEXT PRIMARY KEY,
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

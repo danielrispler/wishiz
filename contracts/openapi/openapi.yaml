@@ -248,6 +248,84 @@ paths:
           $ref: '#/components/responses/WishlistNotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/join:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Join a wishlist with an invite token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinWishlistRequest'
+      responses:
+        '200':
+          description: Joined wishlist aggregate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wishlist'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/invites:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+    post:
+      summary: Create a wishlist invite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWishlistInviteRequest'
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistInvite'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/invites/{inviteId}:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+      - $ref: '#/components/parameters/InviteID'
+    delete:
+      summary: Delete a wishlist invite
+      responses:
+        '204':
+          description: Invite deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /wishlists/{id}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/WishlistID'
+      - $ref: '#/components/parameters/UserID'
+    delete:
+      summary: Remove a wishlist member
+      responses:
+        '204':
+          description: Member removed
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/WishlistNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     WishlistID:
@@ -259,6 +337,20 @@ components:
         format: uuid
     ItemID:
       name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InviteID:
+      name: inviteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserID:
+      name: userId
       in: path
       required: true
       schema:
@@ -296,6 +388,9 @@ components:
         id:
           type: string
           format: uuid
+        ownerUserId:
+          type: string
+          format: uuid
         title:
           type: string
         description:
@@ -313,43 +408,96 @@ components:
           format: date-time
         isArchived:
           type: boolean
-        isShared:
-          type: boolean
-        sharedUsers:
+        members:
           type: array
           items:
-            $ref: '#/components/schemas/SharedUser'
+            $ref: '#/components/schemas/WishlistMember'
+        invites:
+          type: array
+          items:
+            $ref: '#/components/schemas/WishlistInvite'
         items:
           type: array
           items:
             $ref: '#/components/schemas/WishlistItem'
       required:
         - id
+        - ownerUserId
         - title
         - description
         - year
         - createdAt
         - updatedAt
         - isArchived
-        - isShared
-        - sharedUsers
+        - members
+        - invites
         - items
-    SharedUser:
+    WishlistMember:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        role:
+          type: string
+          enum: [viewer, editor]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - userId
+        - email
+        - fullName
+        - role
+        - createdAt
+        - updatedAt
+    WishlistInvite:
       type: object
       properties:
         id:
           type: string
-        name:
-          type: string
+          format: uuid
         email:
           type: string
+          format: email
         role:
           type: string
+          enum: [viewer, editor]
+        invitedByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: Returned only when an invite is created.
       required:
         - id
-        - name
         - email
         - role
+        - expiresAt
+        - createdAt
+        - updatedAt
     WishlistItem:
       type: object
       properties:
@@ -368,10 +516,10 @@ components:
           nullable: true
         priority:
           type: string
-          enum: [Low, Medium, High]
+          enum: [low, medium, high]
         status:
           type: string
-          enum: [Saved, Considering, Purchased]
+          enum: [saved, considering, purchased]
         imageUrl:
           type: string
           nullable: true
@@ -408,8 +556,6 @@ components:
         coverImageUrl:
           type: string
           nullable: true
-        isShared:
-          type: boolean
       required:
         - title
         - year
@@ -425,8 +571,6 @@ components:
         coverImageUrl:
           type: string
           nullable: true
-        isShared:
-          type: boolean
       additionalProperties: false
     CreateWishlistItemRequest:
       type: object
@@ -441,10 +585,10 @@ components:
           nullable: true
         priority:
           type: string
-          enum: [Low, Medium, High]
+          enum: [low, medium, high]
         status:
           type: string
-          enum: [Saved, Considering, Purchased]
+          enum: [saved, considering, purchased]
         imageUrl:
           type: string
           nullable: true
@@ -466,10 +610,10 @@ components:
           nullable: true
         priority:
           type: string
-          enum: [Low, Medium, High]
+          enum: [low, medium, high]
         status:
           type: string
-          enum: [Saved, Considering, Purchased]
+          enum: [saved, considering, purchased]
         imageUrl:
           type: string
           nullable: true
@@ -487,6 +631,28 @@ components:
             format: uuid
       required:
         - orderedItemIds
+    JoinWishlistRequest:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+    CreateWishlistInviteRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [viewer, editor]
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - email
+        - role
     ScrapedProduct:
       type: object
       properties:

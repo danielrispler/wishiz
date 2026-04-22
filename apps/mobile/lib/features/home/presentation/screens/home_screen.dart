@@ -27,6 +27,7 @@ class HomeScreen extends StatefulWidget {
     required this.authRepository,
     required this.currentUser,
     this.initialWishlistId,
+    this.initialInviteToken,
     this.initialSharedText,
     this.onInitialWishlistHandled,
     this.onInitialSharedTextHandled,
@@ -37,6 +38,7 @@ class HomeScreen extends StatefulWidget {
   final AuthRepository authRepository;
   final AppUser currentUser;
   final String? initialWishlistId;
+  final String? initialInviteToken;
   final String? initialSharedText;
   final VoidCallback? onInitialWishlistHandled;
   final VoidCallback? onInitialSharedTextHandled;
@@ -75,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _handledInitialSharedText = null;
     }
     if (oldWidget.initialWishlistId != widget.initialWishlistId ||
+        oldWidget.initialInviteToken != widget.initialInviteToken ||
         oldWidget.initialSharedText != widget.initialSharedText) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _handlePendingEntryPoints();
@@ -146,8 +149,17 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.onInitialWishlistHandled?.call();
 
     if (wishlist == null) {
+      final inviteToken = widget.initialInviteToken?.trim();
+      if (inviteToken == null || inviteToken.isEmpty) {
+        _showFeedback('This invite link is missing an invite token.');
+        return;
+      }
+
       try {
-        wishlist = await widget.repository.joinWishlist(wishlistId);
+        wishlist = await widget.repository.joinWishlist(
+          id: wishlistId,
+          token: inviteToken,
+        );
       } catch (e, stackTrace) {
         debugPrint('Failed to join wishlist: $e\n$stackTrace');
         if (!mounted) return;
@@ -833,8 +845,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (showPurchasedOnly) {
       segments.add('${wishlist.purchasedItemCount} purchased');
-    } else if (wishlist.sharedUsers.isNotEmpty) {
-      segments.add('${wishlist.sharedUsers.length} members');
+    } else if (wishlist.members.isNotEmpty) {
+      segments.add('${wishlist.members.length} members');
     }
 
     return segments.join(' · ');
@@ -901,7 +913,7 @@ class _HomeScreenState extends State<HomeScreen> {
           visibleWishlists
               .where(
                 (wishlist) =>
-                    wishlist.sharedUsers.isNotEmpty &&
+                    wishlist.members.isNotEmpty &&
                     (wishlist.activeItemCount > 0 || wishlist.items.isEmpty),
               )
               .toList(growable: false),

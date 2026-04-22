@@ -1,3 +1,5 @@
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
+
 class WishlistItem {
   const WishlistItem({
     required this.id,
@@ -5,24 +7,25 @@ class WishlistItem {
     required this.rank,
     this.notes,
     this.priceLabel,
-    this.priority = 'Medium',
-    this.status = 'Saved',
+    this.priority = WishlistItemPriority.medium,
+    this.status = WishlistItemStatus.saved,
     this.imageUrl,
     this.productUrl,
     this.purchasedAt,
     required this.createdAt,
   });
 
-  static const List<String> priorities = ['Low', 'Medium', 'High'];
-  static const List<String> statuses = ['Saved', 'Considering', 'Purchased'];
+  static const List<WishlistItemPriority> priorities =
+      WishlistItemPriority.values;
+  static const List<WishlistItemStatus> statuses = WishlistItemStatus.values;
 
   final String id;
   final String title;
   final int rank;
   final String? notes;
   final String? priceLabel;
-  final String priority;
-  final String status;
+  final WishlistItemPriority priority;
+  final WishlistItemStatus status;
   final String? imageUrl;
   final String? productUrl;
   final DateTime? purchasedAt;
@@ -39,8 +42,8 @@ class WishlistItem {
     int? rank,
     Object? notes = _noValue,
     Object? priceLabel = _noValue,
-    String? priority,
-    String? status,
+    WishlistItemPriority? priority,
+    WishlistItemStatus? status,
     Object? imageUrl = _noValue,
     Object? productUrl = _noValue,
     Object? purchasedAt = _noValue,
@@ -56,8 +59,9 @@ class WishlistItem {
           : priceLabel as String?,
       priority: priority ?? this.priority,
       status: status ?? this.status,
-      imageUrl:
-          identical(imageUrl, _noValue) ? this.imageUrl : imageUrl as String?,
+      imageUrl: identical(imageUrl, _noValue)
+          ? this.imageUrl
+          : imageUrl as String?,
       productUrl: identical(productUrl, _noValue)
           ? this.productUrl
           : productUrl as String?,

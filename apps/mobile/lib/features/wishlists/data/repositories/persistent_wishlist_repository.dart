@@ -5,6 +5,8 @@ import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_r
 import 'package:wishiz/features/wishlists/data/storage/wishlist_storage.dart';
 import 'package:wishiz/features/wishlists/data/storage/wishlist_storage_codec.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -97,8 +99,11 @@ class PersistentWishlistRepository implements WishlistRepository {
   Wishlist? findById(String id) => _repository.findById(id);
 
   @override
-  Future<Wishlist?> joinWishlist(String id) async {
-    final wishlist = await _repository.joinWishlist(id);
+  Future<Wishlist?> joinWishlist({
+    required String id,
+    required String token,
+  }) async {
+    final wishlist = await _repository.joinWishlist(id: id, token: token);
     if (wishlist != null) {
       return _persistAndReturn(wishlist);
     }
@@ -170,30 +175,40 @@ class PersistentWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Future<Wishlist?> addSharedUser({
+  Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String name,
     required String email,
-    required String role,
+    required WishlistMemberRole role,
   }) async {
-    final wishlist = await _repository.addSharedUser(
+    final invite = await _repository.createInvite(
       wishlistId: wishlistId,
-      name: name,
       email: email,
       role: role,
     );
-    if (wishlist != null) {
-      return _persistAndReturn(wishlist);
-    }
-    return wishlist;
+    return _persistAndReturn(invite);
   }
 
   @override
-  Future<bool> removeSharedUser({
+  Future<bool> deleteInvite({
+    required String wishlistId,
+    required String inviteId,
+  }) async {
+    final wasRemoved = await _repository.deleteInvite(
+      wishlistId: wishlistId,
+      inviteId: inviteId,
+    );
+    if (wasRemoved) {
+      return _persistAndReturn(true);
+    }
+    return wasRemoved;
+  }
+
+  @override
+  Future<bool> removeMember({
     required String wishlistId,
     required String userId,
   }) async {
-    final wasRemoved = await _repository.removeSharedUser(
+    final wasRemoved = await _repository.removeMember(
       wishlistId: wishlistId,
       userId: userId,
     );
@@ -209,8 +224,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -246,7 +261,7 @@ class PersistentWishlistRepository implements WishlistRepository {
   Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
-    required String status,
+    required WishlistItemStatus status,
   }) async {
     final item = await _repository.updateWishlistItemStatus(
       wishlistId: wishlistId,
@@ -266,8 +281,8 @@ class PersistentWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 
 void main() {
   const ownerUserId = 'user-dana';
@@ -29,7 +30,6 @@ void main() {
           description: 'Warm textures and quieter lighting.',
           year: 2027,
           coverImageUrl: 'https://example.com/cover.jpg',
-          isShared: true,
         );
 
         expect(repository.getWishlists(), hasLength(1));
@@ -41,7 +41,6 @@ void main() {
           repository.watchWishlists().value.first.coverImageUrl,
           'https://example.com/cover.jpg',
         );
-        expect(repository.watchWishlists().value.first.isShared, isTrue);
         expect(
           repository.watchWishlists().value.first.ownerUserId,
           ownerUserId,
@@ -72,7 +71,7 @@ void main() {
       await repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: secondItem.id,
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       final refreshedWishlist = repository.findById(wishlist.id);
@@ -81,7 +80,10 @@ void main() {
       expect(secondItem.rank, 2);
       expect(refreshedWishlist?.activeItemCount, 1);
       expect(refreshedWishlist?.purchasedItemCount, 1);
-      expect(refreshedWishlist?.purchasedItems.first.status, 'Purchased');
+      expect(
+        refreshedWishlist?.purchasedItems.first.status,
+        WishlistItemStatus.purchased,
+      );
       expect(refreshedWishlist?.purchasedItems.first.purchasedAt, isNotNull);
     });
 
@@ -99,7 +101,7 @@ void main() {
       final item = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Stoneware bowl set',
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       final originalPurchasedAt = item.purchasedAt;
@@ -109,7 +111,7 @@ void main() {
         wishlistId: wishlist.id,
         itemId: item.id,
         title: 'Stoneware bowl set, matte glaze',
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       expect(updatedItem?.purchasedAt, isNotNull);
@@ -130,7 +132,7 @@ void main() {
       final item = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Stoneware bowl set',
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       final originalPurchasedAt = item.purchasedAt;
@@ -139,7 +141,7 @@ void main() {
       final updatedItem = await repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: item.id,
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       expect(updatedItem?.purchasedAt, isNotNull);
@@ -160,17 +162,17 @@ void main() {
       final item = await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Stoneware bowl set',
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
 
       final restoredItem = await repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: item.id,
-        status: 'Saved',
+        status: WishlistItemStatus.saved,
       );
 
       final refreshedWishlist = repository.findById(wishlist.id);
-      expect(restoredItem?.status, 'Saved');
+      expect(restoredItem?.status, WishlistItemStatus.saved);
       expect(restoredItem?.purchasedAt, isNull);
       expect(refreshedWishlist?.purchasedItems, isEmpty);
       expect(refreshedWishlist?.activeItems.map((entry) => entry.id), [
@@ -224,7 +226,7 @@ void main() {
       );
     });
 
-    test('adds and removes collaborators on a shared wishlist', () async {
+    test('creates and deletes invites on a wishlist', () async {
       final repository = InMemoryWishlistRepository(
         ownerUserId: ownerUserId,
         initialWishlists: [],
@@ -235,26 +237,24 @@ void main() {
         year: 2026,
       );
 
-      final sharedWishlist = await repository.addSharedUser(
+      final invite = await repository.createInvite(
         wishlistId: wishlist.id,
-        name: 'Maya',
         email: 'maya@example.com',
-        role: 'Editor',
+        role: WishlistMemberRole.editor,
       );
 
-      final collaboratorId = sharedWishlist!.sharedUsers.first.id;
-      final removed = await repository.removeSharedUser(
+      final refreshedWishlist = repository.findById(wishlist.id);
+      final removed = await repository.deleteInvite(
         wishlistId: wishlist.id,
-        userId: collaboratorId,
+        inviteId: invite.id,
       );
 
-      expect(sharedWishlist.isShared, isTrue);
-      expect(sharedWishlist.ownerUserId, ownerUserId);
-      expect(sharedWishlist.sharedUsers, hasLength(1));
-      expect(sharedWishlist.sharedUsers.first.email, 'maya@example.com');
+      expect(refreshedWishlist?.ownerUserId, ownerUserId);
+      expect(refreshedWishlist?.invites, hasLength(1));
+      expect(refreshedWishlist?.invites.first.email, 'maya@example.com');
+      expect(refreshedWishlist?.invites.first.role, WishlistMemberRole.editor);
       expect(removed, isTrue);
-      expect(repository.findById(wishlist.id)?.sharedUsers, isEmpty);
-      expect(repository.findById(wishlist.id)?.isShared, isFalse);
+      expect(repository.findById(wishlist.id)?.invites, isEmpty);
     });
   });
 }

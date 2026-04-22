@@ -11,9 +11,10 @@ import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_member.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
@@ -40,7 +41,6 @@ class WishlistDetailScreen extends StatefulWidget {
 }
 
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
-
   static const String _sortHighestRank = 'Highest Rank';
   static const String _sortLowestRank = 'Lowest Rank';
   static const String _sortNewestAdded = 'Newest Added';
@@ -94,7 +94,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                 actions: [
                   IconButton(
                     tooltip: 'Share list',
-                    onPressed: () => _showShareDialog(context, wishlist, currentUser),
+                    onPressed: () =>
+                        _showShareDialog(context, wishlist, currentUser),
                     icon: const Icon(Icons.share_outlined),
                   ),
                   if (!widget.showPurchasedOnly)
@@ -372,34 +373,40 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   _buildSharedUserRow(
                     dialogContext,
                     wishlist,
-                    SharedUser(
-                      id: currentUser.id,
-                      name: currentUser.fullName,
+                    WishlistMember(
+                      userId: currentUser.id,
+                      fullName: currentUser.fullName,
                       email: currentUser.email,
-                      role: 'Owner',
+                      role: WishlistMemberRole.editor,
+                      createdAt: wishlist.createdAt,
+                      updatedAt: wishlist.updatedAt,
                     ),
                     isOwner: isOwner,
                     isOwnerRow: true,
+                    roleLabel: 'Owner',
                   )
                 else
                   _buildSharedUserRow(
                     dialogContext,
                     wishlist,
-                    SharedUser(
-                      id: wishlist.ownerUserId,
-                      name: 'List Owner',
+                    WishlistMember(
+                      userId: wishlist.ownerUserId,
+                      fullName: 'List Owner',
                       email: '',
-                      role: 'Owner',
+                      role: WishlistMemberRole.editor,
+                      createdAt: wishlist.createdAt,
+                      updatedAt: wishlist.updatedAt,
                     ),
                     isOwner: isOwner,
                     isOwnerRow: true,
+                    roleLabel: 'Owner',
                   ),
-                if (wishlist.sharedUsers.isNotEmpty) ...[
-                  ...wishlist.sharedUsers.map(
-                    (user) => _buildSharedUserRow(
+                if (wishlist.members.isNotEmpty) ...[
+                  ...wishlist.members.map(
+                    (member) => _buildSharedUserRow(
                       dialogContext,
                       wishlist,
-                      user,
+                      member,
                       isOwner: isOwner,
                     ),
                   ),
@@ -408,6 +415,14 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             ),
           ),
           actions: [
+            if (isOwner)
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _openInviteDialog(context, wishlist);
+                },
+                child: const Text('Invite'),
+              ),
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
@@ -424,9 +439,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   Widget _buildSharedUserRow(
     BuildContext context,
     Wishlist wishlist,
-    SharedUser user, {
+    WishlistMember user, {
     bool isOwner = false,
     bool isOwnerRow = false,
+    String? roleLabel,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
@@ -438,21 +454,24 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       child: Row(
         children: [
           CircleAvatar(
-            child: Text(user.name.isEmpty ? '?' : user.name[0].toUpperCase()),
+            child: Text(
+              user.fullName.isEmpty ? '?' : user.fullName[0].toUpperCase(),
+            ),
           ),
           const SizedBox(width: AppConstants.spacing4),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(user.name, style: Theme.of(context).textTheme.titleMedium),
-                if (user.role.isNotEmpty) ...[
-                  const SizedBox(height: AppConstants.spacing1),
-                  Text(
-                    user.role,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
+                Text(
+                  user.fullName.isEmpty ? user.email : user.fullName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppConstants.spacing1),
+                Text(
+                  roleLabel ?? user.role.label,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ],
             ),
           ),
@@ -512,8 +531,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       ],
     );
   }
-
-
 
   Widget _buildEmptyItemsState(BuildContext context) {
     return Container(
@@ -834,10 +851,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                             context,
                             label: 'Rank #${item.rank}',
                           ),
-                          _buildMetadataChip(context, label: item.status),
+                          _buildMetadataChip(context, label: item.status.label),
                           _buildMetadataChip(
                             context,
-                            label: '${item.priority} priority',
+                            label: '${item.priority.label} priority',
                           ),
                           _buildMetadataChip(
                             context,
@@ -927,9 +944,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     Wishlist wishlist,
   ) async {
     final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    var role = 'Editor';
+    var email = '';
+    var role = WishlistMemberRole.editor;
 
     final collaborator = await showDialog<_InviteCollaboratorResult>(
       context: context,
@@ -944,19 +960,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Name'),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please add a name.';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: emailController,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Email'),
+                      onChanged: (value) {
+                        email = value;
+                      },
                       validator: (value) {
                         final trimmed = value?.trim() ?? '';
                         if (trimmed.isEmpty || !trimmed.contains('@')) {
@@ -966,22 +974,22 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       },
                     ),
                     const SizedBox(height: AppConstants.spacing3),
-                    DropdownButtonFormField<String>(
+                    DropdownButtonFormField<WishlistMemberRole>(
                       initialValue: role,
                       decoration: const InputDecoration(labelText: 'Role'),
                       items: const [
                         DropdownMenuItem(
-                          value: 'Editor',
+                          value: WishlistMemberRole.editor,
                           child: Text('Editor'),
                         ),
                         DropdownMenuItem(
-                          value: 'Viewer',
+                          value: WishlistMemberRole.viewer,
                           child: Text('Viewer'),
                         ),
                       ],
                       onChanged: (value) {
                         setDialogState(() {
-                          role = value ?? 'Editor';
+                          role = value ?? WishlistMemberRole.editor;
                         });
                       },
                     ),
@@ -1001,8 +1009,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
                     Navigator.of(context).pop(
                       _InviteCollaboratorResult(
-                        name: nameController.text.trim(),
-                        email: emailController.text.trim(),
+                        email: email.trim(),
                         role: role,
                       ),
                     );
@@ -1016,32 +1023,20 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       },
     );
 
-    nameController.dispose();
-    emailController.dispose();
-
     if (collaborator == null) {
       return;
     }
 
     try {
-      final previousCount = wishlist.sharedUsers.length;
-      final updatedWishlist = await widget.repository.addSharedUser(
+      await widget.repository.createInvite(
         wishlistId: wishlist.id,
-        name: collaborator.name,
         email: collaborator.email,
         role: collaborator.role,
       );
-
-      final nextCount = updatedWishlist?.sharedUsers.length ?? previousCount;
       if (!context.mounted) {
         return;
       }
-      _showFeedback(
-        context,
-        nextCount > previousCount
-            ? 'Collaborator invited.'
-            : 'That collaborator is already on this list.',
-      );
+      _showFeedback(context, 'Collaborator invited.');
     } catch (error) {
       if (!mounted) {
         return;
@@ -1053,19 +1048,19 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   Future<void> _removeCollaborator(
     BuildContext context,
     Wishlist wishlist,
-    SharedUser user,
+    WishlistMember user,
   ) async {
     try {
-      final wasRemoved = await widget.repository.removeSharedUser(
+      final wasRemoved = await widget.repository.removeMember(
         wishlistId: wishlist.id,
-        userId: user.id,
+        userId: user.userId,
       );
 
       if (wasRemoved) {
         if (!mounted) {
           return;
         }
-        _showFeedback(this.context, '${user.name} removed.');
+        _showFeedback(this.context, '${user.fullName} removed.');
       }
     } catch (error) {
       if (!mounted) {
@@ -1085,7 +1080,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       await widget.repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: item.id,
-        status: 'Purchased',
+        status: WishlistItemStatus.purchased,
       );
       if (!mounted) {
         return;
@@ -1122,7 +1117,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       await widget.repository.updateWishlistItemStatus(
         wishlistId: wishlist.id,
         itemId: item.id,
-        status: 'Saved',
+        status: WishlistItemStatus.saved,
       );
       if (!mounted) {
         return;
@@ -1164,7 +1159,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           (item) => widget.repository.updateWishlistItemStatus(
             wishlistId: wishlist.id,
             itemId: item.id,
-            status: 'Saved',
+            status: WishlistItemStatus.saved,
           ),
         ),
       );
@@ -1388,13 +1383,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 enum _WishlistAction { delete }
 
 class _InviteCollaboratorResult {
-  const _InviteCollaboratorResult({
-    required this.name,
-    required this.email,
-    required this.role,
-  });
+  const _InviteCollaboratorResult({required this.email, required this.role});
 
-  final String name;
   final String email;
-  final String role;
+  final WishlistMemberRole role;
 }

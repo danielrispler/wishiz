@@ -3,13 +3,16 @@ package domain
 import "time"
 
 const (
-	ItemPriorityLow    = "Low"
-	ItemPriorityMedium = "Medium"
-	ItemPriorityHigh   = "High"
+	ItemPriorityLow    = "low"
+	ItemPriorityMedium = "medium"
+	ItemPriorityHigh   = "high"
 
-	ItemStatusSaved       = "Saved"
-	ItemStatusConsidering = "Considering"
-	ItemStatusPurchased   = "Purchased"
+	ItemStatusSaved       = "saved"
+	ItemStatusConsidering = "considering"
+	ItemStatusPurchased   = "purchased"
+
+	MemberRoleViewer = "viewer"
+	MemberRoleEditor = "editor"
 )
 
 type Wishlist struct {
@@ -22,15 +25,32 @@ type Wishlist struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	IsArchived    bool
-	SharedUsers   []SharedUser
+	Members       []WishlistMember
+	Invites       []WishlistInvite
 	Items         []WishlistItem
 }
 
-type SharedUser struct {
-	ID    string
-	Name  string
-	Email string
-	Role  string
+type WishlistMember struct {
+	WishlistID string
+	UserID     string
+	Email      string
+	FullName   string
+	Role       string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type WishlistInvite struct {
+	ID              string
+	WishlistID      string
+	Email           string
+	Role            string
+	InvitedByUserID *string
+	AcceptedAt      *time.Time
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Token           string
 }
 
 type WishlistItem struct {

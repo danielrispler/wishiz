@@ -13,8 +13,9 @@ import (
 )
 
 type Service interface {
-	AddSharedUser(ctx context.Context, wishlistID string, input *application.AddSharedUserInput) error
-	RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error
+	CreateInvite(ctx context.Context, wishlistID string, input *application.CreateInviteInput) (domain.WishlistInvite, error)
+	DeleteInvite(ctx context.Context, wishlistID string, inviteID string) error
+	RemoveMember(ctx context.Context, wishlistID string, userID string) error
 	List(ctx context.Context) ([]domain.Wishlist, error)
 	GetByID(ctx context.Context, id string) (domain.Wishlist, error)
 	Create(ctx context.Context, input *application.CreateWishlistInput) (domain.Wishlist, error)
@@ -26,7 +27,7 @@ type Service interface {
 	PatchItem(ctx context.Context, wishlistID, itemID string, input *application.PatchItemInput) (domain.WishlistItem, error)
 	DeleteItem(ctx context.Context, wishlistID string, itemID string) error
 	ReorderItems(ctx context.Context, wishlistID string, orderedItemIDs []string) (domain.Wishlist, error)
-	Join(ctx context.Context, id string) (domain.Wishlist, error)
+	Join(ctx context.Context, id string, input *application.JoinWishlistInput) (domain.Wishlist, error)
 }
 
 type handler struct {
@@ -72,31 +73,50 @@ type reorderItemsRequest struct {
 	OrderedItemIDs []string `json:"orderedItemIds"`
 }
 
-type addSharedUserRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+type createInviteRequest struct {
+	Email     string     `json:"email"`
+	Role      string     `json:"role"`
+	ExpiresAt *time.Time `json:"expiresAt"`
+}
+
+type joinWishlistRequest struct {
+	Token string `json:"token"`
 }
 
 type wishlistResponse struct {
-	ID            string             `json:"id"`
-	OwnerUserID   string             `json:"ownerUserId"`
-	Title         string             `json:"title"`
-	Description   string             `json:"description"`
-	Year          int                `json:"year"`
-	CoverImageURL *string            `json:"coverImageUrl"`
-	CreatedAt     time.Time          `json:"createdAt"`
-	UpdatedAt     time.Time          `json:"updatedAt"`
-	IsArchived    bool               `json:"isArchived"`
-	SharedUsers   []sharedUserResult `json:"sharedUsers"`
-	Items         []itemResponse     `json:"items"`
+	ID            string           `json:"id"`
+	OwnerUserID   string           `json:"ownerUserId"`
+	Title         string           `json:"title"`
+	Description   string           `json:"description"`
+	Year          int              `json:"year"`
+	CoverImageURL *string          `json:"coverImageUrl"`
+	CreatedAt     time.Time        `json:"createdAt"`
+	UpdatedAt     time.Time        `json:"updatedAt"`
+	IsArchived    bool             `json:"isArchived"`
+	Members       []memberResponse `json:"members"`
+	Invites       []inviteResponse `json:"invites"`
+	Items         []itemResponse   `json:"items"`
 }
 
-type sharedUserResult struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+type memberResponse struct {
+	UserID    string    `json:"userId"`
+	Email     string    `json:"email"`
+	FullName  string    `json:"fullName"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type inviteResponse struct {
+	ID              string     `json:"id"`
+	Email           string     `json:"email"`
+	Role            string     `json:"role"`
+	InvitedByUserID *string    `json:"invitedByUserId"`
+	AcceptedAt      *time.Time `json:"acceptedAt"`
+	ExpiresAt       time.Time  `json:"expiresAt"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	Token           string     `json:"token,omitempty"`
 }
 
 type itemResponse struct {
@@ -139,8 +159,9 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, au
 	mux.HandleFunc("PATCH /wishlists/{id}/items/{itemId}", authMiddleware(withAuthenticatedUser(h.patchItem)))
 	mux.HandleFunc("DELETE /wishlists/{id}/items/{itemId}", authMiddleware(withAuthenticatedUser(h.deleteItem)))
 	mux.HandleFunc("POST /wishlists/{id}/items/reorder", authMiddleware(withAuthenticatedUser(h.reorderItems)))
-	mux.HandleFunc("POST /wishlists/{id}/shared-users", authMiddleware(withAuthenticatedUser(h.addSharedUser)))
-	mux.HandleFunc("DELETE /wishlists/{id}/shared-users/{userId}", authMiddleware(withAuthenticatedUser(h.removeSharedUser)))
+	mux.HandleFunc("POST /wishlists/{id}/invites", authMiddleware(withAuthenticatedUser(h.createInvite)))
+	mux.HandleFunc("DELETE /wishlists/{id}/invites/{inviteId}", authMiddleware(withAuthenticatedUser(h.deleteInvite)))
+	mux.HandleFunc("DELETE /wishlists/{id}/members/{userId}", authMiddleware(withAuthenticatedUser(h.removeMember)))
 	mux.HandleFunc("POST /wishlists/{id}/join", authMiddleware(withAuthenticatedUser(h.joinWishlist)))
 }
 
@@ -201,7 +222,15 @@ func (h handler) getWishlist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) joinWishlist(w http.ResponseWriter, r *http.Request) {
-	wishlist, err := h.service.Join(r.Context(), r.PathValue("id"))
+	var request joinWishlistRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+
+	wishlist, err := h.service.Join(r.Context(), r.PathValue("id"), &application.JoinWishlistInput{
+		Token: request.Token,
+	})
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -358,14 +387,21 @@ func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
-	sharedUsers := make([]sharedUserResult, 0, len(wishlist.SharedUsers))
-	for _, user := range wishlist.SharedUsers {
-		sharedUsers = append(sharedUsers, sharedUserResult{
-			ID:    user.ID,
-			Name:  user.Name,
-			Email: user.Email,
-			Role:  user.Role,
+	members := make([]memberResponse, 0, len(wishlist.Members))
+	for _, member := range wishlist.Members {
+		members = append(members, memberResponse{
+			UserID:    member.UserID,
+			Email:     member.Email,
+			FullName:  member.FullName,
+			Role:      member.Role,
+			CreatedAt: member.CreatedAt,
+			UpdatedAt: member.UpdatedAt,
 		})
+	}
+
+	invites := make([]inviteResponse, 0, len(wishlist.Invites))
+	for _, invite := range wishlist.Invites {
+		invites = append(invites, mapInviteResponse(invite))
 	}
 
 	items := make([]itemResponse, 0, len(wishlist.Items))
@@ -383,24 +419,48 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		CreatedAt:     wishlist.CreatedAt,
 		UpdatedAt:     wishlist.UpdatedAt,
 		IsArchived:    wishlist.IsArchived,
-		SharedUsers:   sharedUsers,
+		Members:       members,
+		Invites:       invites,
 		Items:         items,
 	}
 }
 
-func (h handler) addSharedUser(w http.ResponseWriter, r *http.Request) {
-	var request addSharedUserRequest
+func mapInviteResponse(invite domain.WishlistInvite) inviteResponse {
+	return inviteResponse{
+		ID:              invite.ID,
+		Email:           invite.Email,
+		Role:            invite.Role,
+		InvitedByUserID: invite.InvitedByUserID,
+		AcceptedAt:      invite.AcceptedAt,
+		ExpiresAt:       invite.ExpiresAt,
+		CreatedAt:       invite.CreatedAt,
+		UpdatedAt:       invite.UpdatedAt,
+		Token:           invite.Token,
+	}
+}
+
+func (h handler) createInvite(w http.ResponseWriter, r *http.Request) {
+	var request createInviteRequest
 	if err := httpx.DecodeJSON(r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
 
-	err := h.service.AddSharedUser(r.Context(), r.PathValue("id"), &application.AddSharedUserInput{
-		Name:  request.Name,
-		Email: request.Email,
-		Role:  request.Role,
+	invite, err := h.service.CreateInvite(r.Context(), r.PathValue("id"), &application.CreateInviteInput{
+		Email:     request.Email,
+		Role:      request.Role,
+		ExpiresAt: request.ExpiresAt,
 	})
 	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusCreated, mapInviteResponse(invite))
+}
+
+func (h handler) deleteInvite(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.DeleteInvite(r.Context(), r.PathValue("id"), r.PathValue("inviteId")); err != nil {
 		h.writeError(w, r, err)
 		return
 	}
@@ -408,8 +468,8 @@ func (h handler) addSharedUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h handler) removeSharedUser(w http.ResponseWriter, r *http.Request) {
-	if err := h.service.RemoveSharedUser(r.Context(), r.PathValue("id"), r.PathValue("userId")); err != nil {
+func (h handler) removeMember(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.RemoveMember(r.Context(), r.PathValue("id"), r.PathValue("userId")); err != nil {
 		h.writeError(w, r, err)
 		return
 	}

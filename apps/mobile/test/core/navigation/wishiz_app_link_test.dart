@@ -31,6 +31,15 @@ void main() {
       );
     });
 
+    test('extracts an invite token from a wishlist share link', () {
+      expect(
+        WishizAppLink.extractInviteToken(
+          'https://wishiz.app/lists/wishlist-42?token=invite-token',
+        ),
+        'invite-token',
+      );
+    });
+
     test('extracts a wishlist id from share text that embeds the link', () {
       expect(
         WishizAppLink.extractWishlistId(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/wishlists/data/repositories/persistent_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/data/storage/wishlist_storage.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 
 void main() {
   const ownerUserId = 'user-dana';
@@ -39,8 +40,8 @@ void main() {
       await repository.addWishlistItem(
         wishlistId: wishlist.id,
         title: 'Weekender bag',
-        priority: 'High',
-        status: 'Considering',
+        priority: WishlistItemPriority.high,
+        status: WishlistItemStatus.considering,
         imageUrl: 'https://example.com/bag.jpg',
         productUrl: 'https://example.com/bag',
       );
@@ -59,8 +60,11 @@ void main() {
       expect(reloadedWishlist?.items, hasLength(1));
       expect(reloadedWishlist?.items.first.title, 'Weekender bag');
       expect(reloadedWishlist?.items.first.rank, 1);
-      expect(reloadedWishlist?.items.first.priority, 'High');
-      expect(reloadedWishlist?.items.first.status, 'Considering');
+      expect(reloadedWishlist?.items.first.priority, WishlistItemPriority.high);
+      expect(
+        reloadedWishlist?.items.first.status,
+        WishlistItemStatus.considering,
+      );
       expect(
         reloadedWishlist?.items.first.imageUrl,
         'https://example.com/bag.jpg',
@@ -71,7 +75,7 @@ void main() {
       );
     });
 
-    test('reloads collaborators from storage', () async {
+    test('reloads invites from storage', () async {
       final storage = _FakeWishlistStorage();
       final repository = await PersistentWishlistRepository.create(
         storage: storage,
@@ -83,11 +87,10 @@ void main() {
         description: 'Plates, flowers, and candles.',
         year: 2026,
       );
-      await repository.addSharedUser(
+      await repository.createInvite(
         wishlistId: wishlist.id,
-        name: 'Maya',
         email: 'maya@example.com',
-        role: 'Editor',
+        role: WishlistMemberRole.editor,
       );
       await repository.flush();
 
@@ -97,11 +100,10 @@ void main() {
       );
       final reloadedWishlist = reloadedRepository.findById(wishlist.id);
 
-      expect(reloadedWishlist?.isShared, isTrue);
       expect(reloadedWishlist?.ownerUserId, ownerUserId);
-      expect(reloadedWishlist?.sharedUsers, hasLength(1));
-      expect(reloadedWishlist?.sharedUsers.first.name, 'Maya');
-      expect(reloadedWishlist?.sharedUsers.first.role, 'Editor');
+      expect(reloadedWishlist?.invites, hasLength(1));
+      expect(reloadedWishlist?.invites.first.email, 'maya@example.com');
+      expect(reloadedWishlist?.invites.first.role, WishlistMemberRole.editor);
     });
 
     test(

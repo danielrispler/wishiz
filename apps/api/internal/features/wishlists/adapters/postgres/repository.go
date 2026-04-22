@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
@@ -25,7 +26,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) List(ctx context.Context, requestUserID string, requestUserEmail string) ([]domain.Wishlist, error) {
+func (r *Repository) List(ctx context.Context, requestUserID string) ([]domain.Wishlist, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 			id::text,
@@ -38,13 +39,12 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 			updated_at,
 			is_archived
 		FROM wishlists
-		WHERE owner_id = $1::uuid OR (
-			id IN (
-			SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
+		WHERE owner_id = $1::uuid
+			OR id IN (
+				SELECT wishlist_id FROM wishlist_members WHERE user_id = $1::uuid
 			)
-		)
 		ORDER BY updated_at DESC, created_at DESC
-	`, requestUserID, requestUserEmail)
+	`, requestUserID)
 	if err != nil {
 		return nil, fmt.Errorf("list wishlists: %w", err)
 	}
@@ -69,89 +69,14 @@ func (r *Repository) List(ctx context.Context, requestUserID string, requestUser
 		return []domain.Wishlist{}, nil
 	}
 
-	itemRows, err := r.pool.Query(ctx, `
-		SELECT
-			i.id::text,
-			i.wishlist_id::text,
-			i.title,
-			i.rank,
-			i.notes,
-			i.price_label,
-			i.priority,
-			i.status,
-			i.image_url,
-			i.product_url,
-			i.purchased_at,
-			i.created_at,
-			i.updated_at
-		FROM wishlist_items i
-		JOIN wishlists w ON w.id = i.wishlist_id
-		WHERE w.owner_id = $1::uuid OR (
-			w.id IN (
-				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
-			)
-		)
-		ORDER BY wishlist_id, rank ASC
-	`, requestUserID, requestUserEmail)
-	if err != nil {
-		return nil, fmt.Errorf("list wishlist items: %w", err)
+	if err := r.attachItems(ctx, indexByID, wishlists, requestUserID); err != nil {
+		return nil, err
 	}
-	defer itemRows.Close()
-
-	for itemRows.Next() {
-		wishlistID, item, scanErr := scanWishlistItem(itemRows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-
-		index, ok := indexByID[wishlistID]
-		if !ok {
-			continue
-		}
-
-		wishlists[index].Items = append(wishlists[index].Items, item)
+	if err := r.attachMembers(ctx, indexByID, wishlists, requestUserID); err != nil {
+		return nil, err
 	}
-	if err = itemRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate wishlist items: %w", err)
-	}
-
-	sharedUserRows, err := r.pool.Query(ctx, `
-		SELECT
-			su.wishlist_id::text,
-			su.id::text,
-			su.name,
-			su.email,
-			su.role
-		FROM wishlist_shared_users su
-		JOIN wishlists w ON w.id = su.wishlist_id
-		WHERE w.owner_id = $1::uuid OR (
-			w.id IN (
-				SELECT wishlist_id FROM wishlist_shared_users WHERE email = $2
-			)
-		)
-		ORDER BY su.wishlist_id, su.created_at ASC
-	`, requestUserID, requestUserEmail)
-	if err != nil {
-		return nil, fmt.Errorf("list shared users: %w", err)
-	}
-	defer sharedUserRows.Close()
-
-	for sharedUserRows.Next() {
-		var wishlistID string
-		var user domain.SharedUser
-		if scanErr := sharedUserRows.Scan(&wishlistID, &user.ID, &user.Name, &user.Email, &user.Role); scanErr != nil {
-			return nil, scanErr
-		}
-
-		index, ok := indexByID[wishlistID]
-		if !ok {
-			continue
-		}
-
-		wishlists[index].SharedUsers = append(wishlists[index].SharedUsers, user)
-	}
-	if err = sharedUserRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate shared users: %w", err)
+	if err := r.attachInvites(ctx, indexByID, wishlists, requestUserID); err != nil {
+		return nil, err
 	}
 
 	return wishlists, nil
@@ -187,11 +112,17 @@ func (r *Repository) GetByID(ctx context.Context, id string) (domain.Wishlist, e
 	}
 	wishlist.Items = items
 
-	sharedUsers, err := r.listSharedUsersByWishlistID(ctx, r.pool, id)
+	members, err := r.listMembersByWishlistID(ctx, r.pool, id)
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	wishlist.SharedUsers = sharedUsers
+	wishlist.Members = members
+
+	invites, err := r.listInvitesByWishlistID(ctx, r.pool, id)
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
+	wishlist.Invites = invites
 
 	return wishlist, nil
 }
@@ -233,8 +164,7 @@ func (r *Repository) Update(ctx context.Context, params ports.UpdateWishlistPara
 			title = $2,
 			description = $3,
 			year = $4,
-			cover_image_url = $5,
-			updated_at = NOW()
+			cover_image_url = $5
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
@@ -378,8 +308,7 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 			status = $8,
 			image_url = $9,
 			product_url = $10,
-			purchased_at = $11,
-			updated_at = NOW()
+			purchased_at = $11
 		WHERE wishlist_id = $1::uuid
 			AND id = $2::uuid
 		RETURNING
@@ -477,7 +406,7 @@ func (r *Repository) ReorderItems(ctx context.Context, wishlistID string, ordere
 			ctx,
 			`
 				UPDATE wishlist_items
-				SET rank = $3, updated_at = NOW()
+				SET rank = $3
 				WHERE wishlist_id = $1::uuid AND id = $2::uuid
 			`,
 			wishlistID,
@@ -498,12 +427,152 @@ func (r *Repository) ReorderItems(ctx context.Context, wishlistID string, ordere
 	return nil
 }
 
+func (r *Repository) CreateInvite(ctx context.Context, params ports.CreateInviteParams) (domain.WishlistInvite, error) {
+	row := r.pool.QueryRow(ctx, `
+		INSERT INTO wishlist_invites (
+			wishlist_id,
+			email,
+			role,
+			invited_by_user_id,
+			token_hash,
+			expires_at
+		)
+		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6)
+		ON CONFLICT (wishlist_id, email) DO UPDATE
+		SET
+			role = EXCLUDED.role,
+			invited_by_user_id = EXCLUDED.invited_by_user_id,
+			token_hash = EXCLUDED.token_hash,
+			accepted_at = NULL,
+			expires_at = EXCLUDED.expires_at
+		RETURNING
+			id::text,
+			wishlist_id::text,
+			email::text,
+			role,
+			invited_by_user_id::text,
+			accepted_at,
+			expires_at,
+			created_at,
+			updated_at
+	`, params.WishlistID, params.Email, params.Role, params.InvitedByUserID, params.TokenHash, params.ExpiresAt)
+
+	invite, err := scanInvite(row)
+	if isForeignKeyViolation(err) {
+		return domain.WishlistInvite{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.WishlistInvite{}, fmt.Errorf("create invite for wishlist %s: %w", params.WishlistID, err)
+	}
+
+	return invite, nil
+}
+
+func (r *Repository) DeleteInvite(ctx context.Context, wishlistID string, inviteID string) error {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM wishlist_invites
+		WHERE wishlist_id = $1::uuid AND id = $2::uuid
+	`, wishlistID, inviteID)
+	if err != nil {
+		return fmt.Errorf("delete invite %s from wishlist %s: %w", inviteID, wishlistID, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *Repository) GetInviteByTokenHash(ctx context.Context, wishlistID string, tokenHash string) (domain.WishlistInvite, error) {
+	row := r.pool.QueryRow(ctx, `
+		SELECT
+			id::text,
+			wishlist_id::text,
+			email::text,
+			role,
+			invited_by_user_id::text,
+			accepted_at,
+			expires_at,
+			created_at,
+			updated_at
+		FROM wishlist_invites
+		WHERE wishlist_id = $1::uuid AND token_hash = $2
+	`, wishlistID, tokenHash)
+
+	invite, err := scanInvite(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.WishlistInvite{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.WishlistInvite{}, fmt.Errorf("get invite by token for wishlist %s: %w", wishlistID, err)
+	}
+	return invite, nil
+}
+
+func (r *Repository) AcceptInvite(ctx context.Context, params ports.AcceptInviteParams) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin accept invite transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	commandTag, err := tx.Exec(ctx, `
+		UPDATE wishlist_invites
+		SET accepted_at = $3
+		WHERE id = $1::uuid AND wishlist_id = $2::uuid
+	`, params.InviteID, params.WishlistID, params.AcceptedAt)
+	if err != nil {
+		return fmt.Errorf("mark invite %s accepted: %w", params.InviteID, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO wishlist_members (
+			wishlist_id,
+			user_id,
+			role
+		)
+		VALUES ($1::uuid, $2::uuid, $3)
+		ON CONFLICT (wishlist_id, user_id) DO UPDATE
+		SET role = EXCLUDED.role
+	`, params.WishlistID, params.UserID, params.Role)
+	if isForeignKeyViolation(err) {
+		return ports.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("add member %s to wishlist %s: %w", params.UserID, params.WishlistID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit accept invite %s: %w", params.InviteID, err)
+	}
+
+	return nil
+}
+
+func (r *Repository) RemoveMember(ctx context.Context, wishlistID string, userID string) error {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM wishlist_members
+		WHERE wishlist_id = $1::uuid AND user_id = $2::uuid
+	`, wishlistID, userID)
+	if err != nil {
+		return fmt.Errorf("remove member %s from wishlist %s: %w", userID, wishlistID, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+
+	return nil
+}
+
 func (r *Repository) setArchivedState(ctx context.Context, id string, archived bool) (domain.Wishlist, error) {
 	row := r.pool.QueryRow(ctx, `
 		UPDATE wishlists
-		SET
-			is_archived = $2,
-			updated_at = NOW()
+		SET is_archived = $2
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
@@ -526,6 +595,144 @@ func (r *Repository) setArchivedState(ctx context.Context, id string, archived b
 	}
 
 	return wishlist, nil
+}
+
+func (r *Repository) attachItems(ctx context.Context, indexByID map[string]int, wishlists []domain.Wishlist, requestUserID string) error {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			i.id::text,
+			i.wishlist_id::text,
+			i.title,
+			i.rank,
+			i.notes,
+			i.price_label,
+			i.priority,
+			i.status,
+			i.image_url,
+			i.product_url,
+			i.purchased_at,
+			i.created_at,
+			i.updated_at
+		FROM wishlist_items i
+		JOIN wishlists w ON w.id = i.wishlist_id
+		WHERE w.owner_id = $1::uuid
+			OR w.id IN (
+				SELECT wishlist_id FROM wishlist_members WHERE user_id = $1::uuid
+			)
+		ORDER BY i.wishlist_id, i.rank ASC
+	`, requestUserID)
+	if err != nil {
+		return fmt.Errorf("list wishlist items: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		wishlistID, item, scanErr := scanWishlistItem(rows)
+		if scanErr != nil {
+			return scanErr
+		}
+
+		index, ok := indexByID[wishlistID]
+		if !ok {
+			continue
+		}
+
+		wishlists[index].Items = append(wishlists[index].Items, item)
+	}
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("iterate wishlist items: %w", err)
+	}
+
+	return nil
+}
+
+func (r *Repository) attachMembers(ctx context.Context, indexByID map[string]int, wishlists []domain.Wishlist, requestUserID string) error {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			m.wishlist_id::text,
+			m.user_id::text,
+			u.email::text,
+			u.full_name,
+			m.role,
+			m.created_at,
+			m.updated_at
+		FROM wishlist_members m
+		JOIN app_users u ON u.id = m.user_id
+		JOIN wishlists w ON w.id = m.wishlist_id
+		WHERE w.owner_id = $1::uuid
+			OR w.id IN (
+				SELECT wishlist_id FROM wishlist_members WHERE user_id = $1::uuid
+			)
+		ORDER BY m.wishlist_id, m.created_at ASC
+	`, requestUserID)
+	if err != nil {
+		return fmt.Errorf("list wishlist members: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		member, scanErr := scanMember(rows)
+		if scanErr != nil {
+			return scanErr
+		}
+
+		index, ok := indexByID[member.WishlistID]
+		if !ok {
+			continue
+		}
+
+		wishlists[index].Members = append(wishlists[index].Members, member)
+	}
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("iterate wishlist members: %w", err)
+	}
+
+	return nil
+}
+
+func (r *Repository) attachInvites(ctx context.Context, indexByID map[string]int, wishlists []domain.Wishlist, requestUserID string) error {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			i.id::text,
+			i.wishlist_id::text,
+			i.email::text,
+			i.role,
+			i.invited_by_user_id::text,
+			i.accepted_at,
+			i.expires_at,
+			i.created_at,
+			i.updated_at
+		FROM wishlist_invites i
+		JOIN wishlists w ON w.id = i.wishlist_id
+		WHERE w.owner_id = $1::uuid
+			OR w.id IN (
+				SELECT wishlist_id FROM wishlist_members WHERE user_id = $1::uuid
+			)
+		ORDER BY i.wishlist_id, i.created_at ASC
+	`, requestUserID)
+	if err != nil {
+		return fmt.Errorf("list wishlist invites: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		invite, scanErr := scanInvite(rows)
+		if scanErr != nil {
+			return scanErr
+		}
+
+		index, ok := indexByID[invite.WishlistID]
+		if !ok {
+			continue
+		}
+
+		wishlists[index].Invites = append(wishlists[index].Invites, invite)
+	}
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("iterate wishlist invites: %w", err)
+	}
+
+	return nil
 }
 
 func (r *Repository) listItemsByWishlistID(ctx context.Context, querier rowQueryer, wishlistID string) ([]domain.WishlistItem, error) {
@@ -569,6 +776,77 @@ func (r *Repository) listItemsByWishlistID(ctx context.Context, querier rowQuery
 	return items, nil
 }
 
+func (r *Repository) listMembersByWishlistID(ctx context.Context, querier rowQueryer, wishlistID string) ([]domain.WishlistMember, error) {
+	rows, err := querier.Query(ctx, `
+		SELECT
+			m.wishlist_id::text,
+			m.user_id::text,
+			u.email::text,
+			u.full_name,
+			m.role,
+			m.created_at,
+			m.updated_at
+		FROM wishlist_members m
+		JOIN app_users u ON u.id = m.user_id
+		WHERE m.wishlist_id = $1::uuid
+		ORDER BY m.created_at ASC
+	`, wishlistID)
+	if err != nil {
+		return nil, fmt.Errorf("list members for wishlist %s: %w", wishlistID, err)
+	}
+	defer rows.Close()
+
+	members := make([]domain.WishlistMember, 0)
+	for rows.Next() {
+		member, err := scanMember(rows)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate members for wishlist %s: %w", wishlistID, err)
+	}
+
+	return members, nil
+}
+
+func (r *Repository) listInvitesByWishlistID(ctx context.Context, querier rowQueryer, wishlistID string) ([]domain.WishlistInvite, error) {
+	rows, err := querier.Query(ctx, `
+		SELECT
+			id::text,
+			wishlist_id::text,
+			email::text,
+			role,
+			invited_by_user_id::text,
+			accepted_at,
+			expires_at,
+			created_at,
+			updated_at
+		FROM wishlist_invites
+		WHERE wishlist_id = $1::uuid
+		ORDER BY created_at ASC
+	`, wishlistID)
+	if err != nil {
+		return nil, fmt.Errorf("list invites for wishlist %s: %w", wishlistID, err)
+	}
+	defer rows.Close()
+
+	invites := make([]domain.WishlistInvite, 0)
+	for rows.Next() {
+		invite, err := scanInvite(rows)
+		if err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate invites for wishlist %s: %w", wishlistID, err)
+	}
+
+	return invites, nil
+}
+
 func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) {
 	var wishlist domain.Wishlist
 
@@ -587,7 +865,8 @@ func scanWishlist(row interface{ Scan(...any) error }) (domain.Wishlist, error) 
 		return domain.Wishlist{}, err
 	}
 
-	wishlist.SharedUsers = []domain.SharedUser{}
+	wishlist.Members = []domain.WishlistMember{}
+	wishlist.Invites = []domain.WishlistInvite{}
 	wishlist.Items = []domain.WishlistItem{}
 
 	return wishlist, nil
@@ -619,70 +898,47 @@ func scanWishlistItem(row interface{ Scan(...any) error }) (string, domain.Wishl
 	return wishlistID, item, nil
 }
 
-func (r *Repository) listSharedUsersByWishlistID(ctx context.Context, querier rowQueryer, wishlistID string) ([]domain.SharedUser, error) {
-	rows, err := querier.Query(ctx, `
-		SELECT
-			id::text,
-			name,
-			email,
-			role
-		FROM wishlist_shared_users
-		WHERE wishlist_id = $1::uuid
-		ORDER BY created_at ASC
-	`, wishlistID)
+func scanMember(row interface{ Scan(...any) error }) (domain.WishlistMember, error) {
+	var member domain.WishlistMember
+
+	err := row.Scan(
+		&member.WishlistID,
+		&member.UserID,
+		&member.Email,
+		&member.FullName,
+		&member.Role,
+		&member.CreatedAt,
+		&member.UpdatedAt,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("list shared users for wishlist %s: %w", wishlistID, err)
-	}
-	defer rows.Close()
-
-	users := make([]domain.SharedUser, 0)
-	for rows.Next() {
-		var user domain.SharedUser
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
-			return nil, err
-		}
-		users = append(users, user)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate shared users for wishlist %s: %w", wishlistID, err)
+		return domain.WishlistMember{}, err
 	}
 
-	return users, nil
+	return member, nil
 }
 
-func (r *Repository) AddSharedUser(ctx context.Context, wishlistID string, user domain.SharedUser) error {
-	row := r.pool.QueryRow(ctx, `
-		INSERT INTO wishlist_shared_users (
-			wishlist_id,
-			name,
-			email,
-			role
-		)
-		VALUES ($1::uuid, $2, $3, $4)
-		ON CONFLICT (wishlist_id, email) DO UPDATE SET name = EXCLUDED.name
-		RETURNING id::text
-	`, wishlistID, user.Name, user.Email, user.Role)
+func scanInvite(row interface{ Scan(...any) error }) (domain.WishlistInvite, error) {
+	var invite domain.WishlistInvite
 
-	var insertedID string
-	err := row.Scan(&insertedID)
+	err := row.Scan(
+		&invite.ID,
+		&invite.WishlistID,
+		&invite.Email,
+		&invite.Role,
+		&invite.InvitedByUserID,
+		&invite.AcceptedAt,
+		&invite.ExpiresAt,
+		&invite.CreatedAt,
+		&invite.UpdatedAt,
+	)
 	if err != nil {
-		return fmt.Errorf("add shared user to wishlist %s: %w", wishlistID, err)
+		return domain.WishlistInvite{}, err
 	}
 
-	return nil
+	return invite, nil
 }
 
-func (r *Repository) RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error {
-	commandTag, err := r.pool.Exec(ctx, `
-		DELETE FROM wishlist_shared_users
-		WHERE wishlist_id = $1::uuid AND id = $2::uuid
-	`, wishlistID, userID)
-	if err != nil {
-		return fmt.Errorf("remove shared user %s from wishlist %s: %w", userID, wishlistID, err)
-	}
-	if commandTag.RowsAffected() == 0 {
-		return ports.ErrNotFound
-	}
-
-	return nil
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }

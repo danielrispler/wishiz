@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
@@ -56,8 +57,8 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late final TextEditingController _priceController;
   late final TextEditingController _imageUrlController;
   late final TextEditingController _productUrlController;
-  late String _selectedPriority;
-  late String _selectedStatus;
+  late WishlistItemPriority _selectedPriority;
+  late WishlistItemStatus _selectedStatus;
   late bool _isLinkPreview;
   bool _showImageValidationError = false;
   bool _isGeneratingFromLink = false;
@@ -443,7 +444,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
-                    child: DropdownButtonFormField<String>(
+                    child: DropdownButtonFormField<WishlistItemPriority>(
                       initialValue: _selectedPriority,
                       decoration: const InputDecoration(
                         labelText: 'Priority',
@@ -453,7 +454,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                           .map((priority) {
                             return DropdownMenuItem(
                               value: priority,
-                              child: Text(priority),
+                              child: Text(priority.label),
                             );
                           })
                           .toList(growable: false),
@@ -468,7 +469,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                   const SizedBox(height: AppConstants.itemGap),
                   _buildFieldCard(
                     context,
-                    child: DropdownButtonFormField<String>(
+                    child: DropdownButtonFormField<WishlistItemStatus>(
                       initialValue: _selectedStatus,
                       decoration: const InputDecoration(
                         labelText: 'Status',
@@ -478,7 +479,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
                           .map((status) {
                             return DropdownMenuItem(
                               value: status,
-                              child: Text(status),
+                              child: Text(status.label),
                             );
                           })
                           .toList(growable: false),

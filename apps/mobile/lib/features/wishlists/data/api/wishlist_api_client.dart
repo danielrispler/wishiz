@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_dto.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 
 class WishlistApiClient {
   WishlistApiClient({
@@ -40,10 +41,14 @@ class WishlistApiClient {
     return WishlistDto.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<WishlistDto> joinWishlist(String id) async {
+  Future<WishlistDto> joinWishlist({
+    required String id,
+    required String token,
+  }) async {
     final response = await _requestJson(
       'POST',
       '/wishlists/$id/join',
+      body: {'token': token},
       expectedStatusCodes: const {HttpStatus.ok},
     );
 
@@ -121,27 +126,39 @@ class WishlistApiClient {
     return WishlistDto.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<void> addSharedUser({
+  Future<WishlistInviteDto> createInvite({
     required String wishlistId,
-    required String name,
     required String email,
-    required String role,
+    required WishlistMemberRole role,
+  }) async {
+    final response = await _requestJson(
+      'POST',
+      '/wishlists/$wishlistId/invites',
+      body: {'email': email, 'role': role.apiValue},
+      expectedStatusCodes: const {HttpStatus.created},
+    );
+
+    return WishlistInviteDto.fromJson(response as Map<String, dynamic>);
+  }
+
+  Future<void> deleteInvite({
+    required String wishlistId,
+    required String inviteId,
   }) {
     return _requestJson(
-      'POST',
-      '/wishlists/$wishlistId/shared-users',
-      body: {'name': name, 'email': email, 'role': role},
+      'DELETE',
+      '/wishlists/$wishlistId/invites/$inviteId',
       expectedStatusCodes: const {HttpStatus.noContent},
     );
   }
 
-  Future<void> removeSharedUser({
+  Future<void> removeMember({
     required String wishlistId,
     required String userId,
   }) {
     return _requestJson(
       'DELETE',
-      '/wishlists/$wishlistId/shared-users/$userId',
+      '/wishlists/$wishlistId/members/$userId',
       expectedStatusCodes: const {HttpStatus.noContent},
     );
   }
@@ -151,8 +168,8 @@ class WishlistApiClient {
     required String title,
     String? notes,
     String? priceLabel,
-    required String priority,
-    required String status,
+    required WishlistItemPriority priority,
+    required WishlistItemStatus status,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -163,8 +180,8 @@ class WishlistApiClient {
         'title': title,
         'notes': notes,
         'priceLabel': priceLabel,
-        'priority': priority,
-        'status': status,
+        'priority': priority.apiValue,
+        'status': status.apiValue,
         'imageUrl': imageUrl,
         'productUrl': productUrl,
       },

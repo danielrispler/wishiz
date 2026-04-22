@@ -2,8 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
@@ -38,7 +39,10 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Future<Wishlist?> joinWishlist(String id) async {
+  Future<Wishlist?> joinWishlist({
+    required String id,
+    required String token,
+  }) async {
     return findById(id);
   }
 
@@ -116,46 +120,73 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Future<Wishlist?> addSharedUser({
+  Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String name,
     required String email,
-    required String role,
+    required WishlistMemberRole role,
   }) async {
-    return _replaceWishlist(wishlistId, (wishlist) {
-      final normalizedEmail = email.toLowerCase();
-      final alreadyExists = wishlist.sharedUsers.any(
-        (user) => user.email.toLowerCase() == normalizedEmail,
-      );
-      if (alreadyExists) {
-        return wishlist;
-      }
+    final now = DateTime.now();
+    final invite = WishlistInvite(
+      id: _uuid.v4(),
+      email: email,
+      role: role,
+      expiresAt: now.add(const Duration(days: 7)),
+      createdAt: now,
+      updatedAt: now,
+      token: _uuid.v4(),
+    );
 
-      return wishlist.copyWith(
-        sharedUsers: [
-          ...wishlist.sharedUsers,
-          SharedUser(id: _uuid.v4(), name: name, email: email, role: role),
-        ],
-        updatedAt: DateTime.now(),
+    final updated = _replaceWishlist(wishlistId, (wishlist) {
+      final normalizedEmail = email.toLowerCase();
+      final invites = wishlist.invites.where(
+        (existing) => existing.email.toLowerCase() != normalizedEmail,
       );
+      return wishlist.copyWith(invites: [...invites, invite], updatedAt: now);
     });
+
+    if (updated == null) {
+      throw StateError('Wishlist "$wishlistId" was not found.');
+    }
+    return invite;
   }
 
   @override
-  Future<bool> removeSharedUser({
+  Future<bool> deleteInvite({
+    required String wishlistId,
+    required String inviteId,
+  }) async {
+    var wasRemoved = false;
+
+    final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
+      final nextInvites = wishlist.invites
+          .where((invite) => invite.id != inviteId)
+          .toList(growable: false);
+      wasRemoved = nextInvites.length != wishlist.invites.length;
+
+      return wishlist.copyWith(
+        invites: nextInvites,
+        updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
+      );
+    });
+
+    return updatedWishlist != null && wasRemoved;
+  }
+
+  @override
+  Future<bool> removeMember({
     required String wishlistId,
     required String userId,
   }) async {
     var wasRemoved = false;
 
     final updatedWishlist = _replaceWishlist(wishlistId, (wishlist) {
-      final nextUsers = wishlist.sharedUsers
-          .where((user) => user.id != userId)
+      final nextMembers = wishlist.members
+          .where((member) => member.userId != userId)
           .toList(growable: false);
-      wasRemoved = nextUsers.length != wishlist.sharedUsers.length;
+      wasRemoved = nextMembers.length != wishlist.members.length;
 
       return wishlist.copyWith(
-        sharedUsers: nextUsers,
+        members: nextMembers,
         updatedAt: wasRemoved ? DateTime.now() : wishlist.updatedAt,
       );
     });
@@ -169,8 +200,8 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -190,7 +221,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
       status: status,
       imageUrl: imageUrl,
       productUrl: productUrl,
-      purchasedAt: status == 'Purchased' ? now : null,
+      purchasedAt: status == WishlistItemStatus.purchased ? now : null,
       createdAt: now,
     );
 
@@ -240,7 +271,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
-    required String status,
+    required WishlistItemStatus status,
   }) async {
     WishlistItem? updatedItem;
     var didUpdate = false;
@@ -287,8 +318,8 @@ class InMemoryWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -391,15 +422,15 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   DateTime? _nextPurchasedAt({
-    required String previousStatus,
-    required String nextStatus,
+    required WishlistItemStatus previousStatus,
+    required WishlistItemStatus nextStatus,
     required DateTime? currentPurchasedAt,
     required DateTime now,
   }) {
-    if (nextStatus != 'Purchased') {
+    if (nextStatus != WishlistItemStatus.purchased) {
       return null;
     }
-    if (previousStatus != 'Purchased') {
+    if (previousStatus != WishlistItemStatus.purchased) {
       return now;
     }
 

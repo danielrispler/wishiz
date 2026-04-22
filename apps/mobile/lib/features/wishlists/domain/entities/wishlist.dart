@@ -1,5 +1,7 @@
-import 'package:wishiz/features/wishlists/domain/entities/shared_user.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_member.dart';
 
 class Wishlist {
   Wishlist({
@@ -12,10 +14,12 @@ class Wishlist {
     required this.createdAt,
     required this.updatedAt,
     this.isArchived = false,
-    List<SharedUser> sharedUsers = const [],
+    List<WishlistMember> members = const [],
+    List<WishlistInvite> invites = const [],
     List<WishlistItem> items = const [],
-  })  : sharedUsers = List.unmodifiable(sharedUsers),
-        items = List.unmodifiable(items);
+  }) : members = List.unmodifiable(members),
+       invites = List.unmodifiable(invites),
+       items = List.unmodifiable(items);
 
   final String id;
   final String ownerUserId;
@@ -26,16 +30,17 @@ class Wishlist {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isArchived;
-  final List<SharedUser> sharedUsers;
+  final List<WishlistMember> members;
+  final List<WishlistInvite> invites;
   final List<WishlistItem> items;
 
   int get itemCount => items.length;
   List<WishlistItem> get activeItems => List.unmodifiable(
-        items.where((item) => item.status != 'Purchased'),
-      );
+    items.where((item) => item.status != WishlistItemStatus.purchased),
+  );
   List<WishlistItem> get purchasedItems => List.unmodifiable(
-        items.where((item) => item.status == 'Purchased'),
-      );
+    items.where((item) => item.status == WishlistItemStatus.purchased),
+  );
   int get activeItemCount => activeItems.length;
   int get purchasedItemCount => purchasedItems.length;
 
@@ -49,7 +54,8 @@ class Wishlist {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isArchived,
-    List<SharedUser>? sharedUsers,
+    List<WishlistMember>? members,
+    List<WishlistInvite>? invites,
     List<WishlistItem>? items,
   }) {
     return Wishlist(
@@ -64,7 +70,8 @@ class Wishlist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isArchived: isArchived ?? this.isArchived,
-      sharedUsers: sharedUsers ?? this.sharedUsers,
+      members: members ?? this.members,
+      invites: invites ?? this.invites,
       items: items ?? this.items,
     );
   }

@@ -214,6 +214,7 @@ class _RootScreen extends StatefulWidget {
 class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   bool _showSignup = false;
   String? _pendingWishlistId;
+  String? _pendingInviteToken;
   String? _pendingSharedText;
   StreamSubscription<String>? _sharedTextSubscription;
   WishlistRepository? _wishlistRepository;
@@ -227,9 +228,10 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     widget.authRepository.watchCurrentUser().addListener(
       _handleCurrentUserChanged,
     );
-    _pendingWishlistId = _extractWishlistId(
-      WidgetsBinding.instance.platformDispatcher.defaultRouteName,
-    );
+    final initialRoute =
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    _pendingWishlistId = _extractWishlistId(initialRoute);
+    _pendingInviteToken = _extractInviteToken(initialRoute);
     _consumePendingSharedText();
     _sharedTextSubscription = widget.shareIntakeService
         .watchSharedText()
@@ -256,6 +258,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
     setState(() {
       _pendingWishlistId = wishlistId;
+      _pendingInviteToken = _extractInviteToken(route);
     });
     return true;
   }
@@ -272,6 +275,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
     setState(() {
       _pendingWishlistId = wishlistId;
+      _pendingInviteToken = _extractInviteToken(location);
     });
     return true;
   }
@@ -287,6 +291,10 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
   String? _extractWishlistId(String? route) {
     return WishizAppLink.extractWishlistId(route);
+  }
+
+  String? _extractInviteToken(String? route) {
+    return WishizAppLink.extractInviteToken(route);
   }
 
   Future<void> _consumePendingSharedText() async {
@@ -306,10 +314,12 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     }
 
     final wishlistId = _extractWishlistId(normalized);
+    final inviteToken = _extractInviteToken(normalized);
 
     setState(() {
       if (wishlistId != null) {
         _pendingWishlistId = wishlistId;
+        _pendingInviteToken = inviteToken;
         _pendingSharedText = null;
         return;
       }
@@ -409,6 +419,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
           authRepository: widget.authRepository,
           currentUser: user,
           initialWishlistId: _pendingWishlistId,
+          initialInviteToken: _pendingInviteToken,
           initialSharedText: _pendingSharedText,
           onInitialWishlistHandled: () {
             if (_pendingWishlistId == null) {
@@ -416,6 +427,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             }
             setState(() {
               _pendingWishlistId = null;
+              _pendingInviteToken = null;
             });
           },
           onInitialSharedTextHandled: () {

@@ -1,42 +1,32 @@
 import 'package:flutter/foundation.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist_invite.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 class HttpWishlistRepository implements WishlistRepository {
-  HttpWishlistRepository._({
-    required WishlistApiClient apiClient,
-    required String currentUserId,
-  }) : _apiClient = apiClient,
-       _currentUserId = currentUserId;
+  HttpWishlistRepository._({required WishlistApiClient apiClient})
+    : _apiClient = apiClient;
 
   static Future<HttpWishlistRepository> create({
     required WishlistApiClient apiClient,
     required String currentUserId,
   }) async {
-    final repository = HttpWishlistRepository._(
-      apiClient: apiClient,
-      currentUserId: currentUserId,
-    );
+    final repository = HttpWishlistRepository._(apiClient: apiClient);
     await repository.refresh();
     return repository;
   }
 
   final WishlistApiClient _apiClient;
-  final String _currentUserId;
   final ValueNotifier<List<Wishlist>> _wishlists =
       ValueNotifier<List<Wishlist>>(const []);
 
   Future<void> refresh() async {
     final wishlists = await _apiClient.listWishlists();
     _wishlists.value = List<Wishlist>.unmodifiable(
-      wishlists
-          .map(
-            (wishlist) =>
-                wishlist.toEntity(fallbackOwnerUserId: _currentUserId),
-          )
-          .toList(growable: false),
+      wishlists.map((wishlist) => wishlist.toEntity()).toList(growable: false),
     );
   }
 
@@ -58,9 +48,12 @@ class HttpWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Future<Wishlist?> joinWishlist(String id) async {
-    final joined = await _apiClient.joinWishlist(id);
-    final wishlist = joined.toEntity(fallbackOwnerUserId: _currentUserId);
+  Future<Wishlist?> joinWishlist({
+    required String id,
+    required String token,
+  }) async {
+    final joined = await _apiClient.joinWishlist(id: id, token: token);
+    final wishlist = joined.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -79,7 +72,7 @@ class HttpWishlistRepository implements WishlistRepository {
       coverImageUrl: coverImageUrl,
     );
 
-    final wishlist = created.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = created.toEntity();
     _wishlists.value = List<Wishlist>.unmodifiable([
       wishlist,
       ..._wishlists.value.where((entry) => entry.id != wishlist.id),
@@ -103,7 +96,7 @@ class HttpWishlistRepository implements WishlistRepository {
       coverImageUrl: coverImageUrl,
     );
 
-    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = updated.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -111,7 +104,7 @@ class HttpWishlistRepository implements WishlistRepository {
   @override
   Future<Wishlist?> archiveWishlist(String id) async {
     final updated = await _apiClient.archiveWishlist(id);
-    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = updated.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -119,7 +112,7 @@ class HttpWishlistRepository implements WishlistRepository {
   @override
   Future<Wishlist?> restoreWishlist(String id) async {
     final updated = await _apiClient.restoreWishlist(id);
-    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = updated.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -135,28 +128,38 @@ class HttpWishlistRepository implements WishlistRepository {
   }
 
   @override
-  Future<Wishlist?> addSharedUser({
+  Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String name,
     required String email,
-    required String role,
+    required WishlistMemberRole role,
   }) async {
-    await _apiClient.addSharedUser(
+    final invite = await _apiClient.createInvite(
       wishlistId: wishlistId,
-      name: name,
       email: email,
       role: role,
     );
 
-    return _refreshWishlist(wishlistId);
+    await _refreshWishlist(wishlistId);
+    return invite.toEntity();
   }
 
   @override
-  Future<bool> removeSharedUser({
+  Future<bool> deleteInvite({
+    required String wishlistId,
+    required String inviteId,
+  }) async {
+    await _apiClient.deleteInvite(wishlistId: wishlistId, inviteId: inviteId);
+
+    await _refreshWishlist(wishlistId);
+    return true;
+  }
+
+  @override
+  Future<bool> removeMember({
     required String wishlistId,
     required String userId,
   }) async {
-    await _apiClient.removeSharedUser(wishlistId: wishlistId, userId: userId);
+    await _apiClient.removeMember(wishlistId: wishlistId, userId: userId);
 
     await _refreshWishlist(wishlistId);
     return true;
@@ -168,8 +171,8 @@ class HttpWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -213,7 +216,7 @@ class HttpWishlistRepository implements WishlistRepository {
       orderedItemIds: orderedItemIds,
     );
 
-    final wishlist = updated.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = updated.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }
@@ -222,12 +225,12 @@ class HttpWishlistRepository implements WishlistRepository {
   Future<WishlistItem?> updateWishlistItemStatus({
     required String wishlistId,
     required String itemId,
-    required String status,
+    required WishlistItemStatus status,
   }) async {
     final updatedItem = await _apiClient.updateWishlistItem(
       wishlistId: wishlistId,
       itemId: itemId,
-      body: {'status': status},
+      body: {'status': status.apiValue},
     );
 
     final updatedWishlist = _patchWishlist(
@@ -258,8 +261,8 @@ class HttpWishlistRepository implements WishlistRepository {
     required String title,
     String? notes,
     String? priceLabel,
-    String priority = 'Medium',
-    String status = 'Saved',
+    WishlistItemPriority priority = WishlistItemPriority.medium,
+    WishlistItemStatus status = WishlistItemStatus.saved,
     String? imageUrl,
     String? productUrl,
   }) async {
@@ -270,8 +273,8 @@ class HttpWishlistRepository implements WishlistRepository {
         'title': title,
         'notes': notes,
         'priceLabel': priceLabel,
-        'priority': priority,
-        'status': status,
+        'priority': priority.apiValue,
+        'status': status.apiValue,
         'imageUrl': imageUrl,
         'productUrl': productUrl,
       },
@@ -319,7 +322,7 @@ class HttpWishlistRepository implements WishlistRepository {
 
   Future<Wishlist> _refreshWishlist(String wishlistId) async {
     final refreshed = await _apiClient.getWishlist(wishlistId);
-    final wishlist = refreshed.toEntity(fallbackOwnerUserId: _currentUserId);
+    final wishlist = refreshed.toEntity();
     _replaceWishlist(wishlist);
     return wishlist;
   }

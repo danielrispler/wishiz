@@ -2,6 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"regexp"
 	"strings"
@@ -13,6 +16,8 @@ import (
 )
 
 var uuidPattern = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+const inviteDuration = 7 * 24 * time.Hour
 
 type Service struct {
 	repo  ports.Repository
@@ -60,10 +65,14 @@ type PatchItemInput struct {
 	ProductURL PatchField[*string]
 }
 
-type AddSharedUserInput struct {
-	Name  string
-	Email string
-	Role  string
+type CreateInviteInput struct {
+	Email     string
+	Role      string
+	ExpiresAt *time.Time
+}
+
+type JoinWishlistInput struct {
+	Token string
 }
 
 func (s *Service) userID(ctx context.Context) string {
@@ -74,25 +83,14 @@ func (s *Service) userID(ctx context.Context) string {
 	return user.ID
 }
 
-func (s *Service) userEmail(ctx context.Context) string {
-	user, ok := authctx.UserFromContext(ctx)
-	if !ok {
-		return ""
-	}
-	return strings.ToLower(strings.TrimSpace(user.Email))
-}
-
 func (s *Service) checkAccess(ctx context.Context, wishlist domain.Wishlist) error {
 	uid := s.userID(ctx)
 	if wishlist.OwnerID == uid {
 		return nil
 	}
-	uemail := s.userEmail(ctx)
-	if uemail != "" {
-		for _, u := range wishlist.SharedUsers {
-			if strings.ToLower(u.Email) == uemail {
-				return nil
-			}
+	for _, member := range wishlist.Members {
+		if member.UserID == uid {
+			return nil
 		}
 	}
 	return WishlistNotFound()
@@ -105,41 +103,53 @@ func (s *Service) checkOwner(ctx context.Context, wishlist domain.Wishlist) erro
 	return nil
 }
 
-func (s *Service) Join(ctx context.Context, id string) (domain.Wishlist, error) {
+func (s *Service) checkEditor(ctx context.Context, wishlist domain.Wishlist) error {
+	uid := s.userID(ctx)
+	if wishlist.OwnerID == uid {
+		return nil
+	}
+	for _, member := range wishlist.Members {
+		if member.UserID == uid && member.Role == domain.MemberRoleEditor {
+			return nil
+		}
+	}
+	return WishlistNotFound()
+}
+
+func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput) (domain.Wishlist, error) {
 	if err := validateUUID("wishlistId", id); err != nil {
 		return domain.Wishlist{}, err
 	}
+	if input == nil {
+		return domain.Wishlist{}, ValidationError("input", "input is required")
+	}
 
-	wishlist, err := s.repo.GetByID(ctx, id)
+	token := strings.TrimSpace(input.Token)
+	if token == "" {
+		return domain.Wishlist{}, ValidationError("token", "invite token is required")
+	}
+
+	invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
 	if errors.Is(err, ports.ErrNotFound) {
 		return domain.Wishlist{}, WishlistNotFound()
 	}
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-
-	uid := s.userID(ctx)
-	if wishlist.OwnerID == uid {
-		return ensureWishlist(wishlist), nil
+	if invite.AcceptedAt != nil {
+		return domain.Wishlist{}, ValidationError("token", "invite has already been accepted")
+	}
+	if !invite.ExpiresAt.After(s.nowFn().UTC()) {
+		return domain.Wishlist{}, ValidationError("token", "invite has expired")
 	}
 
-	uemail := s.userEmail(ctx)
-	if uemail == "" {
-		return domain.Wishlist{}, errors.New("email is required to join a shared wishlist")
-	}
-
-	for _, u := range wishlist.SharedUsers {
-		if strings.EqualFold(strings.TrimSpace(u.Email), uemail) {
-			return ensureWishlist(wishlist), nil
-		}
-	}
-
-	err = s.repo.AddSharedUser(ctx, id, domain.SharedUser{
-		Name:  "Member",
-		Email: uemail,
-		Role:  "editor",
-	})
-	if err != nil {
+	if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
+		InviteID:   invite.ID,
+		WishlistID: id,
+		UserID:     s.userID(ctx),
+		Role:       invite.Role,
+		AcceptedAt: s.nowFn().UTC(),
+	}); err != nil {
 		return domain.Wishlist{}, err
 	}
 
@@ -147,7 +157,7 @@ func (s *Service) Join(ctx context.Context, id string) (domain.Wishlist, error) 
 }
 
 func (s *Service) List(ctx context.Context) ([]domain.Wishlist, error) {
-	wishlists, err := s.repo.List(ctx, s.userID(ctx), s.userEmail(ctx))
+	wishlists, err := s.repo.List(ctx, s.userID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -184,8 +194,7 @@ func (s *Service) Create(ctx context.Context, input *CreateWishlistInput) (domai
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	err = validateYear(input.Year)
-	if err != nil {
+	if err := validateYear(input.Year); err != nil {
 		return domain.Wishlist{}, err
 	}
 
@@ -325,8 +334,8 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
-	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
-		return domain.WishlistItem{}, ownerErr
+	if editorErr := s.checkEditor(ctx, current); editorErr != nil {
+		return domain.WishlistItem{}, editorErr
 	}
 
 	title, err := requireTitle(input.Title)
@@ -372,8 +381,8 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
-	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
-		return domain.WishlistItem{}, ownerErr
+	if editorErr := s.checkEditor(ctx, wishlist); editorErr != nil {
+		return domain.WishlistItem{}, editorErr
 	}
 	err = validateUUID("itemId", itemID)
 	if err != nil {
@@ -455,8 +464,8 @@ func (s *Service) DeleteItem(ctx context.Context, wishlistID, itemID string) err
 	if err != nil {
 		return err
 	}
-	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
-		return ownerErr
+	if editorErr := s.checkEditor(ctx, wishlist); editorErr != nil {
+		return editorErr
 	}
 	err = validateUUID("itemId", itemID)
 	if err != nil {
@@ -478,8 +487,8 @@ func (s *Service) ReorderItems(ctx context.Context, wishlistID string, orderedIt
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
-		return domain.Wishlist{}, ownerErr
+	if editorErr := s.checkEditor(ctx, wishlist); editorErr != nil {
+		return domain.Wishlist{}, editorErr
 	}
 
 	existing := make(map[string]domain.WishlistItem, len(wishlist.Items))
@@ -523,11 +532,61 @@ func (s *Service) ReorderItems(ctx context.Context, wishlistID string, orderedIt
 	return s.GetByID(ctx, wishlistID)
 }
 
-func (s *Service) AddSharedUser(ctx context.Context, wishlistID string, input *AddSharedUserInput) error {
+func (s *Service) CreateInvite(ctx context.Context, wishlistID string, input *CreateInviteInput) (domain.WishlistInvite, error) {
 	if input == nil {
-		return ValidationError("input", "input is required")
+		return domain.WishlistInvite{}, ValidationError("input", "input is required")
 	}
 
+	wishlist, err := s.GetByID(ctx, wishlistID)
+	if err != nil {
+		return domain.WishlistInvite{}, err
+	}
+	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
+		return domain.WishlistInvite{}, ownerErr
+	}
+
+	email := normalizeEmail(input.Email)
+	if email == "" {
+		return domain.WishlistInvite{}, ValidationError("email", "email is required")
+	}
+	role, err := validateRole(input.Role)
+	if err != nil {
+		return domain.WishlistInvite{}, err
+	}
+
+	token, err := randomToken()
+	if err != nil {
+		return domain.WishlistInvite{}, err
+	}
+	now := s.nowFn().UTC()
+	expiresAt := now.Add(inviteDuration)
+	if input.ExpiresAt != nil {
+		expiresAt = input.ExpiresAt.UTC()
+	}
+	if !expiresAt.After(now) {
+		return domain.WishlistInvite{}, ValidationError("expiresAt", "expiresAt must be in the future")
+	}
+
+	invite, err := s.repo.CreateInvite(ctx, ports.CreateInviteParams{
+		WishlistID:      wishlistID,
+		Email:           email,
+		Role:            role,
+		InvitedByUserID: s.userID(ctx),
+		TokenHash:       tokenHash(token),
+		ExpiresAt:       expiresAt,
+	})
+	if errors.Is(err, ports.ErrNotFound) {
+		return domain.WishlistInvite{}, WishlistNotFound()
+	}
+	if err != nil {
+		return domain.WishlistInvite{}, err
+	}
+
+	invite.Token = token
+	return invite, nil
+}
+
+func (s *Service) DeleteInvite(ctx context.Context, wishlistID, inviteID string) error {
 	wishlist, err := s.GetByID(ctx, wishlistID)
 	if err != nil {
 		return err
@@ -535,34 +594,18 @@ func (s *Service) AddSharedUser(ctx context.Context, wishlistID string, input *A
 	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
 		return ownerErr
 	}
-
-	name := normalizeText(input.Name)
-	if name == "" {
-		return ValidationError("name", "name is required")
-	}
-	email := strings.ToLower(normalizeText(input.Email))
-	if email == "" {
-		return ValidationError("email", "email is required")
+	if validationErr := validateUUID("inviteId", inviteID); validationErr != nil {
+		return validationErr
 	}
 
-	for _, u := range wishlist.SharedUsers {
-		if u.Email == email {
-			return nil // Already shared
-		}
-	}
-
-	err = s.repo.AddSharedUser(ctx, wishlistID, domain.SharedUser{
-		Name:  name,
-		Email: email,
-		Role:  input.Role,
-	})
+	err = s.repo.DeleteInvite(ctx, wishlistID, inviteID)
 	if errors.Is(err, ports.ErrNotFound) {
-		return WishlistNotFound()
+		return nil
 	}
 	return err
 }
 
-func (s *Service) RemoveSharedUser(ctx context.Context, wishlistID, userID string) error {
+func (s *Service) RemoveMember(ctx context.Context, wishlistID, userID string) error {
 	wishlist, err := s.GetByID(ctx, wishlistID)
 	if err != nil {
 		return err
@@ -574,9 +617,9 @@ func (s *Service) RemoveSharedUser(ctx context.Context, wishlistID, userID strin
 		return validationErr
 	}
 
-	err = s.repo.RemoveSharedUser(ctx, wishlistID, userID)
+	err = s.repo.RemoveMember(ctx, wishlistID, userID)
 	if errors.Is(err, ports.ErrNotFound) {
-		return nil // idempotent
+		return nil
 	}
 	return err
 }
@@ -594,8 +637,11 @@ func ensureWishlists(wishlists []domain.Wishlist) []domain.Wishlist {
 }
 
 func ensureWishlist(wishlist domain.Wishlist) domain.Wishlist {
-	if wishlist.SharedUsers == nil {
-		wishlist.SharedUsers = []domain.SharedUser{}
+	if wishlist.Members == nil {
+		wishlist.Members = []domain.WishlistMember{}
+	}
+	if wishlist.Invites == nil {
+		wishlist.Invites = []domain.WishlistInvite{}
 	}
 	if wishlist.Items == nil {
 		wishlist.Items = []domain.WishlistItem{}
@@ -615,6 +661,10 @@ func requireTitle(value string) (string, error) {
 
 func normalizeText(value string) string {
 	return strings.TrimSpace(value)
+}
+
+func normalizeEmail(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func normalizeOptionalString(value *string) *string {
@@ -645,7 +695,7 @@ func validatePriority(priority string) (string, error) {
 	case domain.ItemPriorityLow, domain.ItemPriorityHigh:
 		return strings.TrimSpace(priority), nil
 	default:
-		return "", ValidationError("priority", "priority must be one of Low, Medium, or High")
+		return "", ValidationError("priority", "priority must be one of low, medium, or high")
 	}
 }
 
@@ -656,7 +706,18 @@ func validateStatus(status string) (string, error) {
 	case domain.ItemStatusConsidering, domain.ItemStatusPurchased:
 		return strings.TrimSpace(status), nil
 	default:
-		return "", ValidationError("status", "status must be one of Saved, Considering, or Purchased")
+		return "", ValidationError("status", "status must be one of saved, considering, or purchased")
+	}
+}
+
+func validateRole(role string) (string, error) {
+	switch strings.TrimSpace(role) {
+	case "", domain.MemberRoleViewer:
+		return domain.MemberRoleViewer, nil
+	case domain.MemberRoleEditor:
+		return domain.MemberRoleEditor, nil
+	default:
+		return "", ValidationError("role", "role must be one of viewer or editor")
 	}
 }
 
@@ -684,6 +745,19 @@ func purchasedAtForStatus(status string, now time.Time) *time.Time {
 	}
 
 	return &now
+}
+
+func randomToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func cloneString(value *string) *string {

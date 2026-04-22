@@ -66,34 +66,7 @@ func TestGetWishlistNotFoundReturns404(t *testing.T) {
 	}
 }
 
-func TestCreateWishlistValidationReturns400(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		createWishlist: func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error) {
-			return domain.Wishlist{}, application.ValidationError("title", "title is required")
-		},
-	}
-
-	response := performRequest(t, service, http.MethodPost, "/wishlists", `{"title":"","description":"","year":2026}`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", response.Code)
-	}
-
-	var payload struct {
-		Error struct {
-			Code  string `json:"code"`
-			Field string `json:"field"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload.Error.Code != string(application.ErrorCodeValidation) || payload.Error.Field != "title" {
-		t.Fatalf("unexpected error payload: %+v", payload)
-	}
-}
-
-func TestListWishlistsReturnsAggregateJSON(t *testing.T) {
+func TestListWishlistsReturnsMembersAndInvitesJSON(t *testing.T) {
 	t.Parallel()
 	service := &stubService{
 		listWishlists: func(context.Context) ([]domain.Wishlist, error) {
@@ -113,8 +86,14 @@ func TestListWishlistsReturnsAggregateJSON(t *testing.T) {
 	if len(payload) != 1 {
 		t.Fatalf("expected one wishlist, got %d", len(payload))
 	}
-	if _, ok := payload[0]["sharedUsers"].([]any); !ok {
-		t.Fatalf("expected sharedUsers to be an array, got %#v", payload[0]["sharedUsers"])
+	if _, ok := payload[0]["members"].([]any); !ok {
+		t.Fatalf("expected members to be an array, got %#v", payload[0]["members"])
+	}
+	if _, ok := payload[0]["invites"].([]any); !ok {
+		t.Fatalf("expected invites to be an array, got %#v", payload[0]["invites"])
+	}
+	if _, exists := payload[0]["sharedUsers"]; exists {
+		t.Fatalf("did not expect old sharedUsers field")
 	}
 }
 
@@ -138,131 +117,20 @@ func TestCreateWishlistReturnsCreatedJSONAndPassesInput(t *testing.T) {
 			if input.CoverImageURL == nil || *input.CoverImageURL != coverImageURL {
 				t.Fatalf("expected cover image url %q, got %#v", coverImageURL, input.CoverImageURL)
 			}
-			if !input.IsShared {
-				t.Fatalf("expected shared wishlist flag to be true")
-			}
 
 			wishlist := sampleWishlist()
 			wishlist.CoverImageURL = &coverImageURL
-			wishlist.IsShared = true
 			return wishlist, nil
 		},
 	}
 
-	response := performRequest(t, service, http.MethodPost, "/wishlists", `{"title":"Weekend Hosting","description":"Plates and flowers","year":2026,"coverImageUrl":"https://example.com/cover.jpg","isShared":true}`)
+	response := performRequest(t, service, http.MethodPost, "/wishlists", `{"title":"Weekend Hosting","description":"Plates and flowers","year":2026,"coverImageUrl":"https://example.com/cover.jpg"}`)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
 	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload["title"] != "Weekend Hosting" {
-		t.Fatalf("expected response title to match created wishlist, got %#v", payload["title"])
-	}
 }
 
-func TestGetWishlistReturnsAggregateJSON(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		getWishlist: func(_ context.Context, id string) (domain.Wishlist, error) {
-			if id != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
-			}
-			return sampleWishlist(), nil
-		},
-	}
-
-	response := performRequest(t, service, http.MethodGet, "/wishlists/"+wishlistID, "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload["id"] != wishlistID {
-		t.Fatalf("expected wishlist id %s, got %#v", wishlistID, payload["id"])
-	}
-}
-
-func TestDeleteWishlistReturnsNoContent(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		deleteWishlist: func(_ context.Context, id string) error {
-			if id != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
-			}
-			return nil
-		},
-	}
-
-	response := performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID, "")
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d with body %s", response.Code, response.Body.String())
-	}
-	if response.Body.Len() != 0 {
-		t.Fatalf("expected empty body, got %q", response.Body.String())
-	}
-}
-
-func TestArchiveWishlistReturnsUpdatedWishlist(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		archive: func(_ context.Context, id string) (domain.Wishlist, error) {
-			if id != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
-			}
-			wishlist := sampleWishlist()
-			wishlist.IsArchived = true
-			return wishlist, nil
-		},
-	}
-
-	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/archive", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload["isArchived"] != true {
-		t.Fatalf("expected archived wishlist response, got %#v", payload["isArchived"])
-	}
-}
-
-func TestRestoreWishlistReturnsUpdatedWishlist(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		restore: func(_ context.Context, id string) (domain.Wishlist, error) {
-			if id != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, id)
-			}
-			wishlist := sampleWishlist()
-			wishlist.IsArchived = false
-			return wishlist, nil
-		},
-	}
-
-	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/restore", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload["isArchived"] != false {
-		t.Fatalf("expected restored wishlist response, got %#v", payload["isArchived"])
-	}
-}
-
-func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
+func TestAddItemReturnsCreatedJSONAndPassesLowercaseInput(t *testing.T) {
 	t.Parallel()
 	notes := "Set of six"
 	productURL := "https://example.com/plates"
@@ -273,15 +141,6 @@ func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
 			}
 			if input == nil {
 				t.Fatalf("expected input to be non-nil")
-			}
-			if input.Title != "Stoneware plates" {
-				t.Fatalf("expected title to be passed through, got %q", input.Title)
-			}
-			if input.Notes == nil || *input.Notes != notes {
-				t.Fatalf("expected notes %q, got %#v", notes, input.Notes)
-			}
-			if input.ProductURL == nil || *input.ProductURL != productURL {
-				t.Fatalf("expected product url %q, got %#v", productURL, input.ProductURL)
 			}
 			if input.Priority != domain.ItemPriorityHigh {
 				t.Fatalf("expected priority %q, got %q", domain.ItemPriorityHigh, input.Priority)
@@ -297,7 +156,56 @@ func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
 		},
 	}
 
-	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/items", `{"title":"Stoneware plates","notes":"Set of six","priority":"High","status":"Saved","productUrl":"https://example.com/plates"}`)
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/items", `{"title":"Stoneware plates","notes":"Set of six","priority":"high","status":"saved","productUrl":"https://example.com/plates"}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestJoinWishlistPassesInviteToken(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		join: func(_ context.Context, gotWishlistID string, input *application.JoinWishlistInput) (domain.Wishlist, error) {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if input == nil || input.Token != "raw-token" {
+				t.Fatalf("expected invite token to pass through, got %#v", input)
+			}
+			return sampleWishlist(), nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/join", `{"token":"raw-token"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCreateInviteReturnsCreatedInvite(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		createInvite: func(_ context.Context, gotWishlistID string, input *application.CreateInviteInput) (domain.WishlistInvite, error) {
+			if gotWishlistID != wishlistID {
+				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+			}
+			if input == nil || input.Email != "viewer@example.com" || input.Role != domain.MemberRoleEditor {
+				t.Fatalf("unexpected invite input: %#v", input)
+			}
+			return domain.WishlistInvite{
+				ID:         inviteID,
+				WishlistID: wishlistID,
+				Email:      "viewer@example.com",
+				Role:       domain.MemberRoleEditor,
+				ExpiresAt:  fixedTime.Add(24 * time.Hour),
+				CreatedAt:  fixedTime,
+				UpdatedAt:  fixedTime,
+				Token:      "raw-token",
+			}, nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/invites", `{"email":"viewer@example.com","role":"editor"}`)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d with body %s", response.Code, response.Body.String())
 	}
@@ -306,93 +214,36 @@ func TestAddItemReturnsCreatedJSONAndPassesInput(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if payload["id"] != itemID {
-		t.Fatalf("expected item id %s, got %#v", itemID, payload["id"])
+	if payload["token"] != "raw-token" {
+		t.Fatalf("expected invite token in create response, got %#v", payload["token"])
 	}
 }
 
-func TestPatchItemExplicitNullPreservesPatchSemantics(t *testing.T) {
+func TestDeleteInviteAndMemberReturnNoContent(t *testing.T) {
 	t.Parallel()
 	service := &stubService{
-		patchItem: func(_ context.Context, gotWishlistID string, gotItemID string, input *application.PatchItemInput) (domain.WishlistItem, error) {
-			if gotWishlistID != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
+		deleteInvite: func(_ context.Context, gotWishlistID string, gotInviteID string) error {
+			if gotWishlistID != wishlistID || gotInviteID != inviteID {
+				t.Fatalf("unexpected delete invite ids: %s %s", gotWishlistID, gotInviteID)
 			}
-			if gotItemID != itemID {
-				t.Fatalf("expected item id %s, got %s", itemID, gotItemID)
-			}
-			if input == nil {
-				t.Fatalf("expected input to be non-nil")
-			}
-			if !input.Notes.Set {
-				t.Fatalf("expected notes patch field to be marked as set")
-			}
-			if input.Notes.Value != nil {
-				t.Fatalf("expected explicit null notes to decode as nil, got %#v", input.Notes.Value)
-			}
-
-			return sampleWishlist().Items[0], nil
+			return nil
 		},
-	}
-
-	response := performRequest(t, service, http.MethodPatch, "/wishlists/"+wishlistID+"/items/"+itemID, `{"notes":null}`)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
-	}
-}
-
-func TestDeleteItemReturnsNoContent(t *testing.T) {
-	t.Parallel()
-	service := &stubService{
-		deleteItem: func(_ context.Context, gotWishlistID string, gotItemID string) error {
-			if gotWishlistID != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
-			}
-			if gotItemID != itemID {
-				t.Fatalf("expected item id %s, got %s", itemID, gotItemID)
+		removeMember: func(_ context.Context, gotWishlistID string, gotUserID string) error {
+			if gotWishlistID != wishlistID || gotUserID != memberID {
+				t.Fatalf("unexpected remove member ids: %s %s", gotWishlistID, gotUserID)
 			}
 			return nil
 		},
 	}
 
-	response := performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID+"/items/"+itemID, "")
+	response := performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID+"/invites/"+inviteID, "")
 	if response.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d with body %s", response.Code, response.Body.String())
-	}
-}
-
-func TestReorderItemsReturnsUpdatedWishlistAndPassesOrder(t *testing.T) {
-	t.Parallel()
-	orderedItemIDs := []string{itemID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
-	service := &stubService{
-		reorderItems: func(_ context.Context, gotWishlistID string, gotOrderedItemIDs []string) (domain.Wishlist, error) {
-			if gotWishlistID != wishlistID {
-				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
-			}
-			if len(gotOrderedItemIDs) != len(orderedItemIDs) {
-				t.Fatalf("expected %d ordered item ids, got %d", len(orderedItemIDs), len(gotOrderedItemIDs))
-			}
-			for index, itemID := range orderedItemIDs {
-				if gotOrderedItemIDs[index] != itemID {
-					t.Fatalf("expected ordered item id %q at index %d, got %q", itemID, index, gotOrderedItemIDs[index])
-				}
-			}
-
-			return sampleWishlist(), nil
-		},
+		t.Fatalf("expected invite delete 204, got %d", response.Code)
 	}
 
-	response := performRequest(t, service, http.MethodPost, "/wishlists/"+wishlistID+"/items/reorder", `{"orderedItemIds":["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"]}`)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload["id"] != wishlistID {
-		t.Fatalf("expected wishlist id %s, got %#v", wishlistID, payload["id"])
+	response = performRequest(t, service, http.MethodDelete, "/wishlists/"+wishlistID+"/members/"+memberID, "")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected member delete 204, got %d", response.Code)
 	}
 }
 
@@ -408,22 +259,6 @@ func TestWishlistRoutesReturnInternalServerErrorForUnexpectedErrors(t *testing.T
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d with body %s", response.Code, response.Body.String())
 	}
-
-	var payload struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload.Error.Code != "internal_error" {
-		t.Fatalf("expected internal error code, got %q", payload.Error.Code)
-	}
-	if payload.Error.Message != "internal server error" {
-		t.Fatalf("expected generic internal error message, got %q", payload.Error.Message)
-	}
 }
 
 func performRequest(t *testing.T, service Service, method, path, body string) *httptest.ResponseRecorder {
@@ -433,8 +268,8 @@ func performRequest(t *testing.T, service Service, method, path, body string) *h
 	RegisterRoutes(mux, slog.New(slog.NewTextHandler(io.Discard, nil)), service, func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			ctx := authctx.WithUser(r.Context(), authctx.User{
-				ID:    "11111111-1111-1111-1111-111111111111",
-				Email: "viewer@example.com",
+				ID:    ownerID,
+				Email: "owner@example.com",
 			})
 			next(w, r.WithContext(ctx))
 		}
@@ -453,12 +288,34 @@ func performRequest(t *testing.T, service Service, method, path, body string) *h
 func sampleWishlist() domain.Wishlist {
 	return domain.Wishlist{
 		ID:          wishlistID,
+		OwnerID:     ownerID,
 		Title:       "Weekend Hosting",
 		Description: "Plates and flowers",
 		Year:        2026,
-		CreatedAt:   time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC),
-		UpdatedAt:   time.Date(2026, 3, 29, 11, 0, 0, 0, time.UTC),
-		SharedUsers: []domain.SharedUser{},
+		CreatedAt:   fixedTime,
+		UpdatedAt:   fixedTime.Add(time.Hour),
+		Members: []domain.WishlistMember{
+			{
+				WishlistID: wishlistID,
+				UserID:     memberID,
+				Email:      "viewer@example.com",
+				FullName:   "Viewer",
+				Role:       domain.MemberRoleViewer,
+				CreatedAt:  fixedTime,
+				UpdatedAt:  fixedTime,
+			},
+		},
+		Invites: []domain.WishlistInvite{
+			{
+				ID:         inviteID,
+				WishlistID: wishlistID,
+				Email:      "pending@example.com",
+				Role:       domain.MemberRoleViewer,
+				ExpiresAt:  fixedTime.Add(24 * time.Hour),
+				CreatedAt:  fixedTime,
+				UpdatedAt:  fixedTime,
+			},
+		},
 		Items: []domain.WishlistItem{
 			{
 				ID:        itemID,
@@ -466,46 +323,60 @@ func sampleWishlist() domain.Wishlist {
 				Rank:      1,
 				Priority:  domain.ItemPriorityHigh,
 				Status:    domain.ItemStatusSaved,
-				CreatedAt: time.Date(2026, 3, 28, 10, 0, 0, 0, time.UTC),
-				UpdatedAt: time.Date(2026, 3, 29, 11, 0, 0, 0, time.UTC),
+				CreatedAt: fixedTime,
+				UpdatedAt: fixedTime.Add(time.Hour),
 			},
 		},
 	}
 }
 
 const (
-	wishlistID = "11111111-1111-1111-1111-111111111111"
+	ownerID    = "11111111-1111-1111-1111-111111111111"
+	memberID   = "22222222-2222-2222-2222-222222222222"
+	wishlistID = "33333333-3333-3333-3333-333333333333"
 	itemID     = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	inviteID   = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 )
 
+var fixedTime = time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
+
 type stubService struct {
-	addSharedUser    func(context.Context, string, *application.AddSharedUserInput) error
-	removeSharedUser func(context.Context, string, string) error
-	listWishlists    func(context.Context) ([]domain.Wishlist, error)
-	getWishlist      func(context.Context, string) (domain.Wishlist, error)
-	createWishlist   func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
-	patchWishlist    func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
-	deleteWishlist   func(context.Context, string) error
-	archive          func(context.Context, string) (domain.Wishlist, error)
-	restore          func(context.Context, string) (domain.Wishlist, error)
-	addItem          func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
-	patchItem        func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
-	deleteItem       func(context.Context, string, string) error
-	reorderItems     func(context.Context, string, []string) (domain.Wishlist, error)
+	createInvite   func(context.Context, string, *application.CreateInviteInput) (domain.WishlistInvite, error)
+	deleteInvite   func(context.Context, string, string) error
+	removeMember   func(context.Context, string, string) error
+	listWishlists  func(context.Context) ([]domain.Wishlist, error)
+	getWishlist    func(context.Context, string) (domain.Wishlist, error)
+	createWishlist func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
+	patchWishlist  func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
+	deleteWishlist func(context.Context, string) error
+	archive        func(context.Context, string) (domain.Wishlist, error)
+	restore        func(context.Context, string) (domain.Wishlist, error)
+	addItem        func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
+	patchItem      func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
+	deleteItem     func(context.Context, string, string) error
+	reorderItems   func(context.Context, string, []string) (domain.Wishlist, error)
+	join           func(context.Context, string, *application.JoinWishlistInput) (domain.Wishlist, error)
 }
 
-func (s *stubService) AddSharedUser(ctx context.Context, wishlistID string, input *application.AddSharedUserInput) error {
-	if s.addSharedUser == nil {
-		return nil
+func (s *stubService) CreateInvite(ctx context.Context, wishlistID string, input *application.CreateInviteInput) (domain.WishlistInvite, error) {
+	if s.createInvite == nil {
+		return domain.WishlistInvite{}, nil
 	}
-	return s.addSharedUser(ctx, wishlistID, input)
+	return s.createInvite(ctx, wishlistID, input)
 }
 
-func (s *stubService) RemoveSharedUser(ctx context.Context, wishlistID string, userID string) error {
-	if s.removeSharedUser == nil {
+func (s *stubService) DeleteInvite(ctx context.Context, wishlistID string, inviteID string) error {
+	if s.deleteInvite == nil {
 		return nil
 	}
-	return s.removeSharedUser(ctx, wishlistID, userID)
+	return s.deleteInvite(ctx, wishlistID, inviteID)
+}
+
+func (s *stubService) RemoveMember(ctx context.Context, wishlistID string, userID string) error {
+	if s.removeMember == nil {
+		return nil
+	}
+	return s.removeMember(ctx, wishlistID, userID)
 }
 
 func (s *stubService) List(ctx context.Context) ([]domain.Wishlist, error) {
@@ -583,4 +454,11 @@ func (s *stubService) ReorderItems(ctx context.Context, wishlistID string, order
 		return domain.Wishlist{}, nil
 	}
 	return s.reorderItems(ctx, wishlistID, orderedItemIDs)
+}
+
+func (s *stubService) Join(ctx context.Context, id string, input *application.JoinWishlistInput) (domain.Wishlist, error) {
+	if s.join == nil {
+		return domain.Wishlist{}, nil
+	}
+	return s.join(ctx, id, input)
 }

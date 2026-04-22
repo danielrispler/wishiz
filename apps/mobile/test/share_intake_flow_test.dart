@@ -134,6 +134,36 @@ void main() {
       },
     );
 
+    testWidgets('does not join a shared wishlist link without a token', (
+      tester,
+    ) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final sharedProductRepository = FakeSharedProductRepository();
+      final repository = CountingWishlistRepository(ownerUserId: sampleUser.id);
+      final shareIntakeService = FakeShareIntakeService(
+        pendingResponses: [
+          'https://wishiz.app/lists/wishlist-missing-token\n\n'
+              'Open this Wishiz list in the app.',
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: sharedProductRepository,
+          shareIntakeService: shareIntakeService,
+          wishlistRepositoryLoader: (_) async => repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repository.joinCallCount, 0);
+      expect(
+        find.text('This invite link is missing an invite token.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('switches to the signed in user repository', (tester) async {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
       final sharedProductRepository = FakeSharedProductRepository();
@@ -226,6 +256,21 @@ Widget buildTestApp({
     sharedProductRepository: sharedProductRepository,
     shareIntakeService: shareIntakeService,
   );
+}
+
+class CountingWishlistRepository extends InMemoryWishlistRepository {
+  CountingWishlistRepository({required super.ownerUserId});
+
+  int joinCallCount = 0;
+
+  @override
+  Future<Wishlist?> joinWishlist({
+    required String id,
+    required String token,
+  }) async {
+    joinCallCount += 1;
+    return super.joinWishlist(id: id, token: token);
+  }
 }
 
 class FakeShareIntakeService extends ShareIntakeService {

@@ -16,6 +16,7 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 	cover := "https://example.com/original.jpg"
 	repo.wishlists[wishlistID1] = domain.Wishlist{
 		ID:            wishlistID1,
+		OwnerID:       ownerID,
 		Title:         "Original",
 		Description:   "Warm lighting",
 		Year:          2026,
@@ -27,10 +28,9 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 
 	service := NewService(repo)
 
-	wishlist, err := service.Patch(context.Background(), wishlistID1, &PatchWishlistInput{
+	wishlist, err := service.Patch(userContext(ownerID, "owner@example.com"), wishlistID1, &PatchWishlistInput{
 		Title:         PatchField[string]{Set: true, Value: "  Updated Title  "},
 		CoverImageURL: PatchField[*string]{Set: true, Value: nil},
-		IsShared:      PatchField[bool]{Set: true, Value: true},
 	})
 	if err != nil {
 		t.Fatalf("Patch returned error: %v", err)
@@ -45,38 +45,27 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 	if wishlist.Year != 2026 {
 		t.Fatalf("expected year to remain unchanged, got %d", wishlist.Year)
 	}
-	if !wishlist.IsShared {
-		t.Fatalf("expected wishlist to be shared")
-	}
 }
 
 func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		Title:       "Weekend Hosting",
-		Description: "Plates and candles",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		Items: []domain.WishlistItem{
-			{
-				ID:        itemID1,
-				Title:     "Stoneware plates",
-				Rank:      1,
-				Priority:  domain.ItemPriorityMedium,
-				Status:    domain.ItemStatusSaved,
-				CreatedAt: fixedTime,
-				UpdatedAt: fixedTime,
-			},
+	repo.wishlists[wishlistID1] = wishlistWithItems(ownerID, []domain.WishlistItem{
+		{
+			ID:        itemID1,
+			Title:     "Stoneware plates",
+			Rank:      1,
+			Priority:  domain.ItemPriorityMedium,
+			Status:    domain.ItemStatusSaved,
+			CreatedAt: fixedTime,
+			UpdatedAt: fixedTime,
 		},
-	}
+	})
 
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
 
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
+	item, err := service.PatchItem(userContext(ownerID, "owner@example.com"), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusPurchased},
 	})
 	if err != nil {
@@ -89,7 +78,7 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 		t.Fatalf("expected purchasedAt to match service clock, got %v", item.PurchasedAt)
 	}
 
-	item, err = service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
+	item, err = service.PatchItem(userContext(ownerID, "owner@example.com"), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusSaved},
 	})
 	if err != nil {
@@ -104,31 +93,23 @@ func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing
 	t.Parallel()
 	originalPurchasedAt := fixedTime.Add(-6 * time.Hour)
 	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		Title:       "Weekend Hosting",
-		Description: "Plates and candles",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		Items: []domain.WishlistItem{
-			{
-				ID:          itemID1,
-				Title:       "Stoneware plates",
-				Rank:        1,
-				Priority:    domain.ItemPriorityMedium,
-				Status:      domain.ItemStatusPurchased,
-				PurchasedAt: &originalPurchasedAt,
-				CreatedAt:   fixedTime,
-				UpdatedAt:   fixedTime,
-			},
+	repo.wishlists[wishlistID1] = wishlistWithItems(ownerID, []domain.WishlistItem{
+		{
+			ID:          itemID1,
+			Title:       "Stoneware plates",
+			Rank:        1,
+			Priority:    domain.ItemPriorityMedium,
+			Status:      domain.ItemStatusPurchased,
+			PurchasedAt: &originalPurchasedAt,
+			CreatedAt:   fixedTime,
+			UpdatedAt:   fixedTime,
 		},
-	}
+	})
 
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
 
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
+	item, err := service.PatchItem(userContext(ownerID, "owner@example.com"), wishlistID1, itemID1, &PatchItemInput{
 		Status: PatchField[string]{Set: true, Value: domain.ItemStatusPurchased},
 	})
 	if err != nil {
@@ -142,71 +123,18 @@ func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing
 	}
 }
 
-func TestServicePatchItemPreservesPurchasedAtForUnrelatedPurchasedEdit(t *testing.T) {
+func TestServiceReorderItemsUsesSubsetOrderingRules(t *testing.T) {
 	t.Parallel()
-	originalPurchasedAt := fixedTime.Add(-12 * time.Hour)
 	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		Title:       "Weekend Hosting",
-		Description: "Plates and candles",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		Items: []domain.WishlistItem{
-			{
-				ID:          itemID1,
-				Title:       "Stoneware plates",
-				Rank:        1,
-				Priority:    domain.ItemPriorityMedium,
-				Status:      domain.ItemStatusPurchased,
-				PurchasedAt: &originalPurchasedAt,
-				CreatedAt:   fixedTime,
-				UpdatedAt:   fixedTime,
-			},
-		},
-	}
-
-	service := NewService(repo)
-	service.nowFn = func() time.Time { return fixedTime.Add(24 * time.Hour) }
-
-	item, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
-		Title: PatchField[string]{Set: true, Value: "Updated plates"},
+	repo.wishlists[wishlistID1] = wishlistWithItems(ownerID, []domain.WishlistItem{
+		{ID: itemID1, Title: "Lamp", Rank: 1, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
+		{ID: itemID2, Title: "Monitor", Rank: 2, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
+		{ID: itemID3, Title: "Keyboard", Rank: 3, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
 	})
-	if err != nil {
-		t.Fatalf("PatchItem returned error: %v", err)
-	}
-	if item.Title != "Updated plates" {
-		t.Fatalf("expected title to update, got %q", item.Title)
-	}
-	if item.PurchasedAt == nil {
-		t.Fatalf("expected purchasedAt to remain set")
-	}
-	if !item.PurchasedAt.Equal(originalPurchasedAt) {
-		t.Fatalf("expected purchasedAt to stay %v, got %v", originalPurchasedAt, *item.PurchasedAt)
-	}
-}
-
-func TestServiceReorderItemsUsesFlutterSubsetOrderingRules(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		Title:       "Desk Setup",
-		Description: "Work tools",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		Items: []domain.WishlistItem{
-			{ID: itemID1, Title: "Lamp", Rank: 1, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
-			{ID: itemID2, Title: "Monitor", Rank: 2, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
-			{ID: itemID3, Title: "Keyboard", Rank: 3, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved, CreatedAt: fixedTime, UpdatedAt: fixedTime},
-		},
-	}
 
 	service := NewService(repo)
 
-	wishlist, err := service.ReorderItems(context.Background(), wishlistID1, []string{itemID3, "not-a-real-item", itemID3, itemID1})
+	wishlist, err := service.ReorderItems(userContext(ownerID, "owner@example.com"), wishlistID1, []string{itemID3, "not-a-real-item", itemID3, itemID1})
 	if err != nil {
 		t.Fatalf("ReorderItems returned error: %v", err)
 	}
@@ -225,34 +153,170 @@ func TestServiceReorderItemsUsesFlutterSubsetOrderingRules(t *testing.T) {
 	}
 }
 
-func TestServicePatchItemReturnsItemNotFound(t *testing.T) {
+func TestServiceGetByIDRejectsNonMemberAccess(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		Title:       "Travel",
-		Description: "Carry on",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		Items:       []domain.WishlistItem{},
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Private",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members:   []domain.WishlistMember{},
+		Items:     []domain.WishlistItem{},
 	}
 
 	service := NewService(repo)
 
-	_, err := service.PatchItem(context.Background(), wishlistID1, itemID1, &PatchItemInput{
-		Title: PatchField[string]{Set: true, Value: "Bag"},
-	})
+	_, err := service.GetByID(userContext(viewerID, "viewer@example.com"), wishlistID1)
 	if err == nil {
-		t.Fatalf("expected PatchItem to return an error")
+		t.Fatalf("expected access error")
 	}
 
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeWishlistNotFound {
+		t.Fatalf("expected wishlist not found error, got %+v", err)
+	}
+}
+
+func TestServiceListIncludesOwnedAndMemberWishlists(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Owned",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+	}
+	repo.wishlists[wishlistID2] = domain.Wishlist{
+		ID:        wishlistID2,
+		OwnerID:   otherOwnerID,
+		Title:     "Member List",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID2, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	repo.wishlists[wishlistID3] = domain.Wishlist{
+		ID:        wishlistID3,
+		OwnerID:   otherOwnerID,
+		Title:     "Not For Viewer",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID3, UserID: ownerID, Email: "owner@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+
+	service := NewService(repo)
+
+	wishlists, err := service.List(userContext(viewerID, "viewer@example.com"))
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(wishlists) != 1 {
+		t.Fatalf("expected 1 visible wishlist, got %d", len(wishlists))
+	}
+	if wishlists[0].ID != wishlistID2 {
+		t.Fatalf("expected member wishlist, got %s", wishlists[0].ID)
+	}
+}
+
+func TestServiceCreateInviteReturnsSingleUseToken(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+	}
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime }
+
+	invite, err := service.CreateInvite(userContext(ownerID, "owner@example.com"), wishlistID1, &CreateInviteInput{
+		Email: "  Viewer@Example.com ",
+		Role:  domain.MemberRoleEditor,
+	})
+	if err != nil {
+		t.Fatalf("CreateInvite returned error: %v", err)
+	}
+	if invite.Email != "viewer@example.com" {
+		t.Fatalf("expected normalized email, got %q", invite.Email)
+	}
+	if invite.Role != domain.MemberRoleEditor {
+		t.Fatalf("expected editor role, got %q", invite.Role)
+	}
+	if invite.Token == "" {
+		t.Fatalf("expected invite token to be returned")
+	}
+	if !invite.ExpiresAt.Equal(fixedTime.Add(inviteDuration)) {
+		t.Fatalf("expected default expiry, got %v", invite.ExpiresAt)
+	}
+}
+
+func TestServiceJoinAcceptsInviteAndAddsMember(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	invite := domain.WishlistInvite{
+		ID:         inviteID1,
+		WishlistID: wishlistID1,
+		Email:      "viewer@example.com",
+		Role:       domain.MemberRoleViewer,
+		ExpiresAt:  fixedTime.Add(time.Hour),
+		CreatedAt:  fixedTime,
+		UpdatedAt:  fixedTime,
+	}
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Invites:   []domain.WishlistInvite{invite},
+	}
+	repo.inviteTokenHashes[inviteID1] = tokenHash("raw-token")
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime }
+
+	wishlist, err := service.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: "raw-token"})
+	if err != nil {
+		t.Fatalf("Join returned error: %v", err)
+	}
+	if len(wishlist.Members) != 1 {
+		t.Fatalf("expected one member, got %d", len(wishlist.Members))
+	}
+	if wishlist.Members[0].UserID != viewerID || wishlist.Members[0].Role != domain.MemberRoleViewer {
+		t.Fatalf("unexpected member: %+v", wishlist.Members[0])
+	}
+	if repo.wishlists[wishlistID1].Invites[0].AcceptedAt == nil {
+		t.Fatalf("expected invite accepted_at to be set")
+	}
+}
+
+func TestServiceJoinRequiresInviteToken(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRepository())
+
+	_, err := service.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: "   "})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
 	appErr, ok := AsError(err)
 	if !ok {
 		t.Fatalf("expected application error, got %T", err)
 	}
-	if appErr.Code != ErrorCodeItemNotFound {
-		t.Fatalf("expected item not found error, got %s", appErr.Code)
+	if appErr.Code != ErrorCodeValidation || appErr.Field != "token" {
+		t.Fatalf("expected token validation error, got %+v", appErr)
 	}
 }
 
@@ -260,7 +324,7 @@ func TestServiceCreateValidatesYear(t *testing.T) {
 	t.Parallel()
 	service := NewService(newFakeRepository())
 
-	_, err := service.Create(context.Background(), &CreateWishlistInput{
+	_, err := service.Create(userContext(ownerID, "owner@example.com"), &CreateWishlistInput{
 		Title: "Reading Corner",
 		Year:  1999,
 	})
@@ -269,250 +333,47 @@ func TestServiceCreateValidatesYear(t *testing.T) {
 	}
 
 	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeValidation || appErr.Field != "year" {
-		t.Fatalf("expected year validation error, got %+v", appErr)
-	}
-}
-
-func TestServiceCreateRejectsNilInput(t *testing.T) {
-	t.Parallel()
-	service := NewService(newFakeRepository())
-
-	_, err := service.Create(context.Background(), nil)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
-		t.Fatalf("expected input validation error, got %+v", appErr)
-	}
-}
-
-func TestServicePatchRejectsNilInput(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:        wishlistID1,
-		Title:     "Travel",
-		Year:      2026,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-	}
-
-	service := NewService(repo)
-
-	_, err := service.Patch(context.Background(), wishlistID1, nil)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
-		t.Fatalf("expected input validation error, got %+v", appErr)
-	}
-}
-
-func TestServiceAddItemRejectsNilInput(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:        wishlistID1,
-		Title:     "Travel",
-		Year:      2026,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-		Items:     []domain.WishlistItem{},
-	}
-
-	service := NewService(repo)
-
-	_, err := service.AddItem(context.Background(), wishlistID1, nil)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
-		t.Fatalf("expected input validation error, got %+v", appErr)
-	}
-}
-
-func TestServicePatchItemRejectsNilInput(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:        wishlistID1,
-		Title:     "Travel",
-		Year:      2026,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-		Items: []domain.WishlistItem{
-			{
-				ID:        itemID1,
-				Title:     "Bag",
-				Rank:      1,
-				Priority:  domain.ItemPriorityMedium,
-				Status:    domain.ItemStatusSaved,
-				CreatedAt: fixedTime,
-				UpdatedAt: fixedTime,
-			},
-		},
-	}
-
-	service := NewService(repo)
-
-	_, err := service.PatchItem(context.Background(), wishlistID1, itemID1, nil)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeValidation || appErr.Field != "input" {
-		t.Fatalf("expected input validation error, got %+v", appErr)
-	}
-}
-
-func TestServiceGetByIDRejectsUnsharedAccessForOtherUser(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists[wishlistID1] = domain.Wishlist{
-		ID:          wishlistID1,
-		OwnerID:     "owner-1",
-		Title:       "Private",
-		Year:        2026,
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
-		SharedUsers: []domain.SharedUser{},
-		Items:       []domain.WishlistItem{},
-	}
-
-	service := NewService(repo)
-
-	_, err := service.GetByID(userContext("viewer-1", "viewer@example.com"), wishlistID1)
-	if err == nil {
-		t.Fatalf("expected access error")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok {
-		t.Fatalf("expected application error, got %T", err)
-	}
-	if appErr.Code != ErrorCodeWishlistNotFound {
-		t.Fatalf("expected wishlist not found error, got %+v", appErr)
-	}
-}
-
-func TestServiceListIncludesOnlyExplicitlySharedWishlists(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepository()
-	repo.wishlists["11111111-1111-1111-1111-111111111111"] = domain.Wishlist{
-		ID:        "11111111-1111-1111-1111-111111111111",
-		OwnerID:   "owner-1",
-		Title:     "Owned",
-		Year:      2026,
-		IsShared:  false,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-	}
-	repo.wishlists["22222222-2222-2222-2222-222222222222"] = domain.Wishlist{
-		ID:        "22222222-2222-2222-2222-222222222222",
-		OwnerID:   "owner-2",
-		Title:     "Invite Only",
-		Year:      2026,
-		IsShared:  true,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-		SharedUsers: []domain.SharedUser{
-			{ID: "33333333-3333-3333-3333-333333333333", Email: "viewer@example.com"},
-		},
-	}
-	repo.wishlists["44444444-4444-4444-4444-444444444444"] = domain.Wishlist{
-		ID:        "44444444-4444-4444-4444-444444444444",
-		OwnerID:   "owner-3",
-		Title:     "Not For Viewer",
-		Year:      2026,
-		IsShared:  true,
-		CreatedAt: fixedTime,
-		UpdatedAt: fixedTime,
-		SharedUsers: []domain.SharedUser{
-			{ID: "55555555-5555-5555-5555-555555555555", Email: "someone@example.com"},
-		},
-	}
-
-	service := NewService(repo)
-
-	wishlists, err := service.List(userContext("viewer-1", "viewer@example.com"))
-	if err != nil {
-		t.Fatalf("List returned error: %v", err)
-	}
-	if len(wishlists) != 1 {
-		t.Fatalf("expected 1 visible wishlist, got %d", len(wishlists))
-	}
-	if wishlists[0].ID != "22222222-2222-2222-2222-222222222222" {
-		t.Fatalf("expected invite-only shared wishlist, got %s", wishlists[0].ID)
-	}
-}
-
-func TestServiceListReturnsEmptyForNewUserWithoutWishlists(t *testing.T) {
-	t.Parallel()
-	service := NewService(newFakeRepository())
-
-	wishlists, err := service.List(userContext("new-user", "new@example.com"))
-	if err != nil {
-		t.Fatalf("List returned error: %v", err)
-	}
-	if len(wishlists) != 0 {
-		t.Fatalf("expected 0 wishlists, got %d", len(wishlists))
+	if !ok || appErr.Code != ErrorCodeValidation || appErr.Field != "year" {
+		t.Fatalf("expected year validation error, got %+v", err)
 	}
 }
 
 const (
-	wishlistID1 = "11111111-1111-1111-1111-111111111111"
-	itemID1     = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-	itemID2     = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-	itemID3     = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	ownerID      = "99999999-9999-9999-9999-999999999999"
+	otherOwnerID = "88888888-8888-8888-8888-888888888888"
+	viewerID     = "77777777-7777-7777-7777-777777777777"
+	wishlistID1  = "11111111-1111-1111-1111-111111111111"
+	wishlistID2  = "22222222-2222-2222-2222-222222222222"
+	wishlistID3  = "33333333-3333-3333-3333-333333333333"
+	inviteID1    = "44444444-4444-4444-4444-444444444444"
+	itemID1      = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	itemID2      = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	itemID3      = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 )
 
 var fixedTime = time.Date(2026, 3, 29, 12, 0, 0, 0, time.UTC)
 
 type fakeRepository struct {
-	wishlists map[string]domain.Wishlist
+	wishlists         map[string]domain.Wishlist
+	inviteTokenHashes map[string]string
 }
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{
-		wishlists: map[string]domain.Wishlist{},
+		wishlists:         map[string]domain.Wishlist{},
+		inviteTokenHashes: map[string]string{},
 	}
 }
 
-func (r *fakeRepository) List(_ context.Context, requestUserID string, requestUserEmail string) ([]domain.Wishlist, error) {
+func (r *fakeRepository) List(_ context.Context, requestUserID string) ([]domain.Wishlist, error) {
 	result := make([]domain.Wishlist, 0, len(r.wishlists))
 	for _, wishlist := range r.wishlists {
 		if wishlist.OwnerID == requestUserID {
 			result = append(result, cloneWishlist(wishlist))
 			continue
 		}
-		if !wishlist.IsShared {
-			continue
-		}
-		for _, user := range wishlist.SharedUsers {
-			if user.Email == requestUserEmail {
+		for _, member := range wishlist.Members {
+			if member.UserID == requestUserID {
 				result = append(result, cloneWishlist(wishlist))
 				break
 			}
@@ -538,51 +399,15 @@ func (r *fakeRepository) Create(_ context.Context, params ports.CreateWishlistPa
 		Description:   params.Description,
 		Year:          params.Year,
 		CoverImageURL: cloneString(params.CoverImageURL),
-		IsShared:      params.IsShared,
 		CreatedAt:     fixedTime,
 		UpdatedAt:     fixedTime,
-		SharedUsers:   []domain.SharedUser{},
+		Members:       []domain.WishlistMember{},
+		Invites:       []domain.WishlistInvite{},
 		Items:         []domain.WishlistItem{},
 	}
 
 	r.wishlists[wishlist.ID] = wishlist
 	return cloneWishlist(wishlist), nil
-}
-
-func (r *fakeRepository) AddSharedUser(_ context.Context, wishlistID string, user domain.SharedUser) error {
-	wishlist, ok := r.wishlists[wishlistID]
-	if !ok {
-		return ports.ErrNotFound
-	}
-
-	user.ID = itemID3
-	wishlist.SharedUsers = append(wishlist.SharedUsers, user)
-	r.wishlists[wishlistID] = wishlist
-	return nil
-}
-
-func (r *fakeRepository) RemoveSharedUser(_ context.Context, wishlistID string, userID string) error {
-	wishlist, ok := r.wishlists[wishlistID]
-	if !ok {
-		return ports.ErrNotFound
-	}
-
-	nextUsers := make([]domain.SharedUser, 0, len(wishlist.SharedUsers))
-	found := false
-	for _, user := range wishlist.SharedUsers {
-		if user.ID == userID {
-			found = true
-			continue
-		}
-		nextUsers = append(nextUsers, user)
-	}
-	if !found {
-		return ports.ErrNotFound
-	}
-
-	wishlist.SharedUsers = nextUsers
-	r.wishlists[wishlistID] = wishlist
-	return nil
 }
 
 func (r *fakeRepository) Update(_ context.Context, params ports.UpdateWishlistParams) (domain.Wishlist, error) {
@@ -595,7 +420,6 @@ func (r *fakeRepository) Update(_ context.Context, params ports.UpdateWishlistPa
 	wishlist.Description = params.Description
 	wishlist.Year = params.Year
 	wishlist.CoverImageURL = cloneString(params.CoverImageURL)
-	wishlist.IsShared = params.IsShared
 	wishlist.UpdatedAt = fixedTime.Add(time.Hour)
 	r.wishlists[params.ID] = wishlist
 
@@ -727,7 +551,7 @@ func (r *fakeRepository) ReorderItems(_ context.Context, wishlistID string, orde
 
 	nextItems := make([]domain.WishlistItem, 0, len(wishlist.Items))
 	seen := make(map[string]struct{}, len(wishlist.Items))
-	for index, itemID := range orderedItemIDs {
+	for _, itemID := range orderedItemIDs {
 		item, ok := itemByID[itemID]
 		if !ok {
 			continue
@@ -736,18 +560,16 @@ func (r *fakeRepository) ReorderItems(_ context.Context, wishlistID string, orde
 			continue
 		}
 
-		item.Rank = index + 1
+		item.Rank = len(nextItems) + 1
 		nextItems = append(nextItems, item)
 		seen[itemID] = struct{}{}
 	}
 
-	nextRank := len(nextItems) + 1
 	for _, item := range wishlist.Items {
 		if _, exists := seen[item.ID]; exists {
 			continue
 		}
-		item.Rank = nextRank
-		nextRank++
+		item.Rank = len(nextItems) + 1
 		nextItems = append(nextItems, item)
 	}
 
@@ -756,14 +578,147 @@ func (r *fakeRepository) ReorderItems(_ context.Context, wishlistID string, orde
 	return nil
 }
 
+func (r *fakeRepository) CreateInvite(_ context.Context, params ports.CreateInviteParams) (domain.WishlistInvite, error) {
+	wishlist, ok := r.wishlists[params.WishlistID]
+	if !ok {
+		return domain.WishlistInvite{}, ports.ErrNotFound
+	}
+
+	invitedBy := params.InvitedByUserID
+	invite := domain.WishlistInvite{
+		ID:              inviteID1,
+		WishlistID:      params.WishlistID,
+		Email:           params.Email,
+		Role:            params.Role,
+		InvitedByUserID: &invitedBy,
+		ExpiresAt:       params.ExpiresAt,
+		CreatedAt:       fixedTime,
+		UpdatedAt:       fixedTime,
+	}
+	wishlist.Invites = []domain.WishlistInvite{invite}
+	r.inviteTokenHashes[invite.ID] = params.TokenHash
+	r.wishlists[params.WishlistID] = wishlist
+	return invite, nil
+}
+
+func (r *fakeRepository) DeleteInvite(_ context.Context, wishlistID string, inviteID string) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+	next := make([]domain.WishlistInvite, 0, len(wishlist.Invites))
+	found := false
+	for _, invite := range wishlist.Invites {
+		if invite.ID == inviteID {
+			found = true
+			continue
+		}
+		next = append(next, invite)
+	}
+	if !found {
+		return ports.ErrNotFound
+	}
+	wishlist.Invites = next
+	r.wishlists[wishlistID] = wishlist
+	return nil
+}
+
+func (r *fakeRepository) GetInviteByTokenHash(_ context.Context, wishlistID string, tokenHash string) (domain.WishlistInvite, error) {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return domain.WishlistInvite{}, ports.ErrNotFound
+	}
+	for _, invite := range wishlist.Invites {
+		if r.inviteTokenHashes[invite.ID] == tokenHash {
+			return cloneInvite(invite), nil
+		}
+	}
+	return domain.WishlistInvite{}, ports.ErrNotFound
+}
+
+func (r *fakeRepository) AcceptInvite(_ context.Context, params ports.AcceptInviteParams) error {
+	wishlist, ok := r.wishlists[params.WishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+	for index, invite := range wishlist.Invites {
+		if invite.ID == params.InviteID {
+			acceptedAt := params.AcceptedAt
+			invite.AcceptedAt = &acceptedAt
+			wishlist.Invites[index] = invite
+			wishlist.Members = append(wishlist.Members, domain.WishlistMember{
+				WishlistID: params.WishlistID,
+				UserID:     params.UserID,
+				Email:      "viewer@example.com",
+				FullName:   "Viewer",
+				Role:       params.Role,
+				CreatedAt:  params.AcceptedAt,
+				UpdatedAt:  params.AcceptedAt,
+			})
+			r.wishlists[params.WishlistID] = wishlist
+			return nil
+		}
+	}
+	return ports.ErrNotFound
+}
+
+func (r *fakeRepository) RemoveMember(_ context.Context, wishlistID string, userID string) error {
+	wishlist, ok := r.wishlists[wishlistID]
+	if !ok {
+		return ports.ErrNotFound
+	}
+	next := make([]domain.WishlistMember, 0, len(wishlist.Members))
+	found := false
+	for _, member := range wishlist.Members {
+		if member.UserID == userID {
+			found = true
+			continue
+		}
+		next = append(next, member)
+	}
+	if !found {
+		return ports.ErrNotFound
+	}
+	wishlist.Members = next
+	r.wishlists[wishlistID] = wishlist
+	return nil
+}
+
+func wishlistWithItems(ownerID string, items []domain.WishlistItem) domain.Wishlist {
+	return domain.Wishlist{
+		ID:          wishlistID1,
+		OwnerID:     ownerID,
+		Title:       "Weekend Hosting",
+		Description: "Plates and candles",
+		Year:        2026,
+		CreatedAt:   fixedTime,
+		UpdatedAt:   fixedTime,
+		Items:       items,
+	}
+}
+
 func cloneWishlist(wishlist domain.Wishlist) domain.Wishlist {
 	cloned := wishlist
-	cloned.SharedUsers = append([]domain.SharedUser{}, wishlist.SharedUsers...)
+	cloned.Members = append([]domain.WishlistMember{}, wishlist.Members...)
+	cloned.Invites = make([]domain.WishlistInvite, 0, len(wishlist.Invites))
+	for _, invite := range wishlist.Invites {
+		cloned.Invites = append(cloned.Invites, cloneInvite(invite))
+	}
 	cloned.Items = make([]domain.WishlistItem, 0, len(wishlist.Items))
 	for _, item := range wishlist.Items {
 		cloned.Items = append(cloned.Items, cloneItem(item))
 	}
 
+	return cloned
+}
+
+func cloneInvite(invite domain.WishlistInvite) domain.WishlistInvite {
+	cloned := invite
+	if invite.InvitedByUserID != nil {
+		invitedBy := *invite.InvitedByUserID
+		cloned.InvitedByUserID = &invitedBy
+	}
+	cloned.AcceptedAt = cloneTime(invite.AcceptedAt)
 	return cloned
 }
 

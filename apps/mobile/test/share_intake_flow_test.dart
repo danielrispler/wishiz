@@ -338,7 +338,7 @@ void main() {
 
       expect(repository.joinCallCount, 0);
       expect(
-        find.text('This invite link is missing an invite token.'),
+        find.text('That shared list is not available for this account.'),
         findsOneWidget,
       );
     });

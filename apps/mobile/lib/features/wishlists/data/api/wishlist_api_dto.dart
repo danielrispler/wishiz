@@ -16,7 +16,6 @@ class WishlistDto {
     required this.createdAt,
     required this.updatedAt,
     required this.isArchived,
-    required this.shareToken,
     required this.members,
     required this.invites,
     required this.items,
@@ -39,7 +38,6 @@ class WishlistDto {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       isArchived: json['isArchived'] as bool? ?? false,
-      shareToken: json['shareToken'] as String? ?? '',
       members: (json['members'] as List<dynamic>? ?? const [])
           .map(
             (entry) =>
@@ -70,7 +68,6 @@ class WishlistDto {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isArchived;
-  final String shareToken;
   final List<WishlistMemberDto> members;
   final List<WishlistInviteDto> invites;
   final List<WishlistItemDto> items;
@@ -90,7 +87,6 @@ class WishlistDto {
       createdAt: createdAt,
       updatedAt: updatedAt,
       isArchived: isArchived,
-      shareToken: shareToken,
       members: members
           .map((member) => member.toEntity())
           .toList(growable: false),

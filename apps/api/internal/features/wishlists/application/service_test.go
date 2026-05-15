@@ -303,7 +303,7 @@ func TestServiceJoinAcceptsInviteAndAddsMember(t *testing.T) {
 	}
 }
 
-func TestServiceJoinViaShareToken(t *testing.T) {
+func TestServiceJoinRejectsLegacyShareToken(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
 	repo.wishlists[wishlistID1] = domain.Wishlist{
@@ -319,15 +319,13 @@ func TestServiceJoinViaShareToken(t *testing.T) {
 	service := NewService(repo)
 	service.nowFn = func() time.Time { return fixedTime }
 
-	wishlist, err := service.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: "permanent-token"})
-	if err != nil {
-		t.Fatalf("Join returned error: %v", err)
+	_, err := service.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: "permanent-token"})
+	if err == nil {
+		t.Fatalf("expected share token join to fail")
 	}
-	if len(wishlist.Members) != 1 {
-		t.Fatalf("expected one member, got %d", len(wishlist.Members))
-	}
-	if wishlist.Members[0].UserID != viewerID || wishlist.Members[0].Role != domain.MemberRoleEditor {
-		t.Fatalf("unexpected member: %+v", wishlist.Members[0])
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeWishlistNotFound {
+		t.Fatalf("expected wishlist not found error, got %+v", err)
 	}
 }
 
@@ -528,6 +526,30 @@ func TestServiceUpdateMemberRoleBlocksSelf(t *testing.T) {
 	appErr, ok := AsError(err)
 	if !ok || appErr.Code != ErrorCodeValidation {
 		t.Fatalf("expected validation error, got %+v", err)
+	}
+}
+
+func TestServiceUpdateMemberRoleMissingMemberReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members:   []domain.WishlistMember{},
+	}
+	service := NewService(repo)
+
+	err := service.UpdateMemberRole(userContext(ownerID, "owner@example.com"), wishlistID1, viewerID, &PatchWishlistMemberInput{Role: domain.MemberRoleEditor})
+	if err == nil {
+		t.Fatalf("expected not found error")
+	}
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeWishlistNotFound {
+		t.Fatalf("expected wishlist not found error, got %+v", err)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+const maxJSONBodyBytes int64 = 1 << 20
+
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
 }
@@ -37,13 +39,18 @@ func WriteError(w http.ResponseWriter, statusCode int, code string, message stri
 	})
 }
 
-func DecodeJSON(r *http.Request, dst any) error {
+func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	defer r.Body.Close()
 
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(dst); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return fmt.Errorf("request body must be at most %d bytes", maxJSONBodyBytes)
+		}
 		if errors.Is(err, io.EOF) {
 			return fmt.Errorf("request body is required")
 		}
@@ -53,6 +60,10 @@ func DecodeJSON(r *http.Request, dst any) error {
 
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return fmt.Errorf("request body must be at most %d bytes", maxJSONBodyBytes)
+		}
 		if errors.Is(err, io.EOF) {
 			return nil
 		}

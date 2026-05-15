@@ -27,6 +27,14 @@ class WishlistSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final details = <String>[
+      '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+      'Updated $lastUpdated',
+    ];
+    if (supportingText != null && supportingText!.isNotEmpty) {
+      details.add(supportingText!);
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
@@ -47,42 +55,49 @@ class WishlistSummaryCard extends StatelessWidget {
                 onTap: onTap,
                 child: Padding(
                   padding: const EdgeInsets.all(AppConstants.cardPadding),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (coverImageUrl != null &&
-                          coverImageUrl!.isNotEmpty) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            AppConstants.radiusXl - 8,
-                          ),
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: _buildCoverImage(
-                              context,
-                              colorScheme: colorScheme,
+                      _buildPreview(context, colorScheme: colorScheme),
+                      const SizedBox(width: AppConstants.spacing4),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: textTheme.titleMedium),
+                            const SizedBox(height: AppConstants.spacing2),
+                            Wrap(
+                              spacing: AppConstants.spacing2,
+                              runSpacing: AppConstants.spacing2,
+                              children: details
+                                  .map(
+                                    (detail) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: AppConstants.spacing3,
+                                        vertical: AppConstants.spacing2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.surfaceContainerHigh,
+                                        borderRadius: BorderRadius.circular(
+                                          AppConstants.radiusFull,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        detail,
+                                        style: textTheme.labelMedium,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(growable: false),
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(height: AppConstants.itemGap),
-                      ],
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: AppConstants.spacing1),
-                      Text(
-                        '$itemCount items · Updated $lastUpdated',
-                        style: Theme.of(context).textTheme.labelMedium,
+                      const SizedBox(width: AppConstants.spacing2),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                      if (supportingText != null &&
-                          supportingText!.isNotEmpty) ...[
-                        const SizedBox(height: AppConstants.spacing1),
-                        Text(
-                          supportingText!,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -108,13 +123,40 @@ class WishlistSummaryCard extends StatelessWidget {
     );
   }
 
+  Widget _buildPreview(
+    BuildContext context, {
+    required ColorScheme colorScheme,
+  }) {
+    final hasImage = coverImageUrl != null && coverImageUrl!.isNotEmpty;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.radiusXl - 6),
+      child: SizedBox(
+        width: 88,
+        height: 88,
+        child: hasImage
+            ? _buildCoverImage(context, colorScheme: colorScheme)
+            : Container(
+                color: colorScheme.surfaceContainerHigh,
+                padding: const EdgeInsets.all(AppConstants.spacing3),
+                child: Icon(
+                  Icons.auto_awesome_mosaic_rounded,
+                  color: colorScheme.primary,
+                  size: 28,
+                ),
+              ),
+      ),
+    );
+  }
+
   Widget _buildCoverImage(
     BuildContext context, {
     required ColorScheme colorScheme,
   }) {
     final source = coverImageUrl!;
     final uri = Uri.tryParse(source);
-    final isRemote = uri != null &&
+    final isRemote =
+        uri != null &&
         (uri.scheme == 'http' ||
             uri.scheme == 'https' ||
             uri.scheme == 'blob' ||
@@ -123,10 +165,7 @@ class WishlistSummaryCard extends StatelessWidget {
     final fallback = Container(
       color: colorScheme.surfaceContainerHigh,
       alignment: Alignment.center,
-      child: Icon(
-        Icons.image_outlined,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
     );
 
     if (kIsWeb || isRemote) {

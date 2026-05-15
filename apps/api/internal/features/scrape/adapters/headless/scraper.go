@@ -2,6 +2,7 @@ package headless
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -15,9 +16,10 @@ import (
 type Scraper struct {
 	allocatorCtx context.Context
 	cancel       context.CancelFunc
+	resolver     scrapeapp.HostResolver
 }
 
-func NewScraper(chromiumPath string) *Scraper {
+func NewScraper(chromiumPath string, resolver scrapeapp.HostResolver) *Scraper {
 	options := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", "new"),
 		chromedp.Flag("no-sandbox", true),
@@ -35,6 +37,7 @@ func NewScraper(chromiumPath string) *Scraper {
 	return &Scraper{
 		allocatorCtx: allocatorCtx,
 		cancel:       cancel,
+		resolver:     resolver,
 	}
 }
 
@@ -61,10 +64,22 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 	stopParentCancel := context.AfterFunc(ctx, requestCancel)
 	defer stopParentCancel()
 
+	runCtx, cancelRun := context.WithCancelCause(requestCtx)
+	defer cancelRun(nil)
+	chromedp.ListenTarget(runCtx, func(event any) {
+		request, ok := event.(*network.EventRequestWillBeSent)
+		if !ok || request == nil || request.Request.URL == "" {
+			return
+		}
+		if err := s.validateRequestedURL(runCtx, request.Request.URL); err != nil {
+			cancelRun(err)
+		}
+	})
+
 	pageURL := rawURL
 	var html string
 
-	err := chromedp.Run(requestCtx,
+	err := chromedp.Run(runCtx,
 		network.Enable(),
 		chromedp.Emulate(device.IPhone13ProMax),
 		chromedp.Navigate(rawURL),
@@ -94,10 +109,19 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 		}),
 	)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			if cause := context.Cause(runCtx); cause != nil && !errors.Is(cause, context.Canceled) {
+				return scrapeapp.Product{}, cause
+			}
+		}
 		return scrapeapp.Product{}, err
 	}
 
 	return fastpath.ExtractProduct(pageURL, html)
+}
+
+func (s *Scraper) validateRequestedURL(ctx context.Context, rawURL string) error {
+	return scrapeapp.IsRedirectAllowed(ctx, s.resolver, rawURL)
 }
 
 var _ scrapeapp.Scraper = (*Scraper)(nil)

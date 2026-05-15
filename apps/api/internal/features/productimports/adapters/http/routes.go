@@ -93,7 +93,7 @@ func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
 
 func (h handler) createJob(w http.ResponseWriter, r *http.Request) {
 	var request createJobRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -155,7 +155,7 @@ func (h handler) acknowledgeJob(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) assignJob(w http.ResponseWriter, r *http.Request) {
 	var request assignJobRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}

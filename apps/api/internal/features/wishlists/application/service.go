@@ -133,7 +133,7 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 		return domain.Wishlist{}, ValidationError("token", "invite token is required")
 	}
 
-	wishlist, err := s.repo.GetByID(ctx, id)
+	_, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, ports.ErrNotFound) {
 			return domain.Wishlist{}, WishlistNotFound()
@@ -141,47 +141,32 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 		return domain.Wishlist{}, err
 	}
 
-	var role string
-	var inviteID *string
-
-	if wishlist.ShareToken == token {
-		role = domain.MemberRoleEditor
-	} else {
-		invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
-		if err != nil {
-			if errors.Is(err, ports.ErrNotFound) {
-				return domain.Wishlist{}, WishlistNotFound()
-			}
-			return domain.Wishlist{}, err
+	invite, err := s.repo.GetInviteByTokenHash(ctx, id, tokenHash(token))
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return domain.Wishlist{}, WishlistNotFound()
 		}
-
-		if invite.AcceptedAt != nil {
-			return domain.Wishlist{}, ValidationError("token", "invite has already been accepted")
-		}
-		if !invite.ExpiresAt.After(s.nowFn().UTC()) {
-			return domain.Wishlist{}, ValidationError("token", "invite has expired")
-		}
-
-		role = invite.Role
-		inviteID = &invite.ID
+		return domain.Wishlist{}, err
 	}
+	if invite.AcceptedAt != nil {
+		return domain.Wishlist{}, ValidationError("token", "invite has already been accepted")
+	}
+	if !invite.ExpiresAt.After(s.nowFn().UTC()) {
+		return domain.Wishlist{}, ValidationError("token", "invite has expired")
+	}
+
+	role := invite.Role
 
 	uid := s.userID(ctx)
 
-	if inviteID != nil {
-		if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
-			InviteID:   *inviteID,
-			WishlistID: id,
-			UserID:     uid,
-			Role:       role,
-			AcceptedAt: s.nowFn().UTC(),
-		}); err != nil {
-			return domain.Wishlist{}, err
-		}
-	} else {
-		if err := s.repo.AddMember(ctx, id, uid, role); err != nil {
-			return domain.Wishlist{}, err
-		}
+	if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
+		InviteID:   invite.ID,
+		WishlistID: id,
+		UserID:     uid,
+		Role:       role,
+		AcceptedAt: s.nowFn().UTC(),
+	}); err != nil {
+		return domain.Wishlist{}, err
 	}
 
 	return s.GetByID(ctx, id)
@@ -684,7 +669,11 @@ func (s *Service) UpdateMemberRole(ctx context.Context, wishlistID string, userI
 		return ValidationError("userId", "cannot change your own role")
 	}
 
-	return s.repo.UpdateMemberRole(ctx, wishlistID, userID, role)
+	if err := s.repo.UpdateMemberRole(ctx, wishlistID, userID, role); errors.Is(err, ports.ErrNotFound) {
+		return WishlistNotFound()
+	} else {
+		return err
+	}
 }
 
 func ensureWishlists(wishlists []domain.Wishlist) []domain.Wishlist {

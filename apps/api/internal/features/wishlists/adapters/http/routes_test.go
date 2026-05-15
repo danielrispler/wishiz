@@ -66,7 +66,7 @@ func TestGetWishlistNotFoundReturns404(t *testing.T) {
 	}
 }
 
-func TestListWishlistsReturnsMembersAndInvitesJSON(t *testing.T) {
+func TestListWishlistsOwnerResponseIncludesMembersAndInvitesWithoutShareToken(t *testing.T) {
 	t.Parallel()
 	service := &stubService{
 		listWishlists: func(context.Context) ([]domain.Wishlist, error) {
@@ -92,8 +92,36 @@ func TestListWishlistsReturnsMembersAndInvitesJSON(t *testing.T) {
 	if _, ok := payload[0]["invites"].([]any); !ok {
 		t.Fatalf("expected invites to be an array, got %#v", payload[0]["invites"])
 	}
-	if _, exists := payload[0]["sharedUsers"]; exists {
-		t.Fatalf("did not expect old sharedUsers field")
+	if _, exists := payload[0]["shareToken"]; exists {
+		t.Fatalf("did not expect shareToken field")
+	}
+}
+
+func TestGetWishlistMemberResponseOmitsInvitesAndShareToken(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		getWishlist: func(context.Context, string) (domain.Wishlist, error) {
+			return sampleWishlist(), nil
+		},
+	}
+
+	response := performRequestAsUser(t, service, http.MethodGet, "/wishlists/"+wishlistID, "", authctx.User{
+		ID:    memberID,
+		Email: "viewer@example.com",
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, exists := payload["invites"]; exists {
+		t.Fatalf("did not expect invites for member response")
+	}
+	if _, exists := payload["shareToken"]; exists {
+		t.Fatalf("did not expect shareToken field")
 	}
 }
 
@@ -219,6 +247,43 @@ func TestCreateInviteReturnsCreatedInvite(t *testing.T) {
 	}
 }
 
+func TestPatchMemberNotFoundReturns404(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		updateMemberRole: func(context.Context, string, string, *application.PatchWishlistMemberInput) error {
+			return application.WishlistNotFound()
+		},
+	}
+
+	response := performRequest(t, service, http.MethodPatch, "/wishlists/"+wishlistID+"/members/"+memberID, `{"role":"editor"}`)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCreateWishlistRejectsOversizedJSONBody(t *testing.T) {
+	t.Parallel()
+	service := &stubService{}
+	largeTitle := make([]byte, 0, 1024*1024+64)
+	for len(largeTitle) < 1024*1024+64 {
+		largeTitle = append(largeTitle, 'a')
+	}
+	body := `{"title":"` + string(largeTitle) + `","year":2026}`
+
+	response := performRequest(t, service, http.MethodPost, "/wishlists", body)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["error"]["message"] != "request body must be at most 1048576 bytes" {
+		t.Fatalf("unexpected error payload: %#v", payload)
+	}
+}
+
 func TestDeleteInviteAndMemberReturnNoContent(t *testing.T) {
 	t.Parallel()
 	service := &stubService{
@@ -263,14 +328,19 @@ func TestWishlistRoutesReturnInternalServerErrorForUnexpectedErrors(t *testing.T
 
 func performRequest(t *testing.T, service Service, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return performRequestAsUser(t, service, method, path, body, authctx.User{
+		ID:    ownerID,
+		Email: "owner@example.com",
+	})
+}
+
+func performRequestAsUser(t *testing.T, service Service, method, path, body string, user authctx.User) *httptest.ResponseRecorder {
+	t.Helper()
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, slog.New(slog.NewTextHandler(io.Discard, nil)), service, func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			ctx := authctx.WithUser(r.Context(), authctx.User{
-				ID:    ownerID,
-				Email: "owner@example.com",
-			})
+			ctx := authctx.WithUser(r.Context(), user)
 			next(w, r.WithContext(ctx))
 		}
 	})
@@ -292,6 +362,7 @@ func sampleWishlist() domain.Wishlist {
 		Title:       "Weekend Hosting",
 		Description: "Plates and flowers",
 		Year:        2026,
+		ShareToken:  "permanent-token",
 		CreatedAt:   fixedTime,
 		UpdatedAt:   fixedTime.Add(time.Hour),
 		Members: []domain.WishlistMember{
@@ -341,21 +412,21 @@ const (
 var fixedTime = time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
 
 type stubService struct {
-	createInvite   func(context.Context, string, *application.CreateInviteInput) (domain.WishlistInvite, error)
-	deleteInvite   func(context.Context, string, string) error
-	removeMember   func(context.Context, string, string) error
-	listWishlists  func(context.Context) ([]domain.Wishlist, error)
-	getWishlist    func(context.Context, string) (domain.Wishlist, error)
-	createWishlist func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
-	patchWishlist  func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
-	deleteWishlist func(context.Context, string) error
-	archive        func(context.Context, string) (domain.Wishlist, error)
-	restore        func(context.Context, string) (domain.Wishlist, error)
-	addItem        func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
-	patchItem      func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
-	deleteItem     func(context.Context, string, string) error
-	reorderItems   func(context.Context, string, []string) (domain.Wishlist, error)
-	join           func(context.Context, string, *application.JoinWishlistInput) (domain.Wishlist, error)
+	createInvite     func(context.Context, string, *application.CreateInviteInput) (domain.WishlistInvite, error)
+	deleteInvite     func(context.Context, string, string) error
+	removeMember     func(context.Context, string, string) error
+	listWishlists    func(context.Context) ([]domain.Wishlist, error)
+	getWishlist      func(context.Context, string) (domain.Wishlist, error)
+	createWishlist   func(context.Context, *application.CreateWishlistInput) (domain.Wishlist, error)
+	patchWishlist    func(context.Context, string, *application.PatchWishlistInput) (domain.Wishlist, error)
+	deleteWishlist   func(context.Context, string) error
+	archive          func(context.Context, string) (domain.Wishlist, error)
+	restore          func(context.Context, string) (domain.Wishlist, error)
+	addItem          func(context.Context, string, *application.AddItemInput) (domain.WishlistItem, error)
+	patchItem        func(context.Context, string, string, *application.PatchItemInput) (domain.WishlistItem, error)
+	deleteItem       func(context.Context, string, string) error
+	reorderItems     func(context.Context, string, []string) (domain.Wishlist, error)
+	join             func(context.Context, string, *application.JoinWishlistInput) (domain.Wishlist, error)
 	updateMemberRole func(context.Context, string, string, *application.PatchWishlistMemberInput) error
 }
 

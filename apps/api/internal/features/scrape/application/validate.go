@@ -68,12 +68,12 @@ func ValidateProductURL(ctx context.Context, resolver HostResolver, rawURL strin
 	return parsedURL, nil
 }
 
-func IsRedirectAllowed(ctx context.Context, resolver HostResolver, candidate *url.URL) error {
-	if candidate == nil {
+func IsRedirectAllowed(ctx context.Context, resolver HostResolver, candidate string) error {
+	if strings.TrimSpace(candidate) == "" {
 		return BadRequest("redirect target is invalid")
 	}
 
-	_, err := ValidateProductURL(ctx, resolver, candidate.String())
+	_, err := ValidateProductURL(ctx, resolver, candidate)
 	return err
 }
 

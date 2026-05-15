@@ -106,7 +106,7 @@ func RequireAuth(service Service, next http.HandlerFunc) http.HandlerFunc {
 
 func (h handler) signUp(w http.ResponseWriter, r *http.Request) {
 	var request signUpRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -130,7 +130,7 @@ func (h handler) signUp(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) logIn(w http.ResponseWriter, r *http.Request) {
 	var request logInRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -171,7 +171,7 @@ func (h handler) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request updateCurrentUserRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}

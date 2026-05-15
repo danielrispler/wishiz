@@ -453,7 +453,6 @@ components:
         - updatedAt
         - isArchived
         - members
-        - invites
         - items
     WishlistMember:
       type: object

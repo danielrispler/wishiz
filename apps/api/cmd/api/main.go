@@ -64,7 +64,7 @@ func run() error {
 
 	resolver := net.DefaultResolver
 	fastScraper := scrapefastpath.NewScraper(resolver)
-	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath)
+	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath, resolver)
 	defer headlessScraper.Close()
 
 	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)

@@ -15,7 +15,6 @@ class Wishlist {
     required this.createdAt,
     required this.updatedAt,
     this.isArchived = false,
-    this.shareToken = '',
     List<WishlistMember>? members,
     List<WishlistInvite>? invites,
     List<WishlistItem>? items,
@@ -33,7 +32,6 @@ class Wishlist {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isArchived;
-  final String shareToken;
   final List<WishlistMember> members;
   final List<WishlistInvite> invites;
   final List<WishlistItem> items;
@@ -59,7 +57,6 @@ class Wishlist {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isArchived,
-    String? shareToken,
     List<WishlistMember>? members,
     List<WishlistInvite>? invites,
     List<WishlistItem>? items,
@@ -77,7 +74,6 @@ class Wishlist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isArchived: isArchived ?? this.isArchived,
-      shareToken: shareToken ?? this.shareToken,
       members: members ?? this.members,
       invites: invites ?? this.invites,
       items: items ?? this.items,

@@ -89,20 +89,19 @@ type patchMemberRequest struct {
 }
 
 type wishlistResponse struct {
-	ID            string           `json:"id"`
-	OwnerUserID   string           `json:"ownerUserId"`
-	OwnerFullName string           `json:"ownerFullName"`
-	Title         string           `json:"title"`
-	Description   string           `json:"description"`
-	Year          int              `json:"year"`
-	CoverImageURL *string          `json:"coverImageUrl"`
-	CreatedAt     time.Time        `json:"createdAt"`
-	UpdatedAt     time.Time        `json:"updatedAt"`
-	IsArchived    bool             `json:"isArchived"`
-	ShareToken    string           `json:"shareToken"`
-	Members       []memberResponse `json:"members"`
-	Invites       []inviteResponse `json:"invites"`
-	Items         []itemResponse   `json:"items"`
+	ID            string            `json:"id"`
+	OwnerUserID   string            `json:"ownerUserId"`
+	OwnerFullName string            `json:"ownerFullName"`
+	Title         string            `json:"title"`
+	Description   string            `json:"description"`
+	Year          int               `json:"year"`
+	CoverImageURL *string           `json:"coverImageUrl"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	IsArchived    bool              `json:"isArchived"`
+	Members       []memberResponse  `json:"members"`
+	Invites       *[]inviteResponse `json:"invites,omitempty"`
+	Items         []itemResponse    `json:"items"`
 }
 
 type memberResponse struct {
@@ -192,7 +191,7 @@ func (h handler) listWishlists(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]wishlistResponse, 0, len(wishlists))
 	for _, wishlist := range wishlists {
-		response = append(response, mapWishlistResponse(wishlist))
+		response = append(response, mapWishlistResponse(r.Context(), wishlist))
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, response)
@@ -200,7 +199,7 @@ func (h handler) listWishlists(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) createWishlist(w http.ResponseWriter, r *http.Request) {
 	var request createWishlistRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -216,7 +215,7 @@ func (h handler) createWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusCreated, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) getWishlist(w http.ResponseWriter, r *http.Request) {
@@ -226,12 +225,12 @@ func (h handler) getWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) joinWishlist(w http.ResponseWriter, r *http.Request) {
 	var request joinWishlistRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -244,12 +243,12 @@ func (h handler) joinWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) patchWishlist(w http.ResponseWriter, r *http.Request) {
 	var request patchWishlistRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -265,7 +264,7 @@ func (h handler) patchWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) deleteWishlist(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +283,7 @@ func (h handler) archiveWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) restoreWishlist(w http.ResponseWriter, r *http.Request) {
@@ -294,12 +293,12 @@ func (h handler) restoreWishlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) addItem(w http.ResponseWriter, r *http.Request) {
 	var request createItemRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -323,7 +322,7 @@ func (h handler) addItem(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) patchItem(w http.ResponseWriter, r *http.Request) {
 	var request patchItemRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -361,7 +360,7 @@ func (h handler) deleteItem(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) reorderItems(w http.ResponseWriter, r *http.Request) {
 	var request reorderItemsRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -372,7 +371,7 @@ func (h handler) reorderItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(wishlist))
+	httpx.WriteJSON(w, http.StatusOK, mapWishlistResponse(r.Context(), wishlist))
 }
 
 func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
@@ -394,7 +393,10 @@ func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
-func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
+func mapWishlistResponse(ctx context.Context, wishlist domain.Wishlist) wishlistResponse {
+	user, _ := authctx.UserFromContext(ctx)
+	isOwner := user.ID != "" && wishlist.OwnerID == user.ID
+
 	members := make([]memberResponse, 0, len(wishlist.Members))
 	for _, member := range wishlist.Members {
 		members = append(members, memberResponse{
@@ -407,9 +409,13 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		})
 	}
 
-	invites := make([]inviteResponse, 0, len(wishlist.Invites))
-	for _, invite := range wishlist.Invites {
-		invites = append(invites, mapInviteResponse(invite))
+	var invites *[]inviteResponse
+	if isOwner {
+		ownerInvites := make([]inviteResponse, 0, len(wishlist.Invites))
+		for _, invite := range wishlist.Invites {
+			ownerInvites = append(ownerInvites, mapInviteResponse(invite))
+		}
+		invites = &ownerInvites
 	}
 
 	items := make([]itemResponse, 0, len(wishlist.Items))
@@ -428,7 +434,6 @@ func mapWishlistResponse(wishlist domain.Wishlist) wishlistResponse {
 		CreatedAt:     wishlist.CreatedAt,
 		UpdatedAt:     wishlist.UpdatedAt,
 		IsArchived:    wishlist.IsArchived,
-		ShareToken:    wishlist.ShareToken,
 		Members:       members,
 		Invites:       invites,
 		Items:         items,
@@ -451,7 +456,7 @@ func mapInviteResponse(invite domain.WishlistInvite) inviteResponse {
 
 func (h handler) createInvite(w http.ResponseWriter, r *http.Request) {
 	var request createInviteRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
@@ -489,7 +494,7 @@ func (h handler) removeMember(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) patchMember(w http.ResponseWriter, r *http.Request) {
 	var request patchMemberRequest
-	if err := httpx.DecodeJSON(r, &request); err != nil {
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}

@@ -26,7 +26,7 @@ func NewScraper(resolver scrapeapp.HostResolver) *Scraper {
 			Transport: http.DefaultTransport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				ctx := req.Context()
-				if err := scrapeapp.IsRedirectAllowed(ctx, resolver, req.URL); err != nil {
+				if err := scrapeapp.IsRedirectAllowed(ctx, resolver, req.URL.String()); err != nil {
 					return err
 				}
 				if len(via) >= 10 {
@@ -71,7 +71,7 @@ func (s *Scraper) Scrape(ctx context.Context, rawURL string) (scrapeapp.Product,
 			}
 			parsedRedirect = base.ResolveReference(parsedRedirect)
 		}
-		if err := scrapeapp.IsRedirectAllowed(requestCtx, s.resolver, parsedRedirect); err != nil {
+		if err := scrapeapp.IsRedirectAllowed(requestCtx, s.resolver, parsedRedirect.String()); err != nil {
 			return product, nil
 		}
 		currentURL = parsedRedirect.String()

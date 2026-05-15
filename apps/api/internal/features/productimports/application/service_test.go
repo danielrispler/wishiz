@@ -86,7 +86,7 @@ func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {
 	if repo.completed == nil {
 		t.Fatalf("expected job to be completed")
 	}
-	if repo.completed.CreatedItemID != "item-1" || repo.completed.PriceLabel != "USD 40.00" {
+	if value(repo.completed.CreatedItemID) != "item-1" || repo.completed.PriceLabel != "USD 40.00" {
 		t.Fatalf("unexpected completed params: %+v", repo.completed)
 	}
 	if wishlists.added == nil || wishlists.added.Title != "Desk lamp" {
@@ -138,10 +138,11 @@ func TestServiceMarksNeedsReviewWhenPriceIsNotHighConfidence(t *testing.T) {
 }
 
 func productImportJob() importdomain.Job {
+	wishlistID := "wishlist-1"
 	return importdomain.Job{
 		ID:                 "job-1",
 		UserID:             "user-1",
-		WishlistID:         "wishlist-1",
+		WishlistID:         &wishlistID,
 		NormalizedURL:      "https://example.com/lamp",
 		Domain:             "example.com",
 		TargetCurrencyCode: "USD",
@@ -197,6 +198,10 @@ func (r *fakeRepo) MarkNeedsReview(_ context.Context, params ports.NeedsReviewJo
 }
 
 func (r *fakeRepo) MarkFailed(context.Context, ports.FailJobParams) (importdomain.Job, error) {
+	return r.claimedJob, nil
+}
+
+func (r *fakeRepo) Assign(context.Context, string, string, string) (importdomain.Job, error) {
 	return r.claimedJob, nil
 }
 

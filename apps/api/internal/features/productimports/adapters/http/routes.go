@@ -20,6 +20,7 @@ type Service interface {
 	List(ctx context.Context, input application.ListJobsInput) ([]domain.Job, error)
 	Retry(ctx context.Context, id string) (domain.Job, error)
 	Acknowledge(ctx context.Context, id string) (domain.Job, error)
+	Assign(ctx context.Context, id string, wishlistID string) (domain.Job, error)
 }
 
 type AuthMiddleware func(http.HandlerFunc) http.HandlerFunc
@@ -36,10 +37,14 @@ type createJobRequest struct {
 	TargetCurrencyCode string `json:"targetCurrencyCode"`
 }
 
+type assignJobRequest struct {
+	WishlistID string `json:"wishlistId"`
+}
+
 type jobResponse struct {
 	ID                 string     `json:"id"`
 	UserID             string     `json:"userId"`
-	WishlistID         string     `json:"wishlistId"`
+	WishlistID         *string    `json:"wishlistId,omitempty"`
 	ClientRequestID    string     `json:"clientRequestId"`
 	NormalizedURL      string     `json:"normalizedUrl"`
 	Domain             string     `json:"domain"`
@@ -73,6 +78,7 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, au
 	mux.HandleFunc("GET /product-imports", authMiddleware(withAuthenticatedUser(h.listJobs)))
 	mux.HandleFunc("POST /product-imports/{id}/retry", authMiddleware(withAuthenticatedUser(h.retryJob)))
 	mux.HandleFunc("POST /product-imports/{id}/acknowledge", authMiddleware(withAuthenticatedUser(h.acknowledgeJob)))
+	mux.HandleFunc("POST /product-imports/{id}/assign", authMiddleware(withAuthenticatedUser(h.assignJob)))
 }
 
 func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
@@ -140,6 +146,20 @@ func (h handler) retryJob(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) acknowledgeJob(w http.ResponseWriter, r *http.Request) {
 	job, err := h.service.Acknowledge(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, mapJob(job))
+}
+
+func (h handler) assignJob(w http.ResponseWriter, r *http.Request) {
+	var request assignJobRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+	job, err := h.service.Assign(r.Context(), r.PathValue("id"), request.WishlistID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

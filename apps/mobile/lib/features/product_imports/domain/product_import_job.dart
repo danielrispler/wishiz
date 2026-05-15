@@ -1,7 +1,7 @@
 class ProductImportJob {
   const ProductImportJob({
     required this.id,
-    required this.wishlistId,
+    this.wishlistId,
     required this.clientRequestId,
     required this.normalizedUrl,
     required this.domain,
@@ -26,7 +26,7 @@ class ProductImportJob {
   });
 
   final String id;
-  final String wishlistId;
+  final String? wishlistId;
   final String clientRequestId;
   final String normalizedUrl;
   final String domain;

@@ -41,12 +41,14 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 		return domain.Job{}, false, err
 	}
 
-	job, err = getRecentDuplicate(ctx, tx, params, time.Now().UTC().Add(-dedupeWindow))
-	if err == nil {
-		return job, true, tx.Commit(ctx)
-	}
-	if !errors.Is(err, ports.ErrNotFound) {
-		return domain.Job{}, false, err
+	if params.WishlistID != nil {
+		job, err = getRecentDuplicate(ctx, tx, params, time.Now().UTC().Add(-dedupeWindow))
+		if err == nil {
+			return job, true, tx.Commit(ctx)
+		}
+		if !errors.Is(err, ports.ErrNotFound) {
+			return domain.Job{}, false, err
+		}
 	}
 
 	row := tx.QueryRow(ctx, `
@@ -58,10 +60,10 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 			domain,
 			target_currency_code
 		)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $6)
 		RETURNING `+jobColumns,
 		params.UserID,
-		params.WishlistID,
+		ptrOrEmpty(params.WishlistID),
 		params.ClientRequestID,
 		params.NormalizedURL,
 		params.Domain,
@@ -259,7 +261,7 @@ func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJob
 			price_warnings = COALESCE($6::text[], ARRAY[]::text[]),
 			image_url = $7,
 			completeness = $8,
-			created_item_id = $9::uuid,
+			created_item_id = NULLIF($9, '')::uuid,
 			last_error = NULL,
 			error_code = NULL,
 			retryable = FALSE,
@@ -274,7 +276,20 @@ func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJob
 		params.PriceWarnings,
 		params.ImageURL,
 		params.Completeness,
-		params.CreatedItemID,
+		ptrOrEmpty(params.CreatedItemID),
+	)
+}
+
+func (r *Repository) Assign(ctx context.Context, id string, wishlistID string, createdItemID string) (domain.Job, error) {
+	return r.updateResult(ctx, `
+		UPDATE product_import_jobs
+		SET wishlist_id = $2::uuid,
+			created_item_id = $3::uuid
+		WHERE id = $1::uuid
+		RETURNING `+jobColumns,
+		id,
+		wishlistID,
+		createdItemID,
 	)
 }
 
@@ -397,6 +412,7 @@ type scanner interface {
 
 func scanJob(row scanner) (domain.Job, error) {
 	var job domain.Job
+	var wishlistID sql.NullString
 	var lastAttemptedAt sql.NullTime
 	var lastError sql.NullString
 	var errorCode sql.NullString
@@ -412,7 +428,7 @@ func scanJob(row scanner) (domain.Job, error) {
 	err := row.Scan(
 		&job.ID,
 		&job.UserID,
-		&job.WishlistID,
+		&wishlistID,
 		&job.ClientRequestID,
 		&job.NormalizedURL,
 		&job.Domain,
@@ -440,6 +456,7 @@ func scanJob(row scanner) (domain.Job, error) {
 		return domain.Job{}, err
 	}
 
+	job.WishlistID = nullableString(wishlistID)
 	job.LastAttemptedAt = nullableTime(lastAttemptedAt)
 	job.LastError = nullableString(lastError)
 	job.ErrorCode = nullableString(errorCode)
@@ -471,6 +488,13 @@ func nullableTime(value sql.NullTime) *time.Time {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func ptrOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 const jobColumns = `

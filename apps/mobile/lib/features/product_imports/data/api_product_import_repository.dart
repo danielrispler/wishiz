@@ -19,7 +19,7 @@ class ApiProductImportRepository implements ProductImportRepository {
 
   @override
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
@@ -52,6 +52,13 @@ class ApiProductImportRepository implements ProductImportRepository {
     _jobs.value = List<ProductImportJob>.unmodifiable(
       _jobs.value.where((entry) => entry.id != job.id),
     );
+    return job;
+  }
+
+  @override
+  Future<ProductImportJob> assign(String id, String wishlistId) async {
+    final job = await _apiClient.assign(id, wishlistId);
+    _upsert(job);
     return job;
   }
 

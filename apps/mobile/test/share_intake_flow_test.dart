@@ -523,7 +523,7 @@ class FakeProductImportRepository implements ProductImportRepository {
 
   @override
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
@@ -531,7 +531,7 @@ class FakeProductImportRepository implements ProductImportRepository {
     requestedSharedTexts.add(sharedText);
     final job = buildProductImportJob(
       id: clientRequestId,
-      wishlistId: wishlistId,
+      wishlistId: wishlistId ?? 'wishlist-1',
       clientRequestId: clientRequestId,
       normalizedUrl: sharedText,
       domain: Uri.tryParse(sharedText)?.host ?? '',
@@ -556,7 +556,7 @@ class FakeProductImportRepository implements ProductImportRepository {
     final job = _jobs.value.firstWhere((job) => job.id == id);
     final retried = buildProductImportJob(
       id: job.id,
-      wishlistId: job.wishlistId,
+      wishlistId: job.wishlistId ?? 'wishlist-1',
       clientRequestId: job.clientRequestId,
       normalizedUrl: job.normalizedUrl,
       domain: job.domain,
@@ -576,6 +576,11 @@ class FakeProductImportRepository implements ProductImportRepository {
     final job = _jobs.value.firstWhere((job) => job.id == id);
     _jobs.value = _jobs.value.where((job) => job.id != id).toList();
     return job;
+  }
+
+  @override
+  Future<ProductImportJob> assign(String id, String wishlistId) async {
+    return _jobs.value.firstWhere((job) => job.id == id);
   }
 }
 

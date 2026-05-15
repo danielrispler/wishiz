@@ -19,21 +19,36 @@ class ProductImportApiClient {
   final HttpClient _httpClient;
 
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
   }) async {
+    final body = <String, dynamic>{
+      'sharedText': sharedText,
+      'clientRequestId': clientRequestId,
+      'targetCurrencyCode': targetCurrencyCode,
+    };
+    if (wishlistId != null) {
+      body['wishlistId'] = wishlistId;
+    }
     final response = await _requestJson(
       'POST',
       '/product-imports',
-      body: {
-        'wishlistId': wishlistId,
-        'sharedText': sharedText,
-        'clientRequestId': clientRequestId,
-        'targetCurrencyCode': targetCurrencyCode,
-      },
+      body: body,
       expectedStatusCodes: const {HttpStatus.ok, HttpStatus.created},
+    );
+    return ProductImportJobDto.fromJson(
+      response as Map<String, dynamic>,
+    ).toEntity();
+  }
+
+  Future<ProductImportJob> assign(String id, String wishlistId) async {
+    final response = await _requestJson(
+      'POST',
+      '/product-imports/$id/assign',
+      body: {'wishlistId': wishlistId},
+      expectedStatusCodes: const {HttpStatus.ok},
     );
     return ProductImportJobDto.fromJson(
       response as Map<String, dynamic>,
@@ -129,7 +144,7 @@ class ProductImportApiClient {
 class ProductImportJobDto {
   const ProductImportJobDto({
     required this.id,
-    required this.wishlistId,
+    this.wishlistId,
     required this.clientRequestId,
     required this.normalizedUrl,
     required this.domain,
@@ -156,7 +171,7 @@ class ProductImportJobDto {
   factory ProductImportJobDto.fromJson(Map<String, dynamic> json) {
     return ProductImportJobDto(
       id: json['id'] as String,
-      wishlistId: json['wishlistId'] as String,
+      wishlistId: json['wishlistId'] as String?,
       clientRequestId: json['clientRequestId'] as String,
       normalizedUrl: json['normalizedUrl'] as String,
       domain: json['domain'] as String,
@@ -184,7 +199,7 @@ class ProductImportJobDto {
   }
 
   final String id;
-  final String wishlistId;
+  final String? wishlistId;
   final String clientRequestId;
   final String normalizedUrl;
   final String domain;

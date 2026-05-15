@@ -13,7 +13,7 @@ const (
 type Job struct {
 	ID                 string
 	UserID             string
-	WishlistID         string
+	WishlistID         *string
 	ClientRequestID    string
 	NormalizedURL      string
 	Domain             string

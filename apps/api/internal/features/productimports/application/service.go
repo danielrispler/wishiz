@@ -100,9 +100,6 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 		return importdomain.Job{}, false, ValidationError("clientRequestId", "clientRequestId is required")
 	}
 	wishlistID := strings.TrimSpace(input.WishlistID)
-	if wishlistID == "" {
-		return importdomain.Job{}, false, ValidationError("wishlistId", "wishlistId is required")
-	}
 	targetCurrency, err := scrapeapp.NormalizeCurrencyCode(input.TargetCurrencyCode)
 	if err != nil {
 		return importdomain.Job{}, false, err
@@ -115,17 +112,22 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 	if err != nil {
 		return importdomain.Job{}, false, err
 	}
-	wishlist, err := s.wishlists.GetByID(ctx, wishlistID)
-	if err != nil {
-		return importdomain.Job{}, false, err
-	}
-	if !canEditWishlist(user.ID, wishlist) {
-		return importdomain.Job{}, false, wishlistapp.WishlistNotFound()
+
+	var wishlistIDPtr *string
+	if wishlistID != "" {
+		wishlist, err := s.wishlists.GetByID(ctx, wishlistID)
+		if err != nil {
+			return importdomain.Job{}, false, err
+		}
+		if !canEditWishlist(user.ID, wishlist) {
+			return importdomain.Job{}, false, wishlistapp.WishlistNotFound()
+		}
+		wishlistIDPtr = &wishlistID
 	}
 
 	return s.repo.CreateOrGet(ctx, ports.CreateJobParams{
 		UserID:             user.ID,
-		WishlistID:         wishlistID,
+		WishlistID:         wishlistIDPtr,
 		ClientRequestID:    clientRequestID,
 		NormalizedURL:      normalizedURL.String(),
 		Domain:             normalizedURL.Hostname(),
@@ -179,6 +181,41 @@ func (s *Service) Acknowledge(ctx context.Context, id string) (importdomain.Job,
 		return importdomain.Job{}, err
 	}
 	return s.repo.Acknowledge(ctx, id, s.nowFn().UTC())
+}
+
+func (s *Service) Assign(ctx context.Context, id string, wishlistID string) (importdomain.Job, error) {
+	job, err := s.requireUserJob(ctx, id)
+	if err != nil {
+		return importdomain.Job{}, err
+	}
+	if job.Status != importdomain.StatusCompleted || job.WishlistID != nil || job.CreatedItemID != nil {
+		return importdomain.Job{}, Conflict("status", "job is not an unassigned completed import")
+	}
+	wishlistID = strings.TrimSpace(wishlistID)
+	if wishlistID == "" {
+		return importdomain.Job{}, ValidationError("wishlistId", "wishlistId is required")
+	}
+	wishlist, err := s.wishlists.GetByID(ctx, wishlistID)
+	if err != nil {
+		return importdomain.Job{}, err
+	}
+	user, _ := authctx.UserFromContext(ctx)
+	if !canEditWishlist(user.ID, wishlist) {
+		return importdomain.Job{}, wishlistapp.WishlistNotFound()
+	}
+	itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
+	item, err := s.wishlists.AddItem(itemCtx, wishlistID, &wishlistapp.AddItemInput{
+		Title:      ptrOrEmpty(job.Title),
+		PriceLabel: job.PriceLabel,
+		ImageURL:   job.ImageURL,
+		ProductURL: &job.NormalizedURL,
+		Priority:   wishlistdomain.ItemPriorityMedium,
+		Status:     wishlistdomain.ItemStatusSaved,
+	})
+	if err != nil {
+		return importdomain.Job{}, err
+	}
+	return s.repo.Assign(ctx, job.ID, wishlistID, item.ID)
 }
 
 func (s *Service) RecoverStuck(ctx context.Context) error {
@@ -304,31 +341,35 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 		return markErr
 	}
 
-	itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
-	item, createErr := s.wishlists.AddItem(itemCtx, job.WishlistID, &wishlistapp.AddItemInput{
-		Title:      *snapshot.Title,
-		PriceLabel: snapshot.PriceLabel,
-		ImageURL:   snapshot.ImageURL,
-		ProductURL: &job.NormalizedURL,
-		Priority:   wishlistdomain.ItemPriorityMedium,
-		Status:     wishlistdomain.ItemStatusSaved,
-	})
-	if createErr != nil {
-		retryable := !isWishlistValidationError(createErr)
-		_, markErr := s.repo.MarkFailed(ctx, ports.FailJobParams{
-			ID:              job.ID,
-			Title:           snapshot.Title,
-			PriceLabel:      snapshot.PriceLabel,
-			PriceConfidence: snapshot.PriceConfidence,
-			PriceSource:     snapshot.PriceSource,
-			PriceWarnings:   snapshot.PriceWarnings,
-			ImageURL:        snapshot.ImageURL,
-			Completeness:    snapshot.Completeness,
-			LastError:       createErr.Error(),
-			ErrorCode:       ErrorCodeItemCreate,
-			Retryable:       retryable,
+	var createdItemID *string
+	if job.WishlistID != nil {
+		itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
+		item, createErr := s.wishlists.AddItem(itemCtx, *job.WishlistID, &wishlistapp.AddItemInput{
+			Title:      *snapshot.Title,
+			PriceLabel: snapshot.PriceLabel,
+			ImageURL:   snapshot.ImageURL,
+			ProductURL: &job.NormalizedURL,
+			Priority:   wishlistdomain.ItemPriorityMedium,
+			Status:     wishlistdomain.ItemStatusSaved,
 		})
-		return markErr
+		if createErr != nil {
+			retryable := !isWishlistValidationError(createErr)
+			_, markErr := s.repo.MarkFailed(ctx, ports.FailJobParams{
+				ID:              job.ID,
+				Title:           snapshot.Title,
+				PriceLabel:      snapshot.PriceLabel,
+				PriceConfidence: snapshot.PriceConfidence,
+				PriceSource:     snapshot.PriceSource,
+				PriceWarnings:   snapshot.PriceWarnings,
+				ImageURL:        snapshot.ImageURL,
+				Completeness:    snapshot.Completeness,
+				LastError:       createErr.Error(),
+				ErrorCode:       ErrorCodeItemCreate,
+				Retryable:       retryable,
+			})
+			return markErr
+		}
+		createdItemID = &item.ID
 	}
 	_, markErr := s.repo.MarkCompleted(ctx, ports.CompleteJobParams{
 		ID:              job.ID,
@@ -339,7 +380,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 		PriceWarnings:   snapshot.PriceWarnings,
 		ImageURL:        *snapshot.ImageURL,
 		Completeness:    snapshot.Completeness,
-		CreatedItemID:   item.ID,
+		CreatedItemID:   createdItemID,
 	})
 	return markErr
 }
@@ -459,6 +500,13 @@ func extractFirstURL(text string) string {
 		return ""
 	}
 	return strings.TrimRight(match, ".,);]")
+}
+
+func ptrOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func optional(value string) *string {

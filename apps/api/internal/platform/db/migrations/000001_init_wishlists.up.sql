@@ -102,7 +102,7 @@ CREATE TRIGGER wishlist_items_set_updated_at
 CREATE TABLE IF NOT EXISTS product_import_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-    wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE,
+    wishlist_id UUID NULL REFERENCES wishlists(id) ON DELETE SET NULL,
     client_request_id TEXT NOT NULL,
     normalized_url TEXT NOT NULL,
     domain TEXT NOT NULL,
@@ -142,7 +142,8 @@ CREATE INDEX IF NOT EXISTS product_import_jobs_claim_idx
     WHERE status IN ('pending', 'processing');
 
 CREATE INDEX IF NOT EXISTS product_import_jobs_dedupe_idx
-    ON product_import_jobs (user_id, wishlist_id, normalized_url, created_at DESC);
+    ON product_import_jobs (user_id, wishlist_id, normalized_url, created_at DESC)
+    WHERE wishlist_id IS NOT NULL;
 
 CREATE TRIGGER product_import_jobs_set_updated_at
     BEFORE UPDATE ON product_import_jobs

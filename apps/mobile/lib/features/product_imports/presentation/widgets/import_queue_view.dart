@@ -10,6 +10,7 @@ class ImportQueueView extends StatelessWidget {
     required this.repository,
     required this.isQueueing,
     required this.onOpenWishlist,
+    required this.onAssign,
     required this.onReview,
     required this.onRetry,
     required this.onAcknowledge,
@@ -18,6 +19,7 @@ class ImportQueueView extends StatelessWidget {
   final ProductImportRepository repository;
   final bool isQueueing;
   final ValueChanged<ProductImportJob> onOpenWishlist;
+  final ValueChanged<ProductImportJob> onAssign;
   final ValueChanged<ProductImportJob> onReview;
   final ValueChanged<ProductImportJob> onRetry;
   final ValueChanged<ProductImportJob> onAcknowledge;
@@ -31,6 +33,7 @@ class ImportQueueView extends StatelessWidget {
             .where(
               (job) =>
                   job.acknowledgedAt == null &&
+                  !(job.isCompleted && job.wishlistId != null) &&
                   (job.isActive ||
                       job.isCompleted ||
                       job.needsReview ||
@@ -78,6 +81,7 @@ class ImportQueueView extends StatelessWidget {
                 ImportJobTile(
                   job: job,
                   onOpenWishlist: onOpenWishlist,
+                  onAssign: onAssign,
                   onReview: onReview,
                   onRetry: onRetry,
                   onAcknowledge: onAcknowledge,

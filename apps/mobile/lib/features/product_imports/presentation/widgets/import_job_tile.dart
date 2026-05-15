@@ -6,6 +6,7 @@ class ImportJobTile extends StatelessWidget {
     super.key,
     required this.job,
     required this.onOpenWishlist,
+    required this.onAssign,
     required this.onReview,
     required this.onRetry,
     required this.onAcknowledge,
@@ -13,6 +14,7 @@ class ImportJobTile extends StatelessWidget {
 
   final ProductImportJob job;
   final ValueChanged<ProductImportJob> onOpenWishlist;
+  final ValueChanged<ProductImportJob> onAssign;
   final ValueChanged<ProductImportJob> onReview;
   final ValueChanged<ProductImportJob> onRetry;
   final ValueChanged<ProductImportJob> onAcknowledge;
@@ -55,6 +57,20 @@ class ImportJobTile extends StatelessWidget {
       return const [];
     }
     if (job.isCompleted) {
+      if (job.wishlistId == null) {
+        return [
+          IconButton(
+            tooltip: 'Assign to list',
+            onPressed: () => onAssign(job),
+            icon: const Icon(Icons.playlist_add, size: 20),
+          ),
+          IconButton(
+            tooltip: 'Edit',
+            onPressed: () => onReview(job),
+            icon: const Icon(Icons.edit_outlined, size: 20),
+          ),
+        ];
+      }
       return [
         IconButton(
           tooltip: 'Open list',
@@ -70,7 +86,7 @@ class ImportJobTile extends StatelessWidget {
     }
     if (job.needsReview) {
       return [
-        if (job.retryable)
+        if (job.retryable && job.attemptCount <= 1)
           IconButton(
             tooltip: 'Retry',
             onPressed: () => onRetry(job),
@@ -89,7 +105,7 @@ class ImportJobTile extends StatelessWidget {
       ];
     }
     return [
-      if (job.retryable)
+      if (job.retryable && job.attemptCount <= 1)
         IconButton(
           tooltip: 'Retry',
           onPressed: () => onRetry(job),
@@ -151,7 +167,9 @@ String _jobSubtitle(ProductImportJob job) {
   return switch (job.status) {
     'pending' => 'Waiting to process',
     'processing' => 'Processing details',
-    'completed' => 'Added to wishlist',
+    'completed' => job.wishlistId == null
+        ? 'Ready to assign to a list'
+        : 'Added to wishlist',
     'needs_review' => 'Needs review before saving',
     'failed' => _failedSubtitle(job),
     _ => job.status,
@@ -161,7 +179,7 @@ String _jobSubtitle(ProductImportJob job) {
 String _failedSubtitle(ProductImportJob job) {
   final error = job.lastError?.trim();
   final prefix = error == null || error.isEmpty ? 'Import failed' : error;
-  if (job.retryable) {
+  if (job.retryable && job.attemptCount <= 1) {
     return '$prefix. Retry is available.';
   }
   return '$prefix. Add it manually.';

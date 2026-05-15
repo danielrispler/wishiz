@@ -7,7 +7,7 @@ abstract class ProductImportRepository {
   List<ProductImportJob> getJobs();
 
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
@@ -18,4 +18,6 @@ abstract class ProductImportRepository {
   Future<ProductImportJob> retry(String id);
 
   Future<ProductImportJob> acknowledge(String id);
+
+  Future<ProductImportJob> assign(String id, String wishlistId);
 }

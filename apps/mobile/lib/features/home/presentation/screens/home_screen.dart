@@ -202,12 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.onInitialSharedTextHandled?.call();
 
     try {
-      final wishlistId = await _selectWishlistForSharedImport();
-      if (!mounted || wishlistId == null) {
-        return true;
-      }
       await widget.productImportRepository.enqueue(
-        wishlistId: wishlistId,
         sharedText: sharedText,
         clientRequestId: _uuid.v4(),
         targetCurrencyCode: widget.currentUser.preferredCurrencyCode,
@@ -215,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) {
         return true;
       }
-      _showFeedback('Processing shared item. It will be added soon.');
+      _showFeedback('Processing shared item. Check the queue to assign it.');
       return true;
     } catch (error) {
       if (mounted) {
@@ -464,7 +459,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return ImportQueueView(
       repository: widget.productImportRepository,
       isQueueing: _isImportingSharedProduct,
-      onOpenWishlist: (job) => _openWishlistDetails(job.wishlistId),
+      onOpenWishlist: (job) {
+        if (job.wishlistId != null) _openWishlistDetails(job.wishlistId!);
+      },
+      onAssign: _assignImportJobToWishlist,
       onReview: _openImportJobEditor,
       onRetry: _retryImportJob,
       onAcknowledge: _acknowledgeImportJob,
@@ -494,9 +492,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _assignImportJobToWishlist(ProductImportJob job) async {
+    final wishlistId = await _selectWishlistForSharedImport();
+    if (!mounted || wishlistId == null) return;
+    try {
+      await widget.productImportRepository.assign(job.id, wishlistId);
+      final wishlist = widget.repository.findById(wishlistId);
+      final name = wishlist?.title ?? 'list';
+      if (mounted) _showFeedback('Added to $name.');
+    } catch (error) {
+      if (!mounted) return;
+      _showFeedback(
+        formatErrorMessage(error, fallbackMessage: 'Could not assign import.'),
+      );
+    }
+  }
+
   Future<void> _openImportJobEditor(ProductImportJob job) async {
+    String? wishlistId = job.wishlistId;
+    if (wishlistId == null) {
+      wishlistId = await _selectWishlistForSharedImport();
+      if (!mounted || wishlistId == null) return;
+    }
     final success = await _openSharedProductEditor(
-      wishlistId: job.wishlistId,
+      wishlistId: wishlistId,
       draft: SharedProductDraft(
         productUrl: job.normalizedUrl,
         title: job.title,

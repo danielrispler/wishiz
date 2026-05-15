@@ -21,11 +21,12 @@ type Repository interface {
 	MarkCompleted(ctx context.Context, params CompleteJobParams) (domain.Job, error)
 	MarkNeedsReview(ctx context.Context, params NeedsReviewJobParams) (domain.Job, error)
 	MarkFailed(ctx context.Context, params FailJobParams) (domain.Job, error)
+	Assign(ctx context.Context, id string, wishlistID string, createdItemID string) (domain.Job, error)
 }
 
 type CreateJobParams struct {
 	UserID             string
-	WishlistID         string
+	WishlistID         *string
 	ClientRequestID    string
 	NormalizedURL      string
 	Domain             string
@@ -63,7 +64,7 @@ type CompleteJobParams struct {
 	PriceWarnings   []string
 	ImageURL        string
 	Completeness    int
-	CreatedItemID   string
+	CreatedItemID   *string
 }
 
 type NeedsReviewJobParams struct {

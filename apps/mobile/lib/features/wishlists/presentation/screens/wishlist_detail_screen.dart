@@ -40,13 +40,23 @@ class WishlistDetailScreen extends StatefulWidget {
   State<WishlistDetailScreen> createState() => _WishlistDetailScreenState();
 }
 
+enum _ItemFilter { all, notBought, bought }
+
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   static const String _sortHighestRank = 'Highest Rank';
   static const String _sortLowestRank = 'Lowest Rank';
   static const String _sortNewestAdded = 'Newest Added';
 
   String _selectedSort = _sortHighestRank;
+  late _ItemFilter _selectedFilter;
   final Set<String> _expandedItemIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFilter =
+        widget.showPurchasedOnly ? _ItemFilter.bought : _ItemFilter.all;
+  }
 
   void _showError(Object error, {required String fallbackMessage}) {
     _showFeedback(
@@ -77,12 +87,14 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               );
             }
 
-            final sourceItems = widget.showPurchasedOnly
-                ? wishlist.purchasedItems
-                : wishlist.activeItems;
+            final sourceItems = switch (_selectedFilter) {
+              _ItemFilter.all => wishlist.items,
+              _ItemFilter.notBought => wishlist.activeItems,
+              _ItemFilter.bought => wishlist.purchasedItems,
+            };
             final visibleItems = _applyFilters(sourceItems);
             final canReorder =
-                !widget.showPurchasedOnly &&
+                _selectedFilter != _ItemFilter.bought &&
                 _selectedSort == _sortHighestRank &&
                 visibleItems.length > 1;
 
@@ -182,13 +194,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            widget.showPurchasedOnly
+                            _selectedFilter == _ItemFilter.bought
                                 ? 'Purchased Items'
                                 : 'Items',
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
                         ),
-                        if (!widget.showPurchasedOnly)
+                        if (_selectedFilter != _ItemFilter.bought)
                           Tooltip(
                             message: 'Add a new item',
                             child: TextButton.icon(
@@ -203,7 +215,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           ),
                       ],
                     ),
-                    if (widget.showPurchasedOnly &&
+                    if (_selectedFilter == _ItemFilter.bought &&
                         wishlist.purchasedItems.isNotEmpty) ...[
                       const SizedBox(height: AppConstants.spacing2),
                       Align(
@@ -217,7 +229,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     ],
                     const SizedBox(height: AppConstants.spacing2),
                     Text(
-                      widget.showPurchasedOnly
+                      _selectedFilter == _ItemFilter.bought
                           ? 'Swipe right to restore an item to the active list, or swipe left to delete it.'
                           : 'Swipe right to mark purchased, swipe left to delete, and drag the handle to reprioritize.',
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -486,6 +498,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        SegmentedButton<_ItemFilter>(
+          segments: const [
+            ButtonSegment(value: _ItemFilter.all, label: Text('All')),
+            ButtonSegment(
+              value: _ItemFilter.notBought,
+              label: Text('Not Bought'),
+            ),
+            ButtonSegment(value: _ItemFilter.bought, label: Text('Bought')),
+          ],
+          selected: {_selectedFilter},
+          onSelectionChanged: (selection) {
+            setState(() {
+              _selectedFilter = selection.first;
+            });
+          },
+        ),
+        const SizedBox(height: AppConstants.spacing3),
         Text('Sort by rank', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: AppConstants.spacing2),
         Container(
@@ -536,7 +565,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       ),
       padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Text(
-        widget.showPurchasedOnly
+        _selectedFilter == _ItemFilter.bought
             ? 'No purchased items yet. Swipe right on an active item to move it into Past Lists.'
             : 'No active items yet. Add the first item to start ranking this list.',
         style: Theme.of(context).textTheme.bodyMedium,
@@ -641,14 +670,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         direction: DismissDirection.horizontal,
         background: _buildSwipeBackground(
           context,
-          color: widget.showPurchasedOnly
+          color: item.status == WishlistItemStatus.purchased
               ? Colors.blue.shade600
               : Colors.green.shade600,
           alignment: Alignment.centerLeft,
-          icon: widget.showPurchasedOnly
+          icon: item.status == WishlistItemStatus.purchased
               ? Icons.restore_outlined
               : Icons.check_circle_outline,
-          label: widget.showPurchasedOnly ? 'Restore' : 'Purchased',
+          label: item.status == WishlistItemStatus.purchased
+              ? 'Restore'
+              : 'Purchased',
         ),
         secondaryBackground: _buildSwipeBackground(
           context,
@@ -659,7 +690,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         ),
         confirmDismiss: (direction) async {
           if (direction == DismissDirection.startToEnd) {
-            if (widget.showPurchasedOnly) {
+            if (item.status == WishlistItemStatus.purchased) {
               await _restoreItemToActive(wishlist: wishlist, item: item);
             } else {
               await _moveItemToPastList(wishlist: wishlist, item: item);

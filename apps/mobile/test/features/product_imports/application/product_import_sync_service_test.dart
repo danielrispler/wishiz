@@ -227,7 +227,7 @@ class _FakeProductImportRepository implements ProductImportRepository {
 
   @override
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
@@ -242,6 +242,11 @@ class _FakeProductImportRepository implements ProductImportRepository {
 
   @override
   Future<ProductImportJob> acknowledge(String id) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ProductImportJob> assign(String id, String wishlistId) {
     throw UnimplementedError();
   }
 }

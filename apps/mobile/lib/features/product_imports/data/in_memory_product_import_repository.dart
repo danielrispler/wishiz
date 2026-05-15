@@ -16,7 +16,7 @@ class InMemoryProductImportRepository implements ProductImportRepository {
 
   @override
   Future<ProductImportJob> enqueue({
-    required String wishlistId,
+    String? wishlistId,
     required String sharedText,
     required String clientRequestId,
     required String targetCurrencyCode,
@@ -55,5 +55,10 @@ class InMemoryProductImportRepository implements ProductImportRepository {
       _jobs.value.where((entry) => entry.id != id),
     );
     return job;
+  }
+
+  @override
+  Future<ProductImportJob> assign(String id, String wishlistId) async {
+    return _jobs.value.firstWhere((job) => job.id == id);
   }
 }

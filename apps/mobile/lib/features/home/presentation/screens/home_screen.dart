@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -65,12 +68,18 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _handledInitialWishlistId;
   String? _handledInitialSharedText;
   bool _isImportingSharedProduct = false;
+  bool _isPolling = false;
+  Timer? _pollTimer;
+  late final ValueListenable<List<Wishlist>> _wishlistsListenable;
 
   @override
   void initState() {
     super.initState();
+    _wishlistsListenable = widget.repository.watchWishlists();
+    _wishlistsListenable.addListener(_onWishlistsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handlePendingEntryPoints();
+      _onWishlistsChanged();
     });
   }
 
@@ -90,6 +99,54 @@ class _HomeScreenState extends State<HomeScreen> {
         _handlePendingEntryPoints();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _wishlistsListenable.removeListener(_onWishlistsChanged);
+    super.dispose();
+  }
+
+  bool _isShared(Wishlist wishlist) {
+    final userId = widget.currentUser.id;
+    if (wishlist.ownerUserId == userId) {
+      return wishlist.members.isNotEmpty || wishlist.invites.isNotEmpty;
+    }
+    return wishlist.members.any((m) => m.userId == userId);
+  }
+
+  void _updateSharedTabPolling(int index) {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    if (index == 1) {
+      _pollTimer = Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => _poll(),
+      );
+    }
+  }
+
+  Future<void> _poll() async {
+    if (_isPolling) return;
+    _isPolling = true;
+    try {
+      await widget.repository.refresh();
+    } catch (_) {
+      // Ignore poll errors silently.
+    } finally {
+      _isPolling = false;
+    }
+  }
+
+  void _onWishlistsChanged() {
+    if (!mounted) return;
+    final count = _reminderCount(
+      _wishlistsListenable.value
+          .where((w) => !w.isArchived)
+          .toList(growable: false),
+    );
+    _scheduleReminderPrompt(count);
   }
 
   Future<String?> _openWishlistEditor({
@@ -929,19 +986,14 @@ class _HomeScreenState extends State<HomeScreen> {
             .toList(growable: false);
         final availableYears = _availableYears(visibleWishlists);
         final reminderCount = _reminderCount(visibleWishlists);
+        final sharedWishlists = _filterWishlists(
+          visibleWishlists.where(_isShared).toList(growable: false),
+        );
         final activeWishlists = _filterWishlists(
           visibleWishlists
               .where(
                 (wishlist) =>
-                    wishlist.activeItemCount > 0 || wishlist.items.isEmpty,
-              )
-              .toList(growable: false),
-        );
-        final sharedWishlists = _filterWishlists(
-          visibleWishlists
-              .where(
-                (wishlist) =>
-                    wishlist.members.isNotEmpty &&
+                    !_isShared(wishlist) &&
                     (wishlist.activeItemCount > 0 || wishlist.items.isEmpty),
               )
               .toList(growable: false),
@@ -951,8 +1003,6 @@ class _HomeScreenState extends State<HomeScreen> {
               .where((wishlist) => wishlist.purchasedItemCount > 0)
               .toList(growable: false),
         );
-
-        _scheduleReminderPrompt(reminderCount);
 
         return Stack(
           children: [
@@ -973,11 +1023,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildCollectionTab(
                     title: 'Shared',
                     description:
-                        'Lists that are ready to send to other members through a share link.',
+                        'Lists you collaborate on with others or have been invited to join.',
                     wishlists: sharedWishlists,
                     emptyTitle: 'Nothing shared yet',
                     emptyDescription:
-                        'Turn on sharing in a list and it will appear here.',
+                        'Invite collaborators to a list, or join one using a share link.',
                     availableYears: availableYears,
                     reminderCount: reminderCount,
                     isSharedView: true,
@@ -1002,6 +1052,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   setState(() {
                     _currentIndex = index;
                   });
+                  _updateSharedTabPolling(index);
                 },
               ),
             ),

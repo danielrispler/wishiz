@@ -199,6 +199,20 @@ class InMemoryWishlistRepository implements WishlistRepository {
   }
 
   @override
+  Future<void> updateMemberRole({
+    required String wishlistId,
+    required String userId,
+    required WishlistMemberRole role,
+  }) async {
+    _replaceWishlist(wishlistId, (wishlist) {
+      final nextMembers = wishlist.members
+          .map((m) => m.userId == userId ? m.copyWith(role: role) : m)
+          .toList(growable: false);
+      return wishlist.copyWith(members: nextMembers, updatedAt: DateTime.now());
+    });
+  }
+
+  @override
   Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,

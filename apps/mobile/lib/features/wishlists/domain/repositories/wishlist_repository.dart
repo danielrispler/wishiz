@@ -52,6 +52,12 @@ abstract class WishlistRepository {
     required String userId,
   });
 
+  Future<void> updateMemberRole({
+    required String wishlistId,
+    required String userId,
+    required WishlistMemberRole role,
+  });
+
   Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,

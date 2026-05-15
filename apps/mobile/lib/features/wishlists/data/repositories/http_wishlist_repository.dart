@@ -167,6 +167,20 @@ class HttpWishlistRepository implements WishlistRepository {
   }
 
   @override
+  Future<void> updateMemberRole({
+    required String wishlistId,
+    required String userId,
+    required WishlistMemberRole role,
+  }) async {
+    await _apiClient.updateMemberRole(
+      wishlistId: wishlistId,
+      userId: userId,
+      role: role,
+    );
+    await _refreshWishlist(wishlistId);
+  }
+
+  @override
   Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,

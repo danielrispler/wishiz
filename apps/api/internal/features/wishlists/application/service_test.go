@@ -366,9 +366,175 @@ func TestServiceCreateValidatesYear(t *testing.T) {
 	}
 }
 
+func TestServiceCreateInviteAllowsEditor(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: editorID, Email: "editor@example.com", Role: domain.MemberRoleEditor},
+		},
+	}
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime }
+
+	_, err := service.CreateInvite(userContext(editorID, "editor@example.com"), wishlistID1, &CreateInviteInput{
+		Email: "newperson@example.com",
+		Role:  domain.MemberRoleViewer,
+	})
+	if err != nil {
+		t.Fatalf("expected editor to create invite, got error: %v", err)
+	}
+}
+
+func TestServiceCreateInviteRejectsViewer(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	service := NewService(repo)
+	service.nowFn = func() time.Time { return fixedTime }
+
+	_, err := service.CreateInvite(userContext(viewerID, "viewer@example.com"), wishlistID1, &CreateInviteInput{
+		Email: "newperson@example.com",
+		Role:  domain.MemberRoleViewer,
+	})
+	if err == nil {
+		t.Fatalf("expected viewer to be rejected from creating invite")
+	}
+}
+
+func TestServiceRemoveMemberOwnerCan(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	service := NewService(repo)
+
+	if err := service.RemoveMember(userContext(ownerID, "owner@example.com"), wishlistID1, viewerID); err != nil {
+		t.Fatalf("expected owner to remove member, got error: %v", err)
+	}
+}
+
+func TestServiceRemoveMemberEditorCannot(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: editorID, Email: "editor@example.com", Role: domain.MemberRoleEditor},
+			{WishlistID: wishlistID1, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	service := NewService(repo)
+
+	if err := service.RemoveMember(userContext(editorID, "editor@example.com"), wishlistID1, viewerID); err == nil {
+		t.Fatalf("expected editor to be rejected from removing member")
+	}
+}
+
+func TestServiceUpdateMemberRoleOwnerCan(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	service := NewService(repo)
+
+	if err := service.UpdateMemberRole(userContext(ownerID, "owner@example.com"), wishlistID1, viewerID, &PatchWishlistMemberInput{Role: domain.MemberRoleEditor}); err != nil {
+		t.Fatalf("expected owner to update role, got error: %v", err)
+	}
+	if repo.wishlists[wishlistID1].Members[0].Role != domain.MemberRoleEditor {
+		t.Fatalf("expected role to be updated to editor")
+	}
+}
+
+func TestServiceUpdateMemberRoleEditorCannot(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: editorID, Email: "editor@example.com", Role: domain.MemberRoleEditor},
+			{WishlistID: wishlistID1, UserID: viewerID, Email: "viewer@example.com", Role: domain.MemberRoleViewer},
+		},
+	}
+	service := NewService(repo)
+
+	if err := service.UpdateMemberRole(userContext(editorID, "editor@example.com"), wishlistID1, viewerID, &PatchWishlistMemberInput{Role: domain.MemberRoleEditor}); err == nil {
+		t.Fatalf("expected editor to be rejected from updating member role")
+	}
+}
+
+func TestServiceUpdateMemberRoleBlocksSelf(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = domain.Wishlist{
+		ID:        wishlistID1,
+		OwnerID:   ownerID,
+		Title:     "Party",
+		Year:      2026,
+		CreatedAt: fixedTime,
+		UpdatedAt: fixedTime,
+		Members:   []domain.WishlistMember{},
+	}
+	service := NewService(repo)
+
+	err := service.UpdateMemberRole(userContext(ownerID, "owner@example.com"), wishlistID1, ownerID, &PatchWishlistMemberInput{Role: domain.MemberRoleViewer})
+	if err == nil {
+		t.Fatalf("expected owner to be blocked from changing own role")
+	}
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeValidation {
+		t.Fatalf("expected validation error, got %+v", err)
+	}
+}
+
 const (
 	ownerID      = "99999999-9999-9999-9999-999999999999"
 	otherOwnerID = "88888888-8888-8888-8888-888888888888"
+	editorID     = "66666666-6666-6666-6666-666666666666"
 	viewerID     = "77777777-7777-7777-7777-777777777777"
 	wishlistID1  = "11111111-1111-1111-1111-111111111111"
 	wishlistID2  = "22222222-2222-2222-2222-222222222222"

@@ -163,6 +163,19 @@ class WishlistApiClient {
     );
   }
 
+  Future<void> updateMemberRole({
+    required String wishlistId,
+    required String userId,
+    required WishlistMemberRole role,
+  }) {
+    return _requestJson(
+      'PATCH',
+      '/wishlists/$wishlistId/members/$userId',
+      body: {'role': role.apiValue},
+      expectedStatusCodes: const {HttpStatus.ok},
+    );
+  }
+
   Future<WishlistItemDto> addWishlistItem({
     required String wishlistId,
     required String title,

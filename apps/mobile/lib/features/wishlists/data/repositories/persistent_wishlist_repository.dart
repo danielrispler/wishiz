@@ -222,6 +222,21 @@ class PersistentWishlistRepository implements WishlistRepository {
   }
 
   @override
+  Future<void> updateMemberRole({
+    required String wishlistId,
+    required String userId,
+    required WishlistMemberRole role,
+  }) async {
+    await _repository.updateMemberRole(
+      wishlistId: wishlistId,
+      userId: userId,
+      role: role,
+    );
+    _persist();
+    await _pendingWrite;
+  }
+
+  @override
   Future<WishlistItem> addWishlistItem({
     required String wishlistId,
     required String title,

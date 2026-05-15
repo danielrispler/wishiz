@@ -572,8 +572,8 @@ func (s *Service) CreateInvite(ctx context.Context, wishlistID string, input *Cr
 	if err != nil {
 		return domain.WishlistInvite{}, err
 	}
-	if ownerErr := s.checkOwner(ctx, wishlist); ownerErr != nil {
-		return domain.WishlistInvite{}, ownerErr
+	if editorErr := s.checkEditor(ctx, wishlist); editorErr != nil {
+		return domain.WishlistInvite{}, editorErr
 	}
 
 	email := normalizeEmail(input.Email)

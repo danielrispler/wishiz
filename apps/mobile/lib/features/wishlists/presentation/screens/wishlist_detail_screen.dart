@@ -151,7 +151,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                         context,
                         wishlist,
                         currentUser,
-                        capability,
                       ),
                       icon: const Icon(Icons.share_outlined),
                     ),
@@ -881,10 +880,10 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                         if (item.imageUrl != null &&
                             item.imageUrl!.isNotEmpty) ...[
                           Container(
-                            width: 48,
-                            height: 48,
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(8),
                               color: Theme.of(context)
                                   .colorScheme
                                   .surfaceContainerHigh,

@@ -212,14 +212,31 @@ class HttpWishlistRepository implements WishlistRepository {
     required String wishlistId,
     required List<String> orderedItemIds,
   }) async {
-    final updated = await _apiClient.reorderWishlistItems(
-      wishlistId: wishlistId,
-      orderedItemIds: orderedItemIds,
-    );
+    final previous = _wishlists.value
+        .where((w) => w.id == wishlistId)
+        .firstOrNull;
 
-    final wishlist = updated.toEntity();
-    _replaceWishlist(wishlist);
-    return wishlist;
+    _patchWishlist(wishlistId, (wishlist) {
+      final itemsById = {for (final item in wishlist.items) item.id: item};
+      final reordered = orderedItemIds
+          .map((id) => itemsById[id])
+          .whereType<WishlistItem>()
+          .toList(growable: false);
+      return wishlist.copyWith(items: reordered);
+    });
+
+    try {
+      final updated = await _apiClient.reorderWishlistItems(
+        wishlistId: wishlistId,
+        orderedItemIds: orderedItemIds,
+      );
+      final wishlist = updated.toEntity();
+      _replaceWishlist(wishlist);
+      return wishlist;
+    } catch (e) {
+      if (previous != null) _replaceWishlist(previous);
+      rethrow;
+    }
   }
 
   @override

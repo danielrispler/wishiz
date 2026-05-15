@@ -50,12 +50,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   String _selectedSort = _sortHighestRank;
   late _ItemFilter _selectedFilter;
   final Set<String> _expandedItemIds = <String>{};
+  List<WishlistItem>? _reorderOverride;
 
   @override
   void initState() {
     super.initState();
     _selectedFilter =
-        widget.showPurchasedOnly ? _ItemFilter.bought : _ItemFilter.all;
+        widget.showPurchasedOnly ? _ItemFilter.bought : _ItemFilter.notBought;
   }
 
   void _showError(Object error, {required String fallbackMessage}) {
@@ -235,41 +236,53 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: AppConstants.sectionGap),
-                    if (sourceItems.isNotEmpty) ...[
-                      _buildItemControls(context),
-                      const SizedBox(height: AppConstants.sectionGap),
-                    ],
+                    _buildItemControls(context),
+                    const SizedBox(height: AppConstants.sectionGap),
                     if (sourceItems.isEmpty)
                       _buildEmptyItemsState(context)
                     else if (visibleItems.isEmpty)
                       _buildFilteredItemsEmptyState(context)
                     else if (canReorder)
-                      ReorderableListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        buildDefaultDragHandles: false,
-                        itemCount: visibleItems.length,
-                        onReorder: (oldIndex, newIndex) {
-                          _reorderItems(
-                            wishlist: wishlist,
-                            visibleItems: visibleItems,
-                            oldIndex: oldIndex,
-                            newIndex: newIndex,
-                          );
-                        },
-                        itemBuilder: (context, index) {
-                          final item = visibleItems[index];
-                          return _buildItemCard(
-                            context,
-                            wishlist: wishlist,
-                            item: item,
-                            key: ValueKey('reorder-${item.id}'),
-                            showDragHandle: true,
-                            dragIndex: index,
-                            currentUser: currentUser,
-                          );
-                        },
-                      )
+                      Builder(builder: (context) {
+                        final reorderItems = _reorderOverride ?? visibleItems;
+                        return ReorderableListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          buildDefaultDragHandles: false,
+                          proxyDecorator: (child, index, animation) {
+                            return Material(
+                              color: Colors.transparent,
+                              child: child,
+                            );
+                          },
+                          itemCount: reorderItems.length,
+                          onReorder: (oldIndex, newIndex) {
+                            final adjustedNew =
+                                newIndex > oldIndex ? newIndex - 1 : newIndex;
+                            final next = List<WishlistItem>.from(reorderItems);
+                            next.insert(adjustedNew, next.removeAt(oldIndex));
+                            setState(() => _reorderOverride = next);
+                            _reorderItems(
+                              wishlist: wishlist,
+                              visibleItems: reorderItems,
+                              oldIndex: oldIndex,
+                              newIndex: newIndex,
+                            );
+                          },
+                          itemBuilder: (context, index) {
+                            final item = reorderItems[index];
+                            return _buildItemCard(
+                              context,
+                              wishlist: wishlist,
+                              item: item,
+                              key: ValueKey('reorder-${item.id}'),
+                              showDragHandle: true,
+                              dragIndex: index,
+                              currentUser: currentUser,
+                            );
+                          },
+                        );
+                      })
                     else
                       ...visibleItems.map(
                         (item) => _buildItemCard(
@@ -636,6 +649,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       if (!mounted) {
         return;
       }
+      setState(() => _reorderOverride = null);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(content: Text('Item rank updated.')));
@@ -643,6 +657,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       if (!context.mounted) {
         return;
       }
+      setState(() => _reorderOverride = null);
       _showError(error, fallbackMessage: 'Could not reorder items.');
     }
   }
@@ -1241,11 +1256,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
         ? Image.network(
             imageSource,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => fallback,
           )
         : Image.file(
             File(imageSource),
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => fallback,
           );
 

@@ -16,12 +16,12 @@ class Wishlist {
     required this.updatedAt,
     this.isArchived = false,
     this.shareToken = '',
-    List<WishlistMember> members = const [],
-    List<WishlistInvite> invites = const [],
-    List<WishlistItem> items = const [],
-  }) : members = List.unmodifiable(members),
-       invites = List.unmodifiable(invites),
-       items = List.unmodifiable(items);
+    List<WishlistMember>? members,
+    List<WishlistInvite>? invites,
+    List<WishlistItem>? items,
+  }) : members = List.unmodifiable(members ?? const <WishlistMember>[]),
+       invites = List.unmodifiable(invites ?? const <WishlistInvite>[]),
+       items = List.unmodifiable(items ?? const <WishlistItem>[]);
 
   final String id;
   final String ownerUserId;

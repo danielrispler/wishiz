@@ -1,6 +1,6 @@
 ---
 name: golang-code-style
-description: "Golang code style, formatting and conventions. Use when writing Go code, reviewing style, configuring linters, writing comments, or establishing project standards."
+description: "Go code style: control flow, declarations, function design, string handling, organization."
 user-invocable: true
 license: MIT
 compatibility: Designed for Claude Code or similar AI coding agents, and for projects using Golang.

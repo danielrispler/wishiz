@@ -1,6 +1,6 @@
 ---
 name: dart-run-static-analysis
-description: Execute `dart analyze` to identify warnings and errors, and use `dart fix --apply` to automatically resolve mechanical lint issues. Use during development to ensure code quality and before committing changes.
+description: "dart analyze + dart fix for static analysis."
 metadata:
   model: models/gemini-3.1-pro-preview
   last_modified: Fri, 24 Apr 2026 15:09:34 GMT

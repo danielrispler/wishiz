@@ -28,16 +28,14 @@ class WishlistSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final details = <String>[
+    final subtitle = [
       '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
       'Updated $lastUpdated',
-    ];
-    if (supportingText != null && supportingText!.isNotEmpty) {
-      details.add(supportingText!);
-    }
+      if (supportingText != null && supportingText!.isNotEmpty) supportingText!,
+    ].join(' · ');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
@@ -54,41 +52,34 @@ class WishlistSummaryCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppConstants.radiusXl),
                 onTap: onTap,
                 child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.cardPadding),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.cardPadding,
+                    vertical: 10,
+                  ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       _buildPreview(context, colorScheme: colorScheme),
-                      const SizedBox(width: AppConstants.spacing4),
+                      const SizedBox(width: AppConstants.spacing3),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(title, style: textTheme.titleMedium),
-                            const SizedBox(height: AppConstants.spacing2),
-                            Wrap(
-                              spacing: AppConstants.spacing2,
-                              runSpacing: AppConstants.spacing2,
-                              children: details
-                                  .map(
-                                    (detail) => Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: AppConstants.spacing3,
-                                        vertical: AppConstants.spacing2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: colorScheme.surfaceContainerHigh,
-                                        borderRadius: BorderRadius.circular(
-                                          AppConstants.radiusFull,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        detail,
-                                        style: textTheme.labelMedium,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(growable: false),
+                            Text(
+                              title,
+                              style: textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -97,6 +88,7 @@ class WishlistSummaryCard extends StatelessWidget {
                       Icon(
                         Icons.chevron_right_rounded,
                         color: colorScheme.onSurfaceVariant,
+                        size: 20,
                       ),
                     ],
                   ),
@@ -109,7 +101,7 @@ class WishlistSummaryCard extends StatelessWidget {
                   AppConstants.cardPadding,
                   0,
                   AppConstants.cardPadding,
-                  AppConstants.cardPadding,
+                  10,
                 ),
                 child: Wrap(
                   spacing: AppConstants.spacing2,
@@ -130,10 +122,10 @@ class WishlistSummaryCard extends StatelessWidget {
     final hasImage = coverImageUrl != null && coverImageUrl!.isNotEmpty;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(AppConstants.radiusXl - 6),
+      borderRadius: BorderRadius.circular(10),
       child: SizedBox(
-        width: 88,
-        height: 88,
+        width: 52,
+        height: 52,
         child: hasImage
             ? _buildCoverImage(context, colorScheme: colorScheme)
             : Container(
@@ -142,7 +134,7 @@ class WishlistSummaryCard extends StatelessWidget {
                 child: Icon(
                   Icons.auto_awesome_mosaic_rounded,
                   color: colorScheme.primary,
-                  size: 28,
+                  size: 22,
                 ),
               ),
       ),

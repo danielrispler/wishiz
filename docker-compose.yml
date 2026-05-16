@@ -3,11 +3,11 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: wishiz
-      POSTGRES_USER: wishiz
-      POSTGRES_PASSWORD: WishizPg_2026_7x9kLq
+      POSTGRES_DB: ${POSTGRES_DB:-wishiz}
+      POSTGRES_USER: ${POSTGRES_USER:-wishiz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wishiz -d wishiz"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wishiz} -d ${POSTGRES_DB:-wishiz}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -19,11 +19,11 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: wishiz
-      MINIO_ROOT_PASSWORD: WishizMinio_2026_7x9kLq
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_BIND_ADDR:-127.0.0.1}:9000:9000"
+      - "${MINIO_CONSOLE_BIND_ADDR:-127.0.0.1}:9001:9001"
     volumes:
       - minio_data:/data
 
@@ -35,9 +35,9 @@ services:
       - /bin/sh
       - -c
       - |
-        until mc alias set local http://minio:9000 wishiz WishizMinio_2026_7x9kLq; do sleep 1; done
-        mc mb --ignore-existing local/wishiz-images
-        mc anonymous set download local/wishiz-images
+        until mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do sleep 1; done
+        mc mb --ignore-existing local/${STORAGE_S3_BUCKET:-wishiz-images}
+        mc anonymous set download local/${STORAGE_S3_BUCKET:-wishiz-images}
 
   api:
     build:
@@ -51,18 +51,19 @@ services:
     environment:
       APP_ENV: production
       HTTP_ADDR: :8080
-      DATABASE_URL: postgres://wishiz:WishizPg_2026_7x9kLq@postgres:5432/wishiz?sslmode=disable
-      RUN_DB_MIGRATIONS: "true"
-      STORAGE_S3_ENDPOINT: http://minio:9000
-      STORAGE_S3_REGION: us-east-1
-      STORAGE_S3_BUCKET: wishiz-images
-      STORAGE_S3_ACCESS_KEY_ID: wishiz
-      STORAGE_S3_SECRET_ACCESS_KEY: WishizMinio_2026_7x9kLq
-      STORAGE_S3_USE_PATH_STYLE: "true"
-      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:?STORAGE_PUBLIC_BASE_URL must be set to a publicly reachable URL (e.g. https://storage.example.com)}
-      UPLOADS_ENABLED: "true"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      RUN_DB_MIGRATIONS: ${RUN_DB_MIGRATIONS:-true}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://minio:9000}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-wishiz-images}
+      STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-${MINIO_ROOT_USER}}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD}}
+      STORAGE_S3_USE_PATH_STYLE: ${STORAGE_S3_USE_PATH_STYLE:-true}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-https://storage.example.com}
+      UPLOADS_ENABLED: ${UPLOADS_ENABLED:-true}
+      SHARE_BASE_URL: ${SHARE_BASE_URL:-https://wishiz.app}
     ports:
-      - "8080:8080"
+      - "${API_BIND_ADDR:-0.0.0.0}:8080:8080"
 
 volumes:
   postgres_data:

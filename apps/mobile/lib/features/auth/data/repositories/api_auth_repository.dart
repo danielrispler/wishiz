@@ -142,15 +142,19 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
   }
 
   @override
-  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async {
+  Future<AuthResult> savePreferences({
+    required List<String> categoryIds,
+    required List<String> brandNames,
+  }) async {
     if (_sessionToken == null) {
       return const AuthResult.failure('No account is signed in right now.');
     }
 
     try {
-      final user = await _apiClient.updateOnboardingCategories(
+      final user = await _apiClient.updatePreferences(
         authToken: _sessionToken!,
         categoryIds: categoryIds,
+        brandNames: brandNames,
       );
       _setSession(user: user.toEntity(), token: _sessionToken!);
       await _persist();
@@ -247,6 +251,7 @@ class _StoredSessionPayload {
               'notificationsEnabled': user!.notificationsEnabled,
               'reminderDays': user!.reminderDays,
               'onboardingCategories': user!.onboardingCategories,
+              'preferredBrands': user!.preferredBrands,
             },
     };
   }

@@ -195,7 +195,10 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async {
+  Future<AuthResult> savePreferences({
+    required List<String> categoryIds,
+    required List<String> brandNames,
+  }) async {
     final currentUser = _currentUser;
     if (currentUser == null) {
       return const AuthResult.failure('No account is signed in right now.');
@@ -208,6 +211,7 @@ class LocalAuthRepository implements AuthRepository {
 
     final updatedUser = _storedUsers[index].copyWith(
       onboardingCategories: categoryIds,
+      preferredBrands: brandNames,
     );
     _storedUsers[index] = updatedUser;
     _setCurrentUser(updatedUser.toAppUser());
@@ -217,6 +221,7 @@ class LocalAuthRepository implements AuthRepository {
     } catch (_) {
       _storedUsers[index] = _storedUsers[index].copyWith(
         onboardingCategories: currentUser.onboardingCategories,
+        preferredBrands: currentUser.preferredBrands,
       );
       _setCurrentUser(currentUser);
       return const AuthResult.failure(
@@ -298,6 +303,7 @@ class _StoredUser {
     this.notificationsEnabled = true,
     this.reminderDays = 14,
     this.onboardingCategories = const [],
+    this.preferredBrands = const [],
   });
 
   final String id;
@@ -309,6 +315,7 @@ class _StoredUser {
   final bool notificationsEnabled;
   final int reminderDays;
   final List<String> onboardingCategories;
+  final List<String> preferredBrands;
 
   AppUser toAppUser() {
     return AppUser(
@@ -320,6 +327,7 @@ class _StoredUser {
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
       onboardingCategories: onboardingCategories,
+      preferredBrands: preferredBrands,
     );
   }
 
@@ -333,6 +341,7 @@ class _StoredUser {
     bool? notificationsEnabled,
     int? reminderDays,
     List<String>? onboardingCategories,
+    List<String>? preferredBrands,
   }) {
     return _StoredUser(
       id: id ?? this.id,
@@ -345,6 +354,7 @@ class _StoredUser {
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       reminderDays: reminderDays ?? this.reminderDays,
       onboardingCategories: onboardingCategories ?? this.onboardingCategories,
+      preferredBrands: preferredBrands ?? this.preferredBrands,
     );
   }
 
@@ -359,6 +369,7 @@ class _StoredUser {
       'notificationsEnabled': notificationsEnabled,
       'reminderDays': reminderDays,
       'onboardingCategories': onboardingCategories,
+      'preferredBrands': preferredBrands,
     };
   }
 
@@ -380,6 +391,9 @@ class _StoredUser {
       reminderDays: json['reminderDays'] as int? ?? 14,
       onboardingCategories:
           (json['onboardingCategories'] as List<dynamic>?)?.cast<String>() ??
+          const [],
+      preferredBrands:
+          (json['preferredBrands'] as List<dynamic>?)?.cast<String>() ??
           const [],
     );
   }

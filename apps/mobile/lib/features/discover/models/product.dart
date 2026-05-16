@@ -2,28 +2,34 @@ class Product {
   final String id;
   final String title;
   final String brand;
+  final String category;
   final String imageUrl;
-  final double priceUsd;
-  final int saves;
+  final String? priceLabel;
+  final String? productUrl;
+  final int saveCount;
   final bool isSavedByUser;
 
   const Product({
     required this.id,
     required this.title,
     required this.brand,
+    required this.category,
     required this.imageUrl,
-    required this.priceUsd,
-    required this.saves,
+    required this.saveCount,
+    this.priceLabel,
+    this.productUrl,
     this.isSavedByUser = false,
   });
 
-  Product copyWith({bool? isSavedByUser, int? saves}) => Product(
+  Product copyWith({bool? isSavedByUser, int? saveCount}) => Product(
         id: id,
         title: title,
         brand: brand,
+        category: category,
         imageUrl: imageUrl,
-        priceUsd: priceUsd,
-        saves: saves ?? this.saves,
+        priceLabel: priceLabel,
+        productUrl: productUrl,
+        saveCount: saveCount ?? this.saveCount,
         isSavedByUser: isSavedByUser ?? this.isSavedByUser,
       );
 
@@ -31,78 +37,87 @@ class Product {
         id: json['id'] as String,
         title: json['title'] as String,
         brand: json['brand'] as String,
-        imageUrl: json['image_url'] as String,
-        priceUsd: (json['price_usd'] as num).toDouble(),
-        saves: json['saves'] as int? ?? 0,
-        isSavedByUser: json['is_saved_by_user'] as bool? ?? false,
+        category: json['category'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String,
+        priceLabel: json['priceLabel'] as String?,
+        productUrl: json['productUrl'] as String?,
+        saveCount: json['saveCount'] as int? ?? 0,
+        isSavedByUser: json['savedByUser'] as bool? ?? false,
       );
 
-  // TODO: replace with fetch from Go/Postgres backend
   static List<Product> sample = [
-    Product(
+    const Product(
       id: 'p_1',
       title: 'Aquazzura ivory slingback',
       brand: 'NET—A—PORTER',
+      category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/slingback/400/500',
-      priceUsd: 795,
-      saves: 2100,
+      priceLabel: '\$795',
+      saveCount: 2100,
     ),
-    Product(
+    const Product(
       id: 'p_2',
       title: 'Wave-cut silk slip',
       brand: 'REFORMATION',
+      category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/slip/400/500',
-      priceUsd: 320,
-      saves: 1400,
+      priceLabel: '\$320',
+      saveCount: 1400,
       isSavedByUser: true,
     ),
-    Product(
+    const Product(
       id: 'p_3',
       title: 'Tonal cashmere knit',
       brand: 'KHAITE',
+      category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/cashmere/400/500',
-      priceUsd: 890,
-      saves: 1100,
+      priceLabel: '\$890',
+      saveCount: 1100,
     ),
-    Product(
+    const Product(
       id: 'p_4',
       title: 'Sculpted gold cuff',
       brand: 'MISSOMA',
+      category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/cuff/400/500',
-      priceUsd: 210,
-      saves: 980,
+      priceLabel: '\$210',
+      saveCount: 980,
     ),
-    Product(
+    const Product(
       id: 'p_5',
       title: 'Pearl-drop earring',
       brand: 'SOPHIE BUHAI',
+      category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/pearl/400/500',
-      priceUsd: 340,
-      saves: 612,
+      priceLabel: '\$340',
+      saveCount: 612,
     ),
-    Product(
+    const Product(
       id: 'p_6',
       title: 'Diptyque Do Son EDP',
       brand: 'DIPTYQUE',
+      category: 'beauty',
       imageUrl: 'https://picsum.photos/seed/diptyque/400/500',
-      priceUsd: 190,
-      saves: 2400,
+      priceLabel: '\$190',
+      saveCount: 2400,
     ),
-    Product(
+    const Product(
       id: 'p_7',
       title: 'Quilted leather mini',
       brand: 'POLÈNE',
+      category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/polene/400/500',
-      priceUsd: 420,
-      saves: 1800,
+      priceLabel: '\$420',
+      saveCount: 1800,
     ),
-    Product(
+    const Product(
       id: 'p_8',
       title: 'Linen wide-leg trouser',
       brand: 'TOTÊME',
+      category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/toteme/400/500',
-      priceUsd: 380,
-      saves: 744,
+      priceLabel: '\$380',
+      saveCount: 744,
     ),
   ];
 }

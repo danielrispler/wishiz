@@ -127,6 +127,7 @@ type stubService struct {
 	authenticate      func(context.Context, string) (domain.User, error)
 	getCurrentUser    func(context.Context, string) (domain.User, error)
 	updateCurrentUser func(context.Context, string, *application.UpdateCurrentUserInput) (domain.User, error)
+	savePreferences   func(context.Context, string, []string, []string) (domain.User, error)
 	logOut            func(context.Context, string) error
 }
 
@@ -163,6 +164,13 @@ func (s *stubService) UpdateCurrentUser(ctx context.Context, userID string, inpu
 		return domain.User{}, errors.New("unexpected UpdateCurrentUser call")
 	}
 	return s.updateCurrentUser(ctx, userID, input)
+}
+
+func (s *stubService) SavePreferences(ctx context.Context, userID string, categories []string, brands []string) (domain.User, error) {
+	if s.savePreferences == nil {
+		return domain.User{}, errors.New("unexpected SavePreferences call")
+	}
+	return s.savePreferences(ctx, userID, categories, brands)
 }
 
 func (s *stubService) LogOut(ctx context.Context, rawToken string) error {

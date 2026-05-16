@@ -52,7 +52,7 @@ class TrendingItemCard extends StatelessWidget {
                   Positioned(
                     top: 10,
                     left: 10,
-                    child: _SaveCountChip(saves: product.saves),
+                    child: _SaveCountChip(saves: product.saveCount),
                   ),
                   Positioned(
                     bottom: 0,
@@ -89,15 +89,16 @@ class TrendingItemCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '\$${product.priceUsd.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: AppColors.primary,
-                letterSpacing: -0.2,
+            if (product.priceLabel != null && product.priceLabel!.isNotEmpty)
+              Text(
+                product.priceLabel!,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                  letterSpacing: -0.2,
+                ),
               ),
-            ),
           ],
         ),
       ),

@@ -15,12 +15,15 @@ import 'package:wishiz/features/product_imports/application/product_import_sync_
 import 'package:wishiz/features/product_imports/data/in_memory_product_import_repository.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
+import 'package:wishiz/features/discover/domain/repositories/discover_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 typedef WishlistRepositoryLoader =
     Future<WishlistRepository> Function(AppUser user);
 typedef ProductImportRepositoryFactory =
     ProductImportRepository Function(AppUser user);
+typedef DiscoverRepositoryFactory =
+    DiscoverRepository Function(AppUser user);
 
 class WishizApp extends StatelessWidget {
   const WishizApp({
@@ -29,12 +32,14 @@ class WishizApp extends StatelessWidget {
     required this.authRepository,
     required this.sharedProductRepository,
     ProductImportRepositoryFactory? productImportRepositoryFactory,
+    this.discoverRepositoryFactory,
     this.shareIntakeService = const ShareIntakeService(),
   }) : productImportRepositoryFactory =
            productImportRepositoryFactory ?? _defaultProductImportRepository;
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
   final ProductImportRepositoryFactory productImportRepositoryFactory;
+  final DiscoverRepositoryFactory? discoverRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -47,6 +52,7 @@ class WishizApp extends StatelessWidget {
       home: _RootScreen(
         wishlistRepositoryLoader: wishlistRepositoryLoader,
         productImportRepositoryFactory: productImportRepositoryFactory,
+        discoverRepositoryFactory: discoverRepositoryFactory,
         authRepository: authRepository,
         sharedProductRepository: sharedProductRepository,
         shareIntakeService: shareIntakeService,
@@ -114,10 +120,12 @@ class _RootScreen extends StatefulWidget {
     required this.authRepository,
     required this.sharedProductRepository,
     required this.shareIntakeService,
+    this.discoverRepositoryFactory,
   });
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
   final ProductImportRepositoryFactory productImportRepositoryFactory;
+  final DiscoverRepositoryFactory? discoverRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
   final ShareIntakeService shareIntakeService;
@@ -135,6 +143,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   WishlistRepository? _wishlistRepository;
   ProductImportRepository? _productImportRepository;
   ProductImportSyncService? _productImportSyncService;
+  DiscoverRepository? _discoverRepository;
   Object? _wishlistRepositoryError;
   String? _wishlistRepositoryUserId;
 
@@ -256,6 +265,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       setState(() {
         _wishlistRepository = null;
         _productImportRepository = null;
+        _discoverRepository = null;
         _wishlistRepositoryError = null;
         _wishlistRepositoryUserId = null;
       });
@@ -271,6 +281,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     setState(() {
       _wishlistRepository = null;
       _productImportRepository = null;
+      _discoverRepository = null;
       _wishlistRepositoryError = null;
       _wishlistRepositoryUserId = requestedUserId;
     });
@@ -299,10 +310,14 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             return;
           }
 
+          final discoverRepository =
+              widget.discoverRepositoryFactory?.call(user);
+
           setState(() {
             _wishlistRepository = repository;
             _productImportRepository = productImportRepository;
             _productImportSyncService = productImportSyncService;
+            _discoverRepository = discoverRepository;
           });
         })
         .catchError((error) {
@@ -364,6 +379,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
           productImportRepository: _productImportRepository!,
           sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
+          discoverRepository: _discoverRepository,
           currentUser: user,
           initialWishlistId: _pendingWishlistId,
           initialInviteToken: _pendingInviteToken,

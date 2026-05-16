@@ -3,9 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/onboarding/domain/entities/preference_category.dart';
+import 'package:wishiz/features/discover/domain/entities/brand_group.dart';
+import 'package:wishiz/features/discover/domain/entities/discover_feed.dart';
+import 'package:wishiz/features/discover/domain/repositories/discover_repository.dart';
 import 'package:wishiz/features/discover/models/product.dart';
 import 'package:wishiz/features/discover/models/starter_pack.dart';
+import 'package:wishiz/features/onboarding/domain/entities/preference_category.dart';
+import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
+import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'components/product_carousel/product_carousel.dart';
 import 'components/section_header.dart';
 import 'components/starter_pack_carousel/starter_pack_carousel.dart';
@@ -15,9 +20,13 @@ class DiscoverScreen extends StatefulWidget {
     super.key,
     required this.authRepository,
     required this.currentUser,
+    this.discoverRepository,
+    this.wishlistRepository,
   });
 
   final AuthRepository authRepository;
+  final WishlistRepository? wishlistRepository;
+  final DiscoverRepository? discoverRepository;
   final AppUser currentUser;
 
   @override
@@ -25,19 +34,19 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  late List<StarterPack> _packs;
-  late List<Product> _trending;
-  late List<Product> _forYou;
   late Set<String> _selectedCategoryIds;
-  final Set<String> _removingCategoryIds = <String>{};
+  late Set<String> _selectedBrandNames;
+
+  DiscoverFeed? _feed;
+  bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _packs = StarterPack.sample;
-    _trending = List.of(Product.sample.take(4));
-    _forYou = List.of(Product.sample.skip(4).take(4));
     _selectedCategoryIds = widget.currentUser.onboardingCategories.toSet();
+    _selectedBrandNames = widget.currentUser.preferredBrands.toSet();
+    _loadFeed();
   }
 
   @override
@@ -49,42 +58,235 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     )) {
       _selectedCategoryIds = widget.currentUser.onboardingCategories.toSet();
     }
+    if (!_sameSet(
+      oldWidget.currentUser.preferredBrands.toSet(),
+      widget.currentUser.preferredBrands.toSet(),
+    )) {
+      _selectedBrandNames = widget.currentUser.preferredBrands.toSet();
+    }
   }
 
-  void _handleToggleSave(Product p, bool isSaved) {
+  Future<void> _loadFeed() async {
+    if (widget.discoverRepository == null) {
+      setState(() {
+        _feed = DiscoverFeed(
+          starterPacks: StarterPack.sample,
+          trending: List.of(Product.sample.take(4)),
+          forYou: List.of(Product.sample.skip(4).take(4)),
+        );
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
-      _trending = _trending
-          .map((x) => x.id == p.id
-              ? x.copyWith(
-                  isSavedByUser: isSaved,
-                  saves: x.saves + (isSaved ? 1 : -1),
-                )
-              : x)
-          .toList();
-      _forYou = _forYou
-          .map((x) => x.id == p.id
-              ? x.copyWith(
-                  isSavedByUser: isSaved,
-                  saves: x.saves + (isSaved ? 1 : -1),
-                )
-              : x)
-          .toList();
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final feed = await widget.discoverRepository!.getFeed();
+      if (!mounted) return;
+      setState(() {
+        _feed = feed;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Could not load the feed. Pull to refresh.';
+      });
+    }
+  }
+
+  void _handleToggleSave(Product p, bool _) async {
+    final wishlistRepository = widget.wishlistRepository;
+    if (wishlistRepository == null) {
+      _optimisticToggle(p);
+      return;
+    }
+
+    final wishlists = wishlistRepository
+        .getWishlists()
+        .where((w) => !w.isArchived)
+        .toList(growable: false);
+
+    if (wishlists.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Create a wishlist first.')),
+        );
+      return;
+    }
+
+    final wishlist = await _showWishlistPicker(wishlists);
+    if (!mounted || wishlist == null) return;
+
+    _optimisticToggle(p);
+
+    try {
+      if (widget.discoverRepository != null) {
+        await widget.discoverRepository!.toggleSave(p.id);
+      }
+      await wishlistRepository.addWishlistItem(
+        wishlistId: wishlist.id,
+        title: p.title,
+        imageUrl: p.imageUrl,
+        priceLabel: p.priceLabel,
+        productUrl: p.productUrl,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Saved to "${wishlist.title}".')),
+        );
+    } catch (_) {
+      if (!mounted) return;
+      _optimisticToggle(p);
+    }
+  }
+
+  void _optimisticToggle(Product p) {
+    if (_feed == null) return;
+    setState(() {
+      _feed = DiscoverFeed(
+        starterPacks: _feed!.starterPacks,
+        trending: _toggleInList(_feed!.trending, p),
+        forYou: _toggleInList(_feed!.forYou, p),
+      );
     });
   }
 
-  void _handleGrabPack(StarterPack pack) {
+  List<Product> _toggleInList(List<Product> list, Product target) {
+    return list.map((x) {
+      if (x.id != target.id) return x;
+      final newSaved = !x.isSavedByUser;
+      return x.copyWith(
+        isSavedByUser: newSaved,
+        saveCount: x.saveCount + (newSaved ? 1 : -1),
+      );
+    }).toList();
+  }
+
+  Future<void> _handleGrabPack(StarterPack pack) async {
+    final wishlistRepository = widget.wishlistRepository;
+    if (wishlistRepository == null) {
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.onSurface,
+          behavior: SnackBarBehavior.floating,
+          content: Text('Added "${pack.title}" to your lists'),
+        ),
+      );
+      return;
+    }
+
+    final wishlists = wishlistRepository
+        .getWishlists()
+        .where((w) => !w.isArchived)
+        .toList(growable: false);
+
+    if (wishlists.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Create a wishlist first.')),
+        );
+      return;
+    }
+
+    final wishlist = await _showWishlistPicker(wishlists);
+    if (!mounted || wishlist == null) return;
+
     HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.onSurface,
-        behavior: SnackBarBehavior.floating,
-        content: Text('Added "${pack.title}" to your lists'),
-      ),
+
+    try {
+      if (widget.discoverRepository != null) {
+        await widget.discoverRepository!.grabStarterPack(pack.id, wishlist.id);
+      } else {
+        for (final item in pack.items) {
+          await wishlistRepository.addWishlistItem(
+            wishlistId: wishlist.id,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            priceLabel: item.priceLabel,
+            productUrl: item.productUrl,
+          );
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.onSurface,
+          behavior: SnackBarBehavior.floating,
+          content: Text('Added "${pack.title}" to "${wishlist.title}"'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Could not grab that pack right now.')),
+        );
+    }
+  }
+
+  Future<Wishlist?> _showWishlistPicker(List<Wishlist> wishlists) {
+    return showModalBottomSheet<Wishlist>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Text(
+                  'Add to list',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.onSurface,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: wishlists.length,
+                  itemBuilder: (_, i) {
+                    final w = wishlists[i];
+                    return ListTile(
+                      title: Text(
+                        w.title,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text('${w.activeItemCount} items'),
+                      onTap: () => Navigator.of(ctx).pop(w),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Future<void> _openPreferencesSheet() async {
-    final draftSelection = Set<String>.of(_selectedCategoryIds);
+    var draftCategories = Set<String>.of(_selectedCategoryIds);
+    var draftBrands = Set<String>.of(_selectedBrandNames);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -92,306 +294,136 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       showDragHandle: true,
       backgroundColor: AppColors.surface,
       builder: (sheetContext) {
-        var localSelection = Set<String>.of(draftSelection);
-        var localIsSaving = false;
-
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future<void> savePreferences() async {
-              if (localIsSaving) {
-                return;
-              }
-
-              setModalState(() {
-                localIsSaving = true;
-              });
-
-              final result = await widget.authRepository.saveOnboardingCategories(
-                _orderedCategoryIds(localSelection),
-              );
-
-              if (!mounted) {
-                return;
-              }
-
-              setModalState(() {
-                localIsSaving = false;
-              });
-
-              if (!result.isSuccess) {
-                ScaffoldMessenger.of(this.context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result.errorMessage ??
-                            'Unable to save your preferences right now.',
-                      ),
-                    ),
-                  );
-                return;
-              }
-
-              setState(() {
-                _selectedCategoryIds = localSelection;
-              });
-
-              if (!sheetContext.mounted) {
-                return;
-              }
-
-              Navigator.of(sheetContext).pop();
-              ScaffoldMessenger.of(this.context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  const SnackBar(content: Text('Preferences updated.')),
-                );
-            }
-
-            return SafeArea(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  8,
-                  20,
-                  20 + MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white,
-                                AppColors.surfaceContainerLow,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          child: const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Edit preferences',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.onSurface,
-                                  letterSpacing: -0.4,
-                                ),
-                              ),
-                              SizedBox(height: 6),
-                              Text(
-                                'Choose the categories you want shaping your discovery feed.',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.onSurfaceVariant,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: PreferenceCategory.all.map((category) {
-                            final isSelected =
-                                localSelection.contains(category.id);
-                            return FilterChip(
-                              label: Text('${category.emoji} ${category.label}'),
-                              selected: isSelected,
-                              onSelected: localIsSaving
-                                  ? null
-                                  : (_) {
-                                      setModalState(() {
-                                        if (isSelected) {
-                                          localSelection.remove(category.id);
-                                        } else {
-                                          localSelection.add(category.id);
-                                        }
-                                      });
-                                    },
-                              selectedColor: AppColors.primary.withValues(
-                                alpha: 0.12,
-                              ),
-                              checkmarkColor: AppColors.primary,
-                              side: BorderSide(
-                                color: isSelected
-                                    ? AppColors.primary
-                                    : AppColors.surfaceVariant,
-                              ),
-                              labelStyle: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: isSelected
-                                    ? AppColors.primary
-                                    : AppColors.onSurface,
-                              ),
-                              backgroundColor:
-                                  AppColors.surfaceContainerLowest,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 10,
-                              ),
-                            );
-                          }).toList(growable: false),
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: localIsSaving ? null : savePreferences,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
-                            child: Text(
-                              localIsSaving
-                                  ? 'Saving...'
-                                  : 'Save preferences',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
+        return _PreferencesSheet(
+          initialCategories: draftCategories,
+          initialBrands: draftBrands,
+          onChanged: ({required Set<String> categories, required Set<String> brands}) {
+            draftCategories = categories;
+            draftBrands = brands;
           },
         );
       },
     );
-  }
 
-  Future<void> _removeCategory(String categoryId) async {
-    if (_removingCategoryIds.contains(categoryId)) {
-      return;
-    }
-
-    final updatedSelection = Set<String>.of(_selectedCategoryIds)
-      ..remove(categoryId);
-
-    setState(() {
-      _removingCategoryIds.add(categoryId);
-    });
-
-    final result = await widget.authRepository.saveOnboardingCategories(
-      _orderedCategoryIds(updatedSelection),
+    final result = await widget.authRepository.savePreferences(
+      categoryIds: _orderedCategoryIds(draftCategories),
+      brandNames: draftBrands.toList(),
     );
 
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _removingCategoryIds.remove(categoryId);
-      if (result.isSuccess) {
-        _selectedCategoryIds = updatedSelection;
-      }
-    });
+    if (!mounted) return;
 
     if (result.isSuccess) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            result.errorMessage ?? 'Unable to update your preferences.',
+      setState(() {
+        _selectedCategoryIds = draftCategories;
+        _selectedBrandNames = draftBrands;
+      });
+      _loadFeed();
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              result.errorMessage ?? 'Unable to save your preferences right now.',
+            ),
           ),
-        ),
-      );
+        );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final feed = _feed;
+    final packs = feed?.starterPacks ?? [];
+    final trending = feed?.trending ?? [];
+    final forYou = feed?.forYou ?? [];
+
     return ColoredBox(
       color: AppColors.surface,
       child: Stack(
         children: [
           const _AmbientBackdrop(),
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: _DisplayTitle()),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              const SliverToBoxAdapter(child: _SearchBar()),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
-              SliverToBoxAdapter(
-                child: _PreferenceRow(
-                  selectedCategoryIds: _selectedCategoryIds,
-                  removingCategoryIds: _removingCategoryIds,
-                  onEdit: _openPreferencesSheet,
-                  onRemove: _removeCategory,
+          RefreshIndicator(
+            onRefresh: _loadFeed,
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                const SliverToBoxAdapter(child: _DisplayTitle()),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                const SliverToBoxAdapter(child: _SearchBar()),
+                const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                SliverToBoxAdapter(
+                  child: _PreferenceRow(
+                    selectedBrandNames: _selectedBrandNames,
+                    onEdit: _openPreferencesSheet,
+                  ),
                 ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 28)),
-              const SliverToBoxAdapter(
-                child: SectionHeader(
-                  label: 'Starter Packs',
-                  eyebrow: 'Curated collections, ready to grab',
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
-              SliverToBoxAdapter(
-                child: StarterPackCarousel(
-                  packs: _packs,
-                  onGrab: _handleGrabPack,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              const SliverToBoxAdapter(
-                child: SectionHeader(
-                  label: 'Trending now',
-                  eyebrow: 'What women are saving this week',
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
-              SliverToBoxAdapter(
-                child: ProductCarousel(
-                  products: _trending,
-                  onToggleSave: _handleToggleSave,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              SliverToBoxAdapter(
-                child: SectionHeader(
-                  label: 'For you',
-                  eyebrow: _selectedCategoryIds.isEmpty
-                      ? 'Set your preferences to tailor this mix'
-                      : 'Shaped by the categories you picked',
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 14)),
-              SliverToBoxAdapter(
-                child: ProductCarousel(
-                  products: _forYou,
-                  onToggleSave: _handleToggleSave,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 110)),
-            ],
+                const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                if (_isLoading) ...[
+                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 440)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
+                ] else if (_loadError != null) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        _loadError!,
+                        style: const TextStyle(color: AppColors.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  const SliverToBoxAdapter(
+                    child: SectionHeader(
+                      label: 'Starter Packs',
+                      eyebrow: 'Curated collections, ready to grab',
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                  SliverToBoxAdapter(
+                    child: StarterPackCarousel(
+                      packs: packs,
+                      onGrab: _handleGrabPack,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  const SliverToBoxAdapter(
+                    child: SectionHeader(
+                      label: 'Trending now',
+                      eyebrow: 'What women are saving this week',
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                  SliverToBoxAdapter(
+                    child: ProductCarousel(
+                      products: trending,
+                      onToggleSave: _handleToggleSave,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  SliverToBoxAdapter(
+                    child: SectionHeader(
+                      label: 'For you',
+                      eyebrow: _selectedCategoryIds.isEmpty &&
+                              _selectedBrandNames.isEmpty
+                          ? 'Set your preferences to tailor this mix'
+                          : 'Shaped by the categories and brands you picked',
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                  SliverToBoxAdapter(
+                    child: ProductCarousel(
+                      products: forYou,
+                      onToggleSave: _handleToggleSave,
+                    ),
+                  ),
+                ],
+                const SliverToBoxAdapter(child: SizedBox(height: 110)),
+              ],
+            ),
           ),
         ],
       ),
@@ -406,38 +438,198 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   bool _sameSet(Set<String> left, Set<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
+    if (left.length != right.length) return false;
     for (final value in left) {
-      if (!right.contains(value)) {
-        return false;
-      }
+      if (!right.contains(value)) return false;
     }
     return true;
   }
 }
 
-class _PreferenceRow extends StatelessWidget {
-  const _PreferenceRow({
-    required this.selectedCategoryIds,
-    required this.removingCategoryIds,
-    required this.onEdit,
-    required this.onRemove,
+// ---- Preferences Sheet ----
+
+class _PreferencesSheet extends StatefulWidget {
+  const _PreferencesSheet({
+    required this.initialCategories,
+    required this.initialBrands,
+    required this.onChanged,
   });
 
-  final Set<String> selectedCategoryIds;
-  final Set<String> removingCategoryIds;
-  final VoidCallback onEdit;
-  final ValueChanged<String> onRemove;
+  final Set<String> initialCategories;
+  final Set<String> initialBrands;
+  final void Function({required Set<String> categories, required Set<String> brands}) onChanged;
+
+  @override
+  State<_PreferencesSheet> createState() => _PreferencesSheetState();
+}
+
+class _PreferencesSheetState extends State<_PreferencesSheet> {
+  late Set<String> _categories;
+  late Set<String> _brands;
+
+  @override
+  void initState() {
+    super.initState();
+    _categories = Set<String>.of(widget.initialCategories);
+    _brands = Set<String>.of(widget.initialBrands);
+  }
+
+  void _notifyChanged() {
+    widget.onChanged(categories: _categories, brands: _brands);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final selectedCategories = PreferenceCategory.all
-        .where((category) => selectedCategoryIds.contains(category.id))
-        .toList(growable: false);
-    final visibleCategories = selectedCategories.take(4).toList(growable: false);
-    final hiddenCount = selectedCategories.length - visibleCategories.length;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Colors.white, AppColors.surfaceContainerLow],
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Edit preferences',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.onSurface,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Choose the brands that shape your feed.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Brands',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.onSurfaceVariant,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (final group in BrandGroup.all) ...[
+                  Text(
+                    group.label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: group.brands.map((brand) {
+                      final isSelected = _brands.contains(brand);
+                      return _PreferenceChip(
+                        label: brand,
+                        isSelected: isSelected,
+                        onTap: () {
+                          setState(() {
+                            if (isSelected) {
+                              _brands.remove(brand);
+                            } else {
+                              _brands.add(brand);
+                            }
+                          });
+                          _notifyChanged();
+                        },
+                      );
+                    }).toList(growable: false),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreferenceChip extends StatelessWidget {
+  const _PreferenceChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onTap(),
+      selectedColor: AppColors.primary.withValues(alpha: 0.12),
+      checkmarkColor: AppColors.primary,
+      side: BorderSide(
+        color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+      ),
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: isSelected ? AppColors.primary : AppColors.onSurface,
+      ),
+      backgroundColor: AppColors.surfaceContainerLowest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(999),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+    );
+  }
+}
+
+// ---- Preference Row ----
+
+class _PreferenceRow extends StatelessWidget {
+  const _PreferenceRow({
+    required this.selectedBrandNames,
+    required this.onEdit,
+  });
+
+  final Set<String> selectedBrandNames;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final brandCount = selectedBrandNames.length;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -531,35 +723,19 @@ class _PreferenceRow extends StatelessWidget {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: selectedCategories.isEmpty
+                  children: brandCount == 0
                       ? [
                           const _PreferencePill(
-                            label: 'No categories selected yet',
+                            label: 'No preferences selected yet',
                             icon: Icons.auto_awesome_rounded,
                             isPlaceholder: true,
                           ),
                         ]
                       : [
-                          ...visibleCategories.map(
-                            (category) => _PreferencePill(
-                              label: '${category.emoji} ${category.label}',
-                              trailingIcon: removingCategoryIds.contains(
-                                category.id,
-                              )
-                                  ? null
-                                  : Icons.close_rounded,
-                              onTrailingTap: removingCategoryIds.contains(
-                                category.id,
-                              )
-                                  ? null
-                                  : () => onRemove(category.id),
-                              isLoading: removingCategoryIds.contains(
-                                category.id,
-                              ),
-                            ),
+                          _PreferencePill(
+                            label: '$brandCount brand${brandCount == 1 ? '' : 's'}',
+                            icon: Icons.favorite_border_rounded,
                           ),
-                          if (hiddenCount > 0)
-                            _PreferencePill(label: '+$hiddenCount more'),
                         ],
                 ),
               ],
@@ -575,17 +751,11 @@ class _PreferencePill extends StatelessWidget {
   const _PreferencePill({
     required this.label,
     this.icon,
-    this.trailingIcon,
-    this.onTrailingTap,
-    this.isLoading = false,
     this.isPlaceholder = false,
   });
 
   final String label;
   final IconData? icon;
-  final IconData? trailingIcon;
-  final VoidCallback? onTrailingTap;
-  final bool isLoading;
   final bool isPlaceholder;
 
   @override
@@ -613,47 +783,74 @@ class _PreferencePill extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: isPlaceholder
-                  ? AppColors.primary
-                  : AppColors.onSurface,
+              color: isPlaceholder ? AppColors.primary : AppColors.onSurface,
             ),
           ),
-          if (isLoading) ...[
-            const SizedBox(width: 8),
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.8,
-                color: AppColors.primary,
-              ),
-            ),
-          ] else if (trailingIcon != null && onTrailingTap != null) ...[
-            const SizedBox(width: 6),
-            GestureDetector(
-              onTap: onTrailingTap,
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                width: 18,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  trailingIcon,
-                  size: 13,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 }
+
+// ---- Shimmer placeholder ----
+
+class _ShimmerCarousel extends StatefulWidget {
+  const _ShimmerCarousel({required this.height});
+  final double height;
+
+  @override
+  State<_ShimmerCarousel> createState() => _ShimmerCarouselState();
+}
+
+class _ShimmerCarouselState extends State<_ShimmerCarousel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.3, end: 0.7).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _opacity,
+      builder: (context, _) => Opacity(
+        opacity: _opacity.value,
+        child: SizedBox(
+          height: widget.height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: 4,
+            separatorBuilder: (context, _) => const SizedBox(width: 12),
+            itemBuilder: (context, _) => Container(
+              width: widget.height < 400 ? 158 : 244,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---- Static UI pieces (unchanged) ----
 
 class _AmbientBackdrop extends StatelessWidget {
   const _AmbientBackdrop();

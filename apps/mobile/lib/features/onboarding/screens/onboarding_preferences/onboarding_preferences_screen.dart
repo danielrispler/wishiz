@@ -46,8 +46,9 @@ class _OnboardingPreferencesScreenState
   Future<void> _startExploring() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
-    await widget.authRepository.saveOnboardingCategories(
-      _selectedIds.value.toList(),
+    await widget.authRepository.savePreferences(
+      categoryIds: _selectedIds.value.toList(),
+      brandNames: const [],
     );
     if (!mounted) return;
     widget.onComplete();

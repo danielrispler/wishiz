@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     reminder_days INTEGER NOT NULL DEFAULT 14,
     onboarding_categories TEXT[] NOT NULL DEFAULT '{}',
+    preferred_brands TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT app_users_preferred_currency_code_check CHECK (preferred_currency_code ~ '^[A-Z]{3}$'),
@@ -197,3 +198,55 @@ CREATE TRIGGER wishlist_invites_set_updated_at
     BEFORE UPDATE ON wishlist_invites
     FOR EACH ROW
     EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS discover_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    brand TEXT NOT NULL,
+    category TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    price_label TEXT,
+    product_url TEXT,
+    save_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT discover_products_category_check CHECK (
+        category IN ('fashion','beauty','home','accessories','gifts','travel')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS discover_products_category_idx ON discover_products (category);
+CREATE INDEX IF NOT EXISTS discover_products_brand_idx ON discover_products (brand);
+CREATE INDEX IF NOT EXISTS discover_products_trending_idx ON discover_products (save_count DESC, created_at DESC);
+
+CREATE TRIGGER discover_products_set_updated_at
+    BEFORE UPDATE ON discover_products
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS discover_product_saves (
+    user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES discover_products(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS starter_packs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL DEFAULT '',
+    cover_image_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER starter_packs_set_updated_at
+    BEFORE UPDATE ON starter_packs
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS starter_pack_items (
+    pack_id UUID NOT NULL REFERENCES starter_packs(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES discover_products(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    PRIMARY KEY (pack_id, product_id),
+    CONSTRAINT starter_pack_items_rank_positive CHECK (rank > 0)
+);

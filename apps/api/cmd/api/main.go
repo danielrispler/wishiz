@@ -16,6 +16,9 @@ import (
 	authhttp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/http"
 	authpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/postgres"
 	authapp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/application"
+	discoverhttp "github.com/danielrispler/wishiz/apps/api/internal/features/discover/adapters/http"
+	discoverpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/discover/adapters/postgres"
+	discoverapp "github.com/danielrispler/wishiz/apps/api/internal/features/discover/application"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
 	productimporthttp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/http"
 	productimportpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/postgres"
@@ -147,6 +150,19 @@ func run() error {
 			func(next http.HandlerFunc) http.HandlerFunc {
 				return authhttp.RequireAuth(authService, next)
 			},
+		)
+
+		discoverRepo := discoverpostgres.NewRepository(pool)
+		discoverService := discoverapp.NewService(discoverRepo, scrapeService)
+		discoverhttp.RegisterRoutes(
+			mux,
+			appLogger,
+			discoverService,
+			authService,
+			func(next http.HandlerFunc) http.HandlerFunc {
+				return authhttp.RequireAuth(authService, next)
+			},
+			cfg.InternalAPIKey,
 		)
 	} else {
 		appLogger.Info("starting api without database-backed wishlist routes")

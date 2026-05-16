@@ -223,7 +223,7 @@ class _PreviewStack extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
                 image: DecorationImage(
-                  image: NetworkImage(shown[i].imageUrl),
+                  image: NetworkImage(shown[i]),
                   fit: BoxFit.cover,
                 ),
                 boxShadow: const [

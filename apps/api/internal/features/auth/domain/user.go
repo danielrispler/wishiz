@@ -27,14 +27,15 @@ func ParsePreference(s string) (Preference, error) {
 }
 
 type User struct {
-	ID                   string
-	Email                string
-	FullName             string
-	Birthday             time.Time
+	ID                    string
+	Email                 string
+	FullName              string
+	Birthday              time.Time
 	PreferredCurrencyCode string
-	NotificationsEnabled bool
-	ReminderDays         int
-	OnboardingCategories []Preference
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	NotificationsEnabled  bool
+	ReminderDays          int
+	OnboardingCategories  []Preference
+	PreferredBrands       []string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }

@@ -27,6 +27,7 @@ type Config struct {
 	ProductImportPollInterval           time.Duration
 	ShareBaseURL                        string
 	AndroidAppLinkSHA256CertFingerprint string
+	InternalAPIKey                      string
 }
 
 func Load() (Config, error) {
@@ -56,6 +57,7 @@ func Load() (Config, error) {
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
 			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",
 		),
+		InternalAPIKey: os.Getenv("INTERNAL_API_KEY"),
 	}
 
 	return cfg, nil

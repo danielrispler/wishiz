@@ -90,15 +90,16 @@ class AuthApiClient {
     return AppUserDto.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<AppUserDto> updateOnboardingCategories({
+  Future<AppUserDto> updatePreferences({
     required String authToken,
     required List<String> categoryIds,
+    required List<String> brandNames,
   }) async {
     final response = await _requestJson(
       'PATCH',
       '/auth/me/onboarding',
       authToken: authToken,
-      body: {'categories': categoryIds},
+      body: {'categories': categoryIds, 'brands': brandNames},
       expectedStatusCodes: const {HttpStatus.ok},
     );
 
@@ -190,6 +191,7 @@ class AppUserDto {
     required this.notificationsEnabled,
     required this.reminderDays,
     required this.onboardingCategories,
+    required this.preferredBrands,
   });
 
   factory AppUserDto.fromJson(Map<String, dynamic> json) {
@@ -204,6 +206,9 @@ class AppUserDto {
       onboardingCategories:
           (json['onboardingCategories'] as List<dynamic>?)?.cast<String>() ??
           const [],
+      preferredBrands:
+          (json['preferredBrands'] as List<dynamic>?)?.cast<String>() ??
+          const [],
     );
   }
 
@@ -215,6 +220,7 @@ class AppUserDto {
   final bool notificationsEnabled;
   final int reminderDays;
   final List<String> onboardingCategories;
+  final List<String> preferredBrands;
 
   AppUser toEntity() {
     return AppUser(
@@ -226,6 +232,7 @@ class AppUserDto {
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
       onboardingCategories: onboardingCategories,
+      preferredBrands: preferredBrands,
     );
   }
 }

@@ -188,6 +188,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		NotificationsEnabled:  input.NotificationsEnabled,
 		ReminderDays:          normalizeReminderDays(input.ReminderDays),
 		OnboardingCategories:  currentUser.OnboardingCategories,
+		PreferredBrands:       currentUser.PreferredBrands,
 	})
 	if errors.Is(err, ports.ErrEmailConflict) {
 		return domain.User{}, Conflict("email", "an account with that email already exists")
@@ -199,19 +200,56 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	return updated, nil
 }
 
-func (s *Service) SaveOnboardingCategories(ctx context.Context, userID string, raw []string) (domain.User, error) {
+func (s *Service) SavePreferences(ctx context.Context, userID string, rawCategories []string, rawBrands []string) (domain.User, error) {
 	if strings.TrimSpace(userID) == "" {
 		return domain.User{}, ValidationError("userID", "userID is required")
 	}
-	prefs, err := parsePreferences(raw)
+	prefs, err := parsePreferences(rawCategories)
 	if err != nil {
 		return domain.User{}, err
 	}
-	user, err := s.repo.UpdateUserOnboardingCategories(ctx, userID, prefs)
+	brands, err := parseBrands(rawBrands)
+	if err != nil {
+		return domain.User{}, err
+	}
+	user, err := s.repo.UpdateUserPreferences(ctx, userID, prefs, brands)
 	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, NotFound("user not found")
 	}
 	return user, err
+}
+
+func parseBrands(raw []string) ([]string, error) {
+	if len(raw) > 50 {
+		return nil, ValidationError("brands", "too many brands selected (max 50)")
+	}
+	brands := make([]string, 0, len(raw))
+	for _, s := range raw {
+		b := strings.TrimSpace(s)
+		if b == "" {
+			continue
+		}
+		if len(b) > 100 {
+			return nil, ValidationError("brands", fmt.Sprintf("brand name too long: %q", b))
+		}
+		brands = append(brands, b)
+	}
+	return brands, nil
+}
+
+func (s *Service) GetPreferences(ctx context.Context, userID string) (categories []string, brands []string, err error) {
+	user, _, err := s.repo.GetUserByID(ctx, userID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return nil, nil, NotFound("user not found")
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	cats := make([]string, len(user.OnboardingCategories))
+	for i, p := range user.OnboardingCategories {
+		cats[i] = string(p)
+	}
+	return cats, user.PreferredBrands, nil
 }
 
 func (s *Service) LogOut(ctx context.Context, rawToken string) error {

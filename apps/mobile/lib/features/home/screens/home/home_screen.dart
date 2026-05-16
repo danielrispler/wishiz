@@ -22,6 +22,7 @@ import 'package:wishiz/features/wishlists/screens/purchase_history/purchase_hist
 import 'package:wishiz/features/wishlists/screens/wishlist_detail/wishlist_detail_screen.dart';
 import 'package:wishiz/features/wishlists/screens/wishlist_editor/wishlist_editor_screen.dart';
 import 'package:wishiz/features/wishlists/screens/wishlist_item_editor/wishlist_item_editor_screen.dart';
+import 'package:wishiz/features/discover/domain/repositories/discover_repository.dart';
 import 'package:wishiz/features/discover/screens/discover/discover_screen.dart';
 import 'components/home_app_bar_actions.dart';
 import 'components/shared_import_loader.dart';
@@ -35,6 +36,7 @@ class HomeScreen extends StatefulWidget {
     required this.sharedProductRepository,
     required this.authRepository,
     required this.currentUser,
+    this.discoverRepository,
     this.initialWishlistId,
     this.initialInviteToken,
     this.initialSharedText,
@@ -46,6 +48,7 @@ class HomeScreen extends StatefulWidget {
   final ProductImportRepository productImportRepository;
   final SharedProductRepository sharedProductRepository;
   final AuthRepository authRepository;
+  final DiscoverRepository? discoverRepository;
   final AppUser currentUser;
   final String? initialWishlistId;
   final String? initialInviteToken;
@@ -480,6 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     2 => SafeArea(
                         child: DiscoverScreen(
                           authRepository: widget.authRepository,
+                          wishlistRepository: widget.repository,
+                          discoverRepository: widget.discoverRepository,
                           currentUser: widget.currentUser,
                         ),
                       ),

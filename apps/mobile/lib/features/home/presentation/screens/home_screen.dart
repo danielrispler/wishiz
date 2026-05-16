@@ -22,9 +22,11 @@ import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.d
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
+import 'package:wishiz/features/wishlists/presentation/screens/purchase_history_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
+import 'package:wishiz/features/wishlists/presentation/widgets/wishlist_analytics_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -363,6 +365,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openPurchaseHistoryScreen() {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PurchaseHistoryScreen(
+          repository: widget.repository,
+          onWishlistTap: (wishlistId) => _openWishlistDetails(
+            wishlistId,
+            showPurchasedOnly: true,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showFeedback(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -423,6 +439,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return [
+      IconButton(
+        tooltip: 'Purchase History',
+        onPressed: _openPurchaseHistoryScreen,
+        visualDensity: VisualDensity.compact,
+        color: colorScheme.onSurfaceVariant,
+        icon: const Icon(Icons.shopping_bag_outlined),
+      ),
       Stack(
         clipBehavior: Clip.none,
         children: [
@@ -725,6 +748,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bool openPurchasedOnly = false,
     bool isSharedView = false,
   }) {
+    final analytics = WishlistAnalytics(wishlist);
     return WishlistSummaryCard(
       title: wishlist.title,
       itemCount: itemCount,
@@ -734,6 +758,7 @@ class _HomeScreenState extends State<HomeScreen> {
         wishlist,
         showPurchasedOnly: openPurchasedOnly,
       ),
+      totalValue: analytics.totalActiveValue,
       actions: _buildWishlistActions(wishlist, isSharedView: isSharedView),
       onTap: () => _openWishlistDetails(
         wishlist.id,

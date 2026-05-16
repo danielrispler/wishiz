@@ -20,6 +20,7 @@ import 'package:wishiz/features/wishlists/domain/repositories/shared_product_rep
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
+import 'package:wishiz/features/wishlists/presentation/widgets/wishlist_analytics_sheet.dart';
 
 enum _UserCapability { owner, editor, viewer }
 
@@ -382,28 +383,103 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             ],
           ),
           const SizedBox(height: AppConstants.spacing4),
-          Wrap(
-            spacing: AppConstants.spacing2,
-            runSpacing: AppConstants.spacing2,
-            children: [
-              _buildMetadataChip(
-                context,
-                label: '${wishlist.year}',
-                icon: Icons.calendar_today_outlined,
-              ),
-              _buildMetadataChip(
-                context,
-                label: '${wishlist.activeItemCount} active',
-                icon: Icons.checklist_rtl_rounded,
-              ),
-              _buildMetadataChip(
-                context,
-                label: '${wishlist.purchasedItemCount} purchased',
-                icon: Icons.shopping_bag_outlined,
-              ),
-            ],
-          ),
+          _buildHeroAnalyticsChips(context, wishlist),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHeroAnalyticsChips(BuildContext context, Wishlist wishlist) {
+    final analytics = WishlistAnalytics(wishlist);
+    final avgDays = analytics.avgDaysOnList;
+    final totalValue = analytics.totalActiveValue;
+    final completionRate = analytics.completionRate;
+
+    return Wrap(
+      spacing: AppConstants.spacing2,
+      runSpacing: AppConstants.spacing2,
+      children: [
+        _buildMetadataChip(
+          context,
+          label: '${wishlist.year}',
+          icon: Icons.calendar_today_outlined,
+        ),
+        _buildMetadataChip(
+          context,
+          label: '${wishlist.activeItemCount} active',
+          icon: Icons.checklist_rtl_rounded,
+        ),
+        _buildMetadataChip(
+          context,
+          label: '${wishlist.purchasedItemCount} purchased',
+          icon: Icons.shopping_bag_outlined,
+        ),
+        if (totalValue != null)
+          _buildMetadataChip(
+            context,
+            label: totalValue,
+            icon: Icons.attach_money_rounded,
+          ),
+        if (avgDays != null)
+          _buildMetadataChip(
+            context,
+            label: 'avg ${avgDays.round()}d on list',
+            icon: Icons.hourglass_top_rounded,
+          ),
+        if (completionRate != null)
+          _buildMetadataChip(
+            context,
+            label: '${(completionRate * 100).round()}% gifted',
+            icon: Icons.celebration_outlined,
+          ),
+        _buildTapMetadataChip(
+          context,
+          label: 'Analytics',
+          icon: Icons.bar_chart_rounded,
+          onTap: () => showWishlistAnalyticsSheet(context, wishlist),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTapMetadataChip(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppConstants.spacing2,
+          vertical: 4,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 12,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

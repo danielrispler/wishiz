@@ -152,22 +152,10 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canPreviewImage = _coverImageUrlController.text.trim().isNotEmpty;
-
     return Form(
       key: _formKey,
       child: EditorPageLayout(
         title: widget.isEditing ? 'Edit List' : 'Create List',
-        footer: EditorPrimaryButton(
-          label: _isSaving
-              ? 'Saving...'
-              : widget.isEditing
-              ? 'Save Changes'
-              : 'Create List',
-          onPressed: _isSaving ? null : _saveWishlist,
-          helper:
-              'Keep it short and easy to scan. You can refine the details later.',
-        ),
         children: [
           EditorIntroCard(
             title: widget.isEditing
@@ -223,35 +211,21 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: AppConstants.itemGap),
+                _buildImageUploadButton(context),
               ],
             ),
           ),
           const SizedBox(height: AppConstants.sectionGap),
-          EditorSectionCard(
-            title: 'Cover image',
-            description:
-                'Optional. A photo from your gallery makes the list easier to spot in a crowded screen.',
-            trailing: Wrap(
-              spacing: AppConstants.spacing2,
-              children: [
-                if (canPreviewImage)
-                  TextButton.icon(
-                    onPressed: () => _coverImageUrlController.clear(),
-                    icon: const Icon(Icons.clear_outlined),
-                    label: const Text('Remove'),
-                  ),
-                TextButton.icon(
-                  onPressed: _pickCoverImage,
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Gallery'),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                if (canPreviewImage) ...[_buildImagePreview(context)],
-              ],
-            ),
+          EditorPrimaryButton(
+            label: _isSaving
+                ? 'Saving...'
+                : widget.isEditing
+                ? 'Save Changes'
+                : 'Create List',
+            onPressed: _isSaving ? null : _saveWishlist,
+            helper:
+                'Keep it short and easy to scan. You can refine the details later.',
           ),
         ],
       ),
@@ -342,6 +316,27 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
           );
   }
 
+  Widget _buildImageUploadButton(BuildContext context) {
+    final hasImage = _coverImageUrlController.text.trim().isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasImage) ...[
+          _buildImagePreview(context),
+          const SizedBox(height: AppConstants.itemGap),
+        ],
+        FilledButton.icon(
+          onPressed: _pickCoverImage,
+          icon: Icon(
+            hasImage ? Icons.photo_camera_back_outlined : Icons.upload_outlined,
+          ),
+          label: Text(hasImage ? 'Change Image' : 'Upload Image'),
+        ),
+      ],
+    );
+  }
+
   Widget _buildImagePreview(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _coverImageUrlController.text.trim();
@@ -362,9 +357,27 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
                 _imageFallback(colorScheme),
           );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-      child: AspectRatio(aspectRatio: 16 / 9, child: image),
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+          child: AspectRatio(aspectRatio: 16 / 9, child: image),
+        ),
+        Positioned(
+          top: AppConstants.spacing3,
+          right: AppConstants.spacing3,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.45),
+            shape: const CircleBorder(),
+            child: IconButton(
+              onPressed: () => _coverImageUrlController.clear(),
+              icon: const Icon(Icons.close_rounded),
+              color: Colors.white,
+              tooltip: 'Remove image',
+            ),
+          ),
+        ),
+      ],
     );
   }
 

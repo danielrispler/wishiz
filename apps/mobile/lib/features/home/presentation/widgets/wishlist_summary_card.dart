@@ -10,6 +10,7 @@ class WishlistSummaryCard extends StatelessWidget {
   final String lastUpdated;
   final String? coverImageUrl;
   final String? supportingText;
+  final String? totalValue;
   final List<Widget> actions;
   final VoidCallback? onTap;
 
@@ -20,6 +21,7 @@ class WishlistSummaryCard extends StatelessWidget {
     required this.lastUpdated,
     this.coverImageUrl,
     this.supportingText,
+    this.totalValue,
     this.actions = const [],
     this.onTap,
   });
@@ -30,6 +32,7 @@ class WishlistSummaryCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final subtitle = [
       '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+      if (totalValue != null) totalValue!,
       'Updated $lastUpdated',
       if (supportingText != null && supportingText!.isNotEmpty) supportingText!,
     ].join(' · ');

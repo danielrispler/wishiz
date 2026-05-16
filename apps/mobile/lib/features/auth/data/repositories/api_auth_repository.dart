@@ -142,6 +142,29 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
   }
 
   @override
+  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async {
+    if (_sessionToken == null) {
+      return const AuthResult.failure('No account is signed in right now.');
+    }
+
+    try {
+      final user = await _apiClient.updateOnboardingCategories(
+        authToken: _sessionToken!,
+        categoryIds: categoryIds,
+      );
+      _setSession(user: user.toEntity(), token: _sessionToken!);
+      await _persist();
+      return AuthResult.success(_currentUser!);
+    } on AuthApiException catch (error) {
+      if (error.statusCode == 401) {
+        _clearSession();
+        await _persist();
+      }
+      return AuthResult.failure(error.message);
+    }
+  }
+
+  @override
   Future<void> logOut() async {
     final token = _sessionToken;
     _clearSession();
@@ -223,6 +246,7 @@ class _StoredSessionPayload {
               'preferredCurrencyCode': user!.preferredCurrencyCode,
               'notificationsEnabled': user!.notificationsEnabled,
               'reminderDays': user!.reminderDays,
+              'onboardingCategories': user!.onboardingCategories,
             },
     };
   }

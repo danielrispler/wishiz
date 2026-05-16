@@ -61,6 +61,10 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async =>
+      AuthResult.success(getCurrentUser()!);
+
+  @override
   Future<void> logOut() async {}
 
   @override

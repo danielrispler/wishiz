@@ -127,7 +127,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              formatErrorMessage(error, fallbackMessage: 'Could not restore item.'),
+              formatErrorMessage(
+                error,
+                fallbackMessage: 'Could not restore item.',
+              ),
             ),
           ),
         );
@@ -152,7 +155,11 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
       final fallback = Container(
         color: colorScheme.surfaceContainerHigh,
         alignment: Alignment.center,
-        child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant, size: 18),
+        child: Icon(
+          Icons.image_outlined,
+          color: colorScheme.onSurfaceVariant,
+          size: 18,
+        ),
       );
       child = kIsWeb || isRemote
           ? Image.network(
@@ -217,7 +224,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 children: [
                   Text(
                     entry.item.title,
-                    style: textTheme.titleSmall,
+                    style: textTheme.titleSmall?.copyWith(
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -311,7 +321,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('No purchases yet', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'No purchases yet',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: AppConstants.spacing2),
           Text(
             'Mark items as purchased in any list to see them here.',
@@ -349,7 +362,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                       context,
                       _monthLabel(group.key, group.value.length),
                     ),
-                    for (final entry in group.value) _buildEntryTile(context, entry),
+                    for (final entry in group.value)
+                      _buildEntryTile(context, entry),
                   ],
               ],
             );

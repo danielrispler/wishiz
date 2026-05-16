@@ -195,6 +195,39 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async {
+    final currentUser = _currentUser;
+    if (currentUser == null) {
+      return const AuthResult.failure('No account is signed in right now.');
+    }
+
+    final index = _storedUsers.indexWhere((user) => user.id == currentUser.id);
+    if (index == -1) {
+      return const AuthResult.failure('We could not find that saved account.');
+    }
+
+    final updatedUser = _storedUsers[index].copyWith(
+      onboardingCategories: categoryIds,
+    );
+    _storedUsers[index] = updatedUser;
+    _setCurrentUser(updatedUser.toAppUser());
+
+    try {
+      await _persist();
+    } catch (_) {
+      _storedUsers[index] = _storedUsers[index].copyWith(
+        onboardingCategories: currentUser.onboardingCategories,
+      );
+      _setCurrentUser(currentUser);
+      return const AuthResult.failure(
+        'We could not save your preferences on this device.',
+      );
+    }
+
+    return AuthResult.success(_currentUser!);
+  }
+
+  @override
   Future<void> logOut() async {
     _setCurrentUser(null);
     await _persist();
@@ -264,6 +297,7 @@ class _StoredUser {
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
     this.reminderDays = 14,
+    this.onboardingCategories = const [],
   });
 
   final String id;
@@ -274,6 +308,7 @@ class _StoredUser {
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
+  final List<String> onboardingCategories;
 
   AppUser toAppUser() {
     return AppUser(
@@ -284,6 +319,7 @@ class _StoredUser {
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
+      onboardingCategories: onboardingCategories,
     );
   }
 
@@ -296,6 +332,7 @@ class _StoredUser {
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
     int? reminderDays,
+    List<String>? onboardingCategories,
   }) {
     return _StoredUser(
       id: id ?? this.id,
@@ -307,6 +344,7 @@ class _StoredUser {
           preferredCurrencyCode ?? this.preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       reminderDays: reminderDays ?? this.reminderDays,
+      onboardingCategories: onboardingCategories ?? this.onboardingCategories,
     );
   }
 
@@ -320,6 +358,7 @@ class _StoredUser {
       'preferredCurrencyCode': preferredCurrencyCode,
       'notificationsEnabled': notificationsEnabled,
       'reminderDays': reminderDays,
+      'onboardingCategories': onboardingCategories,
     };
   }
 
@@ -339,6 +378,9 @@ class _StoredUser {
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
       reminderDays: json['reminderDays'] as int? ?? 14,
+      onboardingCategories:
+          (json['onboardingCategories'] as List<dynamic>?)?.cast<String>() ??
+          const [],
     );
   }
 }

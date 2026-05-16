@@ -19,6 +19,7 @@ type Service interface {
 	Authenticate(ctx context.Context, rawToken string) (domain.User, error)
 	GetCurrentUser(ctx context.Context, userID string) (domain.User, error)
 	UpdateCurrentUser(ctx context.Context, userID string, input *application.UpdateCurrentUserInput) (domain.User, error)
+	SaveOnboardingCategories(ctx context.Context, userID string, categories []string) (domain.User, error)
 	LogOut(ctx context.Context, rawToken string) error
 }
 
@@ -53,6 +54,10 @@ type updateCurrentUserRequest struct {
 	NewPassword           string    `json:"newPassword"`
 }
 
+type saveOnboardingCategoriesRequest struct {
+	Categories []string `json:"categories"`
+}
+
 type authResponse struct {
 	Token string       `json:"token"`
 	User  userResponse `json:"user"`
@@ -66,6 +71,7 @@ type userResponse struct {
 	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
 	NotificationsEnabled  bool      `json:"notificationsEnabled"`
 	ReminderDays          int       `json:"reminderDays"`
+	OnboardingCategories  []string  `json:"onboardingCategories"`
 }
 
 func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
@@ -75,6 +81,7 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
 	mux.HandleFunc("POST /auth/login", h.logIn)
 	mux.HandleFunc("GET /auth/me", RequireAuth(service, h.getCurrentUser))
 	mux.HandleFunc("PATCH /auth/me", RequireAuth(service, h.updateCurrentUser))
+	mux.HandleFunc("PATCH /auth/me/onboarding", RequireAuth(service, h.saveOnboardingCategories))
 	mux.HandleFunc("POST /auth/logout", RequireAuth(service, h.logOut))
 }
 
@@ -194,6 +201,28 @@ func (h handler) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, mapUser(updatedUser))
 }
 
+func (h handler) saveOnboardingCategories(w http.ResponseWriter, r *http.Request) {
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, http.StatusUnauthorized, string(application.ErrorCodeUnauthorized), "authorization is required", "")
+		return
+	}
+
+	var request saveOnboardingCategoriesRequest
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+
+	updatedUser, err := h.service.SaveOnboardingCategories(r.Context(), user.ID, request.Categories)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, mapUser(updatedUser))
+}
+
 func (h handler) logOut(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.LogOut(r.Context(), bearerToken(r.Header.Get("Authorization"))); err != nil {
 		h.writeError(w, r, err)
@@ -226,6 +255,10 @@ func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func mapUser(user domain.User) userResponse {
+	cats := make([]string, len(user.OnboardingCategories))
+	for i, p := range user.OnboardingCategories {
+		cats[i] = string(p)
+	}
 	return userResponse{
 		ID:                    user.ID,
 		Email:                 user.Email,
@@ -234,6 +267,7 @@ func mapUser(user domain.User) userResponse {
 		PreferredCurrencyCode: user.PreferredCurrencyCode,
 		NotificationsEnabled:  user.NotificationsEnabled,
 		ReminderDays:          user.ReminderDays,
+		OnboardingCategories:  cats,
 	}
 }
 

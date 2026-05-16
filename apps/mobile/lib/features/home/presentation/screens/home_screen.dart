@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
-import 'package:wishiz/core/navigation/wishiz_share_text.dart';
 import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/core/widgets/wishiz_app_bar.dart';
 
@@ -370,10 +368,8 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute<void>(
         builder: (_) => PurchaseHistoryScreen(
           repository: widget.repository,
-          onWishlistTap: (wishlistId) => _openWishlistDetails(
-            wishlistId,
-            showPurchasedOnly: true,
-          ),
+          onWishlistTap: (wishlistId) =>
+              _openWishlistDetails(wishlistId, showPurchasedOnly: true),
         ),
       ),
     );
@@ -383,56 +379,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _confirmDeleteWishlist(Wishlist wishlist) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete list?'),
-        content: Text(
-          'Remove "${wishlist.title}" permanently from this device?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (!mounted || shouldDelete != true) {
-      return;
-    }
-
-    try {
-      await widget.repository.deleteWishlist(wishlist.id);
-      _showFeedback('List deleted.');
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _showFeedback(
-        formatErrorMessage(
-          error,
-          fallbackMessage: 'Could not delete this list.',
-        ),
-      );
-    }
-  }
-
-  Future<void> _shareWishlist(Wishlist wishlist) async {
-    await SharePlus.instance.share(
-      ShareParams(
-        text: WishizShareText.buildWishlistShareText(wishlist: wishlist),
-        subject: wishlist.title,
-      ),
-    );
   }
 
   List<Widget> _buildHeaderActions({required int reminderCount}) {
@@ -752,58 +698,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return WishlistSummaryCard(
       title: wishlist.title,
       itemCount: itemCount,
-      lastUpdated: _formatRelativeDate(wishlist.updatedAt),
       coverImageUrl: wishlist.coverImageUrl,
       supportingText: _supportingTextForWishlist(
         wishlist,
         showPurchasedOnly: openPurchasedOnly,
       ),
       totalValue: analytics.totalActiveValue,
-      actions: _buildWishlistActions(wishlist, isSharedView: isSharedView),
       onTap: () => _openWishlistDetails(
         wishlist.id,
         showPurchasedOnly: openPurchasedOnly,
       ),
     );
-  }
-
-  List<Widget> _buildWishlistActions(
-    Wishlist wishlist, {
-    required bool isSharedView,
-  }) {
-    final actions = <Widget>[
-      Tooltip(
-        message: 'Edit list',
-        child: TextButton.icon(
-          onPressed: () => _openWishlistEditor(wishlist: wishlist),
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit'),
-        ),
-      ),
-      Tooltip(
-        message: 'Share list',
-        child: TextButton.icon(
-          onPressed: () => _shareWishlist(wishlist),
-          icon: const Icon(Icons.share_outlined),
-          label: const Text('Share'),
-        ),
-      ),
-    ];
-
-    if (!isSharedView) {
-      actions.add(
-        Tooltip(
-          message: 'Delete list',
-          child: TextButton.icon(
-            onPressed: () => _confirmDeleteWishlist(wishlist),
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Delete'),
-          ),
-        ),
-      );
-    }
-
-    return actions;
   }
 
   Widget _buildSearchAndFilters({
@@ -1085,24 +990,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatRelativeDate(DateTime updatedAt) {
-    final difference = DateTime.now().difference(updatedAt);
-
-    if (difference.inDays >= 2) {
-      return '${difference.inDays} days ago';
-    }
-    if (difference.inDays == 1) {
-      return 'yesterday';
-    }
-    if (difference.inHours >= 1) {
-      return '${difference.inHours}h ago';
-    }
-    if (difference.inMinutes >= 1) {
-      return '${difference.inMinutes}m ago';
-    }
-    return 'just now';
-  }
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<List<Wishlist>>(
@@ -1118,11 +1005,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         final activeWishlists = _filterWishlists(
           visibleWishlists
-              .where(
-                (wishlist) =>
-                    !_isShared(wishlist) &&
-                    (wishlist.activeItemCount > 0 || wishlist.items.isEmpty),
-              )
+              .where((wishlist) => !_isShared(wishlist))
               .toList(growable: false),
         );
         return Stack(

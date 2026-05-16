@@ -27,6 +27,8 @@ abstract class AuthRepository {
     String? newPassword,
   });
 
+  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds);
+
   Future<void> logOut();
 }
 

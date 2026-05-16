@@ -59,6 +59,24 @@ class WishlistDetailScreen extends StatefulWidget {
 
 enum _ItemFilter { all, active, purchased }
 
+String _formatRelativeDate(DateTime updatedAt) {
+  final difference = DateTime.now().difference(updatedAt);
+
+  if (difference.inDays >= 2) {
+    return '${difference.inDays} days ago';
+  }
+  if (difference.inDays == 1) {
+    return 'yesterday';
+  }
+  if (difference.inHours >= 1) {
+    return '${difference.inHours}h ago';
+  }
+  if (difference.inMinutes >= 1) {
+    return '${difference.inMinutes}m ago';
+  }
+  return 'just now';
+}
+
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   static const String _sortHighestRank = 'Highest Rank';
   static const String _sortLowestRank = 'Lowest Rank';
@@ -413,6 +431,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           context,
           label: '${wishlist.purchasedItemCount} purchased',
           icon: Icons.shopping_bag_outlined,
+        ),
+        _buildMetadataChip(
+          context,
+          label: 'Updated ${_formatRelativeDate(wishlist.updatedAt)}',
+          icon: Icons.update_rounded,
         ),
         if (totalValue != null)
           _buildMetadataChip(

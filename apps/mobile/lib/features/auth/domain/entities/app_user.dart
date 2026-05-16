@@ -9,6 +9,7 @@ class AppUser {
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
     this.reminderDays = 14,
+    this.onboardingCategories = const [],
   });
 
   static const List<String> supportedCurrencyCodes = [
@@ -31,6 +32,7 @@ class AppUser {
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
+  final List<String> onboardingCategories;
 
   String get preferredCurrencySymbol =>
       CurrencyUtils.symbolFor(preferredCurrencyCode);
@@ -43,6 +45,7 @@ class AppUser {
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
     int? reminderDays,
+    List<String>? onboardingCategories,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -53,6 +56,7 @@ class AppUser {
           preferredCurrencyCode ?? this.preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       reminderDays: reminderDays ?? this.reminderDays,
+      onboardingCategories: onboardingCategories ?? this.onboardingCategories,
     );
   }
 }

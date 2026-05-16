@@ -26,6 +26,7 @@ func ExtractProduct(pageURL string, html string) (scrapeapp.Product, error) {
 	merchant := detectMerchant(parsedURL.Hostname())
 
 	product := extractMerchantProduct(document, merchant)
+	hasMerchantPrice := product.PriceAmount != "" && product.PriceCurrency != ""
 	priceCandidates := priceCandidatesFromProduct(product)
 
 	var candidates []priceCandidate
@@ -33,8 +34,10 @@ func ExtractProduct(pageURL string, html string) (scrapeapp.Product, error) {
 	priceCandidates = append(priceCandidates, candidates...)
 	product, candidates = fillFromMeta(product, document)
 	priceCandidates = append(priceCandidates, candidates...)
-	product, candidates = fillFromGenericDOM(product, document)
-	priceCandidates = append(priceCandidates, candidates...)
+	if !hasMerchantPrice {
+		product, candidates = fillFromGenericDOM(product, document)
+		priceCandidates = append(priceCandidates, candidates...)
+	}
 
 	product.Name = normalizeText(product.Name)
 	product.ImageURL = resolveURL(parsedURL, product.ImageURL)
@@ -64,6 +67,8 @@ func detectMerchant(host string) string {
 		return "vuori"
 	case strings.Contains(normalized, "de-rococo.co.il"):
 		return "derococo"
+	case strings.Contains(normalized, "factory54.co.il"):
+		return "factory54"
 	default:
 		return ""
 	}
@@ -159,6 +164,26 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 				metaContent(document, "og:image", "property"),
 				firstSource(document, `img[class*="product"]`, "src", "srcset"),
 				firstSource(document, `img`, "src", "srcset"),
+			),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
+		}
+	case "factory54":
+		priceText := firstNonEmpty(
+			textOf(document, `.price > .sale-price > .price-inverse.inline`),
+			textOf(document, `.price > .price-inverse.inline`),
+		)
+		return scrapeapp.Product{
+			Name: firstNonEmpty(
+				textOf(document, "h2.name-product__product"),
+				metaContent(document, "og:title", "property"),
+			),
+			ImageURL: firstNonEmpty(
+				metaContent(document, "og:image", "property"),
+				firstSource(document, `img[itemprop="image"]`, "src"),
 			),
 			PriceAmount:     amountFromText(priceText),
 			PriceCurrency:   currencyFromText(priceText),

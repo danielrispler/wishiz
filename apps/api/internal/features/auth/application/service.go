@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -186,6 +187,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
 		NotificationsEnabled:  input.NotificationsEnabled,
 		ReminderDays:          normalizeReminderDays(input.ReminderDays),
+		OnboardingCategories:  currentUser.OnboardingCategories,
 	})
 	if errors.Is(err, ports.ErrEmailConflict) {
 		return domain.User{}, Conflict("email", "an account with that email already exists")
@@ -195,6 +197,21 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	}
 
 	return updated, nil
+}
+
+func (s *Service) SaveOnboardingCategories(ctx context.Context, userID string, raw []string) (domain.User, error) {
+	if strings.TrimSpace(userID) == "" {
+		return domain.User{}, ValidationError("userID", "userID is required")
+	}
+	prefs, err := parsePreferences(raw)
+	if err != nil {
+		return domain.User{}, err
+	}
+	user, err := s.repo.UpdateUserOnboardingCategories(ctx, userID, prefs)
+	if errors.Is(err, ports.ErrNotFound) {
+		return domain.User{}, NotFound("user not found")
+	}
+	return user, err
 }
 
 func (s *Service) LogOut(ctx context.Context, rawToken string) error {
@@ -207,6 +224,18 @@ func (s *Service) LogOut(ctx context.Context, rawToken string) error {
 		return nil
 	}
 	return err
+}
+
+func parsePreferences(raw []string) ([]domain.Preference, error) {
+	prefs := make([]domain.Preference, 0, len(raw))
+	for _, s := range raw {
+		p, err := domain.ParsePreference(strings.ToLower(strings.TrimSpace(s)))
+		if err != nil {
+			return nil, ValidationError("categories", fmt.Sprintf("invalid category %q", s))
+		}
+		prefs = append(prefs, p)
+	}
+	return prefs, nil
 }
 
 func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserParams, error) {

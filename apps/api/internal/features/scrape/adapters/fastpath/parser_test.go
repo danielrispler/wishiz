@@ -318,3 +318,60 @@ func TestExtractProductDeRococoSelectors(t *testing.T) {
 		t.Fatalf("unexpected product: %+v", product)
 	}
 }
+
+func TestExtractProductFactory54Selectors(t *testing.T) {
+	t.Parallel()
+
+	// Page structure mirrors factory54.co.il: product name in h2.name-product__product,
+	// sale price as direct child .price-inverse.inline of .sale-price,
+	// comparison price nested deeper, and a related product with a different price.
+	// Without a merchant-specific handler, the related product's .sale-price (₪400) would
+	// conflict with the main product (₪210) and downgrade confidence to suspicious.
+	product, err := ExtractProduct(
+		"https://www.factory54.co.il/pace-breaker-short-linerless-7/869206188S.html",
+		`<html>
+<head>
+<meta property="og:title" content="Pace Breaker Short Linerless 7 | Factory 54" />
+<meta property="og:image" content="https://www.factory54.co.il/dw/image/v2/product/869206188_L_2.jpg" />
+</head>
+<body>
+<h2 class="product-name name-product__product">Pace Breaker Short Linerless 7</h2>
+<div class="price-info">
+  <div class="prices price-info__flex">
+    <div class="price">
+      <span class="sale-price">
+        <span class="price-inverse inline">₪ 210</span>
+        <span class="sale-price__purcent">
+          <span class="sale-price__value value" content="300.00">Price reduced from <span class="price-inverse inline">₪ 300</span></span>
+        </span>
+      </span>
+    </div>
+  </div>
+</div>
+<div class="related-products">
+  <div class="price">
+    <span class="sale-price">
+      <span class="price-inverse false">₪ 400</span>
+    </span>
+  </div>
+</div>
+</body>
+</html>`,
+	)
+	if err != nil {
+		t.Fatalf("extract product: %v", err)
+	}
+
+	if product.Name != "Pace Breaker Short Linerless 7" {
+		t.Fatalf("unexpected name: %q", product.Name)
+	}
+	if product.PriceAmount != "210" || product.PriceCurrency != "ILS" {
+		t.Fatalf("unexpected price: amount=%q currency=%q", product.PriceAmount, product.PriceCurrency)
+	}
+	if product.ImageURL != "https://www.factory54.co.il/dw/image/v2/product/869206188_L_2.jpg" {
+		t.Fatalf("unexpected image: %q", product.ImageURL)
+	}
+	if product.PriceConfidence != scrapeapp.PriceConfidenceHigh || product.PriceSource != scrapeapp.PriceSourceMerchantSelector {
+		t.Fatalf("unexpected price metadata: confidence=%q source=%q", product.PriceConfidence, product.PriceSource)
+	}
+}

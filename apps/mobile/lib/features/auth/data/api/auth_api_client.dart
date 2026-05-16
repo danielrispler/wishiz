@@ -90,6 +90,21 @@ class AuthApiClient {
     return AppUserDto.fromJson(response as Map<String, dynamic>);
   }
 
+  Future<AppUserDto> updateOnboardingCategories({
+    required String authToken,
+    required List<String> categoryIds,
+  }) async {
+    final response = await _requestJson(
+      'PATCH',
+      '/auth/me/onboarding',
+      authToken: authToken,
+      body: {'categories': categoryIds},
+      expectedStatusCodes: const {HttpStatus.ok},
+    );
+
+    return AppUserDto.fromJson(response as Map<String, dynamic>);
+  }
+
   Future<void> logOut({required String authToken}) {
     return _requestJson(
       'POST',
@@ -174,6 +189,7 @@ class AppUserDto {
     required this.preferredCurrencyCode,
     required this.notificationsEnabled,
     required this.reminderDays,
+    required this.onboardingCategories,
   });
 
   factory AppUserDto.fromJson(Map<String, dynamic> json) {
@@ -185,6 +201,9 @@ class AppUserDto {
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
       reminderDays: json['reminderDays'] as int? ?? 14,
+      onboardingCategories:
+          (json['onboardingCategories'] as List<dynamic>?)?.cast<String>() ??
+          const [],
     );
   }
 
@@ -195,6 +214,7 @@ class AppUserDto {
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
+  final List<String> onboardingCategories;
 
   AppUser toEntity() {
     return AppUser(
@@ -205,6 +225,7 @@ class AppUserDto {
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
+      onboardingCategories: onboardingCategories,
     );
   }
 }

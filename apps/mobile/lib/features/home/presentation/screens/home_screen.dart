@@ -25,6 +25,7 @@ import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_s
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
 import 'package:wishiz/features/wishlists/presentation/widgets/wishlist_analytics_sheet.dart';
+import 'package:wishiz/features/discover/discover_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -1037,26 +1038,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 child: KeyedSubtree(
                   key: ValueKey(_currentIndex),
-                  child: _currentIndex == 0
-                      ? _buildHomeTab(
-                          activeWishlists: activeWishlists,
-                          availableYears: availableYears,
-                          reminderCount: reminderCount,
-                          sharedCount: sharedWishlists.length,
-                        )
-                      : _buildCollectionTab(
-                          title: 'Shared',
-                          description:
-                              'Lists you collaborate on with others or have been invited to join.',
-                          wishlists: sharedWishlists,
-                          emptyTitle: 'Nothing shared yet',
-                          emptyDescription:
-                              'Invite collaborators to a list, or join one using a share link.',
-                          availableYears: availableYears,
-                          summaryLabel:
-                              '${sharedWishlists.length} shared ${sharedWishlists.length == 1 ? 'list' : 'lists'}',
-                          isSharedView: true,
-                        ),
+                  child: switch (_currentIndex) {
+                    0 => _buildHomeTab(
+                        activeWishlists: activeWishlists,
+                        availableYears: availableYears,
+                        reminderCount: reminderCount,
+                        sharedCount: sharedWishlists.length,
+                      ),
+                    2 => const SafeArea(child: DiscoverPage()),
+                    _ => _buildCollectionTab(
+                        title: 'Shared',
+                        description:
+                            'Lists you collaborate on with others or have been invited to join.',
+                        wishlists: sharedWishlists,
+                        emptyTitle: 'Nothing shared yet',
+                        emptyDescription:
+                            'Invite collaborators to a list, or join one using a share link.',
+                        availableYears: availableYears,
+                        summaryLabel:
+                            '${sharedWishlists.length} shared ${sharedWishlists.length == 1 ? 'list' : 'lists'}',
+                        isSharedView: true,
+                      ),
+                  },
                 ),
               ),
               bottomNavigationBar: GlassmorphicBottomNav(

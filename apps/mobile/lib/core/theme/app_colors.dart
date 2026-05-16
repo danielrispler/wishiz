@@ -26,4 +26,11 @@ class AppColors {
   static const Color errorContainer = Color(0xFFF74B6D);
   static const Color onErrorContainer = Color(0xFF510017);
   static const Color tertiary = Color(0xFF006A2D);
+
+  // Signature gradient
+  static const LinearGradient primaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [primary, primaryContainer],
+  );
 }

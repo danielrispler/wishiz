@@ -14,9 +14,20 @@ class GlassmorphicBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
+  static Alignment _selectorAlignment(int index) {
+    switch (index) {
+      case 0:
+        return Alignment.centerLeft;
+      case 2:
+        return Alignment.centerRight;
+      default:
+        return Alignment.center;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    const tabCount = 2;
+    const tabCount = 3;
     const navHeight = 64.0;
 
     return SafeArea(
@@ -50,7 +61,7 @@ class GlassmorphicBottomNav extends StatelessWidget {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final selectorWidth =
-                        (constraints.maxWidth - AppConstants.spacing2) /
+                        (constraints.maxWidth - AppConstants.spacing2 * 2) /
                         tabCount;
 
                     return SizedBox(
@@ -62,9 +73,7 @@ class GlassmorphicBottomNav extends StatelessWidget {
                             child: AnimatedAlign(
                               duration: const Duration(milliseconds: 240),
                               curve: Curves.easeOutCubic,
-                              alignment: currentIndex == 0
-                                  ? Alignment.centerLeft
-                                  : Alignment.centerRight,
+                              alignment: _selectorAlignment(currentIndex),
                               child: Container(
                                 width: selectorWidth,
                                 height: 48,
@@ -112,6 +121,16 @@ class GlassmorphicBottomNav extends StatelessWidget {
                                   onTap: () => onTap(1),
                                 ),
                               ),
+                              const SizedBox(width: AppConstants.spacing2),
+                              Expanded(
+                                child: _NavItem(
+                                  label: 'Discover',
+                                  icon: Icons.explore_outlined,
+                                  selectedIcon: Icons.explore_rounded,
+                                  selected: currentIndex == 2,
+                                  onTap: () => onTap(2),
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -134,10 +153,12 @@ class _NavItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.selectedIcon,
   });
 
   final String label;
   final IconData icon;
+  final IconData? selectedIcon;
   final bool selected;
   final VoidCallback onTap;
 
@@ -153,7 +174,10 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: selected ? 12 : 8,
+            vertical: 12,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
             color: selected
@@ -162,33 +186,38 @@ class _NavItem extends StatelessWidget {
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.max,
             children: [
               AnimatedScale(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
                 scale: selected ? 1 : 0.96,
                 child: Icon(
-                  icon,
+                  selected ? (selectedIcon ?? icon) : icon,
                   size: 20,
                   color: selected
                       ? AppColors.onPrimary
                       : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(width: AppConstants.spacing2),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                style:
-                    theme.textTheme.labelLarge?.copyWith(
-                      color: selected
-                          ? AppColors.onPrimary
-                          : theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ) ??
-                    const TextStyle(),
-                child: Text(label),
-              ),
+              if (selected) ...[
+                const SizedBox(width: AppConstants.spacing2),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: AppColors.onPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

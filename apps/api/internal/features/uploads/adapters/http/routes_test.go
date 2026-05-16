@@ -79,6 +79,10 @@ func (s stubUploader) UploadImage(ctx context.Context, params storage.UploadImag
 	return s.uploadImage(ctx, params)
 }
 
+func (s stubUploader) GetObject(_ context.Context, _ string) (storage.ObjectData, error) {
+	return storage.ObjectData{}, nil
+}
+
 func performUploadRequest(
 	t *testing.T,
 	uploader Uploader,

@@ -94,13 +94,39 @@ func (u *S3Uploader) UploadImage(ctx context.Context, params UploadImageParams) 
 	}, nil
 }
 
+func (u *S3Uploader) GetObject(ctx context.Context, key string) (ObjectData, error) {
+	out, err := u.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(u.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return ObjectData{}, fmt.Errorf("get object: %w", err)
+	}
+
+	var contentType string
+	if out.ContentType != nil {
+		contentType = *out.ContentType
+	}
+
+	var contentLength int64
+	if out.ContentLength != nil {
+		contentLength = *out.ContentLength
+	}
+
+	return ObjectData{
+		Body:          out.Body,
+		ContentType:   contentType,
+		ContentLength: contentLength,
+	}, nil
+}
+
 func (u *S3Uploader) publicURL(key string) string {
 	baseURL, err := url.Parse(u.publicBaseURL)
 	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" {
-		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(u.publicBaseURL, "/"), u.bucket, key)
+		return fmt.Sprintf("%s/storage/%s", strings.TrimRight(u.publicBaseURL, "/"), key)
 	}
 
-	baseURL.Path = path.Join(baseURL.Path, u.bucket, key)
+	baseURL.Path = path.Join(baseURL.Path, "storage", key)
 	return baseURL.String()
 }
 

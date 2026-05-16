@@ -14,8 +14,15 @@ type Object struct {
 	URL string
 }
 
+type ObjectData struct {
+	Body          io.ReadCloser
+	ContentType   string
+	ContentLength int64
+}
+
 type Uploader interface {
 	UploadImage(ctx context.Context, params UploadImageParams) (Object, error)
+	GetObject(ctx context.Context, key string) (ObjectData, error)
 }
 
 type UploadImageParams struct {

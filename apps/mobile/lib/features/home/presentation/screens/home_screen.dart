@@ -1045,7 +1045,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         reminderCount: reminderCount,
                         sharedCount: sharedWishlists.length,
                       ),
-                    2 => const SafeArea(child: DiscoverPage()),
+                    2 => SafeArea(
+                        child: DiscoverPage(
+                          authRepository: widget.authRepository,
+                          currentUser: widget.currentUser,
+                        ),
+                      ),
                     _ => _buildCollectionTab(
                         title: 'Shared',
                         description:

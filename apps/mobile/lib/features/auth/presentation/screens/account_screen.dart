@@ -3,9 +3,7 @@ import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/core/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
-import 'package:wishiz/features/auth/domain/entities/auth_result.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/onboarding/domain/entities/preference_category.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key, required this.authRepository});
@@ -27,7 +25,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
   late DateTime _selectedBirthday;
   late String _selectedCurrencyCode;
-  late Set<String> _selectedCategoryIds;
   late AppUser _savedUserSnapshot;
 
   bool _isSaving = false;
@@ -49,7 +46,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _newPasswordController = TextEditingController();
     _selectedBirthday = user.birthday;
     _selectedCurrencyCode = user.preferredCurrencyCode;
-    _selectedCategoryIds = user.onboardingCategories.toSet();
   }
 
   @override
@@ -67,10 +63,6 @@ class _AccountScreenState extends State<AccountScreen> {
         _emailController.text.trim() != _savedUserSnapshot.email ||
         !_isSameDate(_selectedBirthday, _savedUserSnapshot.birthday) ||
         _selectedCurrencyCode != _savedUserSnapshot.preferredCurrencyCode ||
-        !_hasSameValues(
-          _selectedCategoryIds,
-          _savedUserSnapshot.onboardingCategories.toSet(),
-        ) ||
         _currentPasswordController.text.trim().isNotEmpty ||
         _newPasswordController.text.trim().isNotEmpty;
   }
@@ -108,40 +100,16 @@ class _AccountScreenState extends State<AccountScreen> {
     final currentPassword = _currentPasswordController.text.trim();
     final newPassword = _newPasswordController.text.trim();
     final user = widget.authRepository.getCurrentUser()!;
-    final didChangeProfile =
-        _fullNameController.text.trim() != _savedUserSnapshot.fullName ||
-        _emailController.text.trim() != _savedUserSnapshot.email ||
-        !_isSameDate(_selectedBirthday, _savedUserSnapshot.birthday) ||
-        _selectedCurrencyCode != _savedUserSnapshot.preferredCurrencyCode ||
-        _currentPasswordController.text.trim().isNotEmpty ||
-        _newPasswordController.text.trim().isNotEmpty;
-    final didChangeCategories = !_hasSameValues(
-      _selectedCategoryIds,
-      _savedUserSnapshot.onboardingCategories.toSet(),
+    final result = await widget.authRepository.updateCurrentUser(
+      email: _emailController.text.trim(),
+      fullName: _fullNameController.text.trim(),
+      birthday: _selectedBirthday,
+      preferredCurrencyCode: _selectedCurrencyCode,
+      notificationsEnabled: user.notificationsEnabled,
+      reminderDays: user.reminderDays,
+      currentPassword: currentPassword.isEmpty ? null : currentPassword,
+      newPassword: newPassword.isEmpty ? null : newPassword,
     );
-
-    AuthResult? profileResult;
-    AuthResult? categoryResult;
-
-    if (didChangeProfile) {
-      profileResult = await widget.authRepository.updateCurrentUser(
-        email: _emailController.text.trim(),
-        fullName: _fullNameController.text.trim(),
-        birthday: _selectedBirthday,
-        preferredCurrencyCode: _selectedCurrencyCode,
-        notificationsEnabled: user.notificationsEnabled,
-        reminderDays: user.reminderDays,
-        currentPassword: currentPassword.isEmpty ? null : currentPassword,
-        newPassword: newPassword.isEmpty ? null : newPassword,
-      );
-    }
-
-    if ((profileResult == null || profileResult.isSuccess) &&
-        didChangeCategories) {
-      categoryResult = await widget.authRepository.saveOnboardingCategories(
-        _orderedSelectedCategoryIds(),
-      );
-    }
 
     if (!mounted) {
       return;
@@ -156,16 +124,14 @@ class _AccountScreenState extends State<AccountScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            _buildSaveMessage(
-              profileResult: profileResult,
-              categoryResult: categoryResult,
-            ),
+            result.isSuccess
+                ? 'Account updated.'
+                : result.errorMessage ?? 'Unable to update your account.',
           ),
         ),
       );
 
-    if ((profileResult != null && !profileResult.isSuccess) ||
-        (categoryResult != null && !categoryResult.isSuccess)) {
+    if (!result.isSuccess) {
       return;
     }
 
@@ -174,7 +140,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
     setState(() {
       _savedUserSnapshot = widget.authRepository.getCurrentUser()!;
-      _selectedCategoryIds = _savedUserSnapshot.onboardingCategories.toSet();
       _showCurrentPassword = false;
       _showNewPassword = false;
       _isChangingPassword = false;
@@ -319,92 +284,31 @@ class _AccountScreenState extends State<AccountScreen> {
                                 icon: Icons.payments_outlined,
                                 title: 'Shopping preferences',
                                 subtitle:
-                                    'Choose your default currency and the categories you want Wishiz to lean on when shaping discovery.',
-                                child: Column(
-                                  children: [
-                                    _buildLabeledField(
-                                      context,
-                                      label: 'Default currency',
-                                      hint:
-                                          'This affects how prices are shown across the app',
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue: _selectedCurrencyCode,
-                                        decoration: const InputDecoration(
-                                          border: InputBorder.none,
-                                        ),
-                                        items: AppUser.supportedCurrencyCodes
-                                            .map(
-                                              (code) => DropdownMenuItem(
-                                                value: code,
-                                                child: Text(
-                                                  _currencyLabel(code),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(growable: false),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _selectedCurrencyCode =
-                                                value ?? 'USD';
-                                          });
-                                        },
-                                      ),
+                                    'Choose the currency you want to see by default when browsing item prices.',
+                                child: _buildLabeledField(
+                                  context,
+                                  label: 'Default currency',
+                                  hint:
+                                      'This affects how prices are shown across the app',
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: _selectedCurrencyCode,
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
                                     ),
-                                    const SizedBox(
-                                      height: AppConstants.itemGap,
-                                    ),
-                                    _buildLabeledField(
-                                      context,
-                                      label: 'Favorite categories',
-                                      hint:
-                                          'These are saved to your profile and can be updated anytime.',
-                                      child: Wrap(
-                                        spacing: AppConstants.spacing2,
-                                        runSpacing: AppConstants.spacing2,
-                                        children: PreferenceCategory.all.map((
-                                          category,
-                                        ) {
-                                          final isSelected =
-                                              _selectedCategoryIds.contains(
-                                                category.id,
-                                              );
-                                          return FilterChip(
-                                            label: Text(
-                                              '${category.emoji} ${category.label}',
-                                            ),
-                                            selected: isSelected,
-                                            onSelected: (_) {
-                                              setState(() {
-                                                if (isSelected) {
-                                                  _selectedCategoryIds.remove(
-                                                    category.id,
-                                                  );
-                                                } else {
-                                                  _selectedCategoryIds.add(
-                                                    category.id,
-                                                  );
-                                                }
-                                              });
-                                            },
-                                            selectedColor: Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withValues(alpha: 0.14),
-                                            checkmarkColor: Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
-                                            side: BorderSide(
-                                              color: isSelected
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary
-                                                  : AppColors.outlineVariant,
-                                            ),
-                                          );
-                                        }).toList(growable: false),
-                                      ),
-                                    ),
-                                  ],
+                                    items: AppUser.supportedCurrencyCodes
+                                        .map(
+                                          (code) => DropdownMenuItem(
+                                            value: code,
+                                            child: Text(_currencyLabel(code)),
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedCurrencyCode = value ?? 'USD';
+                                      });
+                                    },
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: AppConstants.sectionGap),
@@ -823,39 +727,6 @@ class _AccountScreenState extends State<AccountScreen> {
       return 'ILS / NIS ($symbol)';
     }
     return '$code ($symbol)';
-  }
-
-  List<String> _orderedSelectedCategoryIds() {
-    return PreferenceCategory.all
-        .where((category) => _selectedCategoryIds.contains(category.id))
-        .map((category) => category.id)
-        .toList(growable: false);
-  }
-
-  bool _hasSameValues(Set<String> left, Set<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-    for (final value in left) {
-      if (!right.contains(value)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  String _buildSaveMessage({
-    required AuthResult? profileResult,
-    required AuthResult? categoryResult,
-  }) {
-    if (profileResult != null && !profileResult.isSuccess) {
-      return profileResult.errorMessage ?? 'Unable to update your account.';
-    }
-    if (categoryResult != null && !categoryResult.isSuccess) {
-      return categoryResult.errorMessage ??
-          'Account updated, but category preferences could not be saved.';
-    }
-    return 'Account updated.';
   }
 
   String? _validateRequired(String? value) {

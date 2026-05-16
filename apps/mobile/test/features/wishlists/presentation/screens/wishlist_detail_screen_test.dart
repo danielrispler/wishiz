@@ -10,7 +10,7 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
-import 'package:wishiz/features/wishlists/presentation/screens/wishlist_detail_screen.dart';
+import 'package:wishiz/features/wishlists/screens/wishlist_detail/wishlist_detail_screen.dart';
 
 void main() {
   group('WishlistDetailScreen past list', () {

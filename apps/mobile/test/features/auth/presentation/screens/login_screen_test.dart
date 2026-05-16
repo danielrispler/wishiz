@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/entities/auth_result.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/auth/presentation/screens/login_screen.dart';
+import 'package:wishiz/features/auth/screens/login/login_screen.dart';
 
 void main() {
   testWidgets('submits login data when the form is valid', (tester) async {

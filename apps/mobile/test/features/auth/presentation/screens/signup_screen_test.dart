@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/entities/auth_result.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/auth/presentation/screens/signup_screen.dart';
+import 'package:wishiz/features/auth/screens/signup/signup_screen.dart';
 
 void main() {
   testWidgets('shows the selected birthday in a readable format', (

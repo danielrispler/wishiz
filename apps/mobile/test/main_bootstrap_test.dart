@@ -6,7 +6,8 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
-import 'package:wishiz/main.dart';
+import 'package:wishiz/app/dependencies.dart';
+import 'package:wishiz/app/app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

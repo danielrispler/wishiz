@@ -15,7 +15,7 @@ import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.d
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
-import 'package:wishiz/main.dart';
+import 'package:wishiz/app/app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

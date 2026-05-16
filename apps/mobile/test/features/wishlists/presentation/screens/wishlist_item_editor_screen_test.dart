@@ -4,7 +4,7 @@ import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_r
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
-import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_editor_screen.dart';
+import 'package:wishiz/features/wishlists/screens/wishlist_item_editor/wishlist_item_editor_screen.dart';
 
 void main() {
   group('WishlistItemEditorScreen imported link preview', () {

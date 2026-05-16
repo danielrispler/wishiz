@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
-import 'package:wishiz/features/wishlists/presentation/screens/wishlist_editor_screen.dart';
+import 'package:wishiz/features/wishlists/screens/wishlist_editor/wishlist_editor_screen.dart';
 
 void main() {
   group('WishlistEditorScreen', () {

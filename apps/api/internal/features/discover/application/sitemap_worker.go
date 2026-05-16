@@ -24,6 +24,7 @@ const (
 	minBrandSampleSize            = 10
 	maxBrandSampleSize            = 15
 	maxNestedSitemaps             = 24
+	maxConcurrentSitemapFetches   = 4
 	maxSitemapURLs                = 5000
 	discoverFashionCategory       = "fashion"
 )
@@ -99,8 +100,28 @@ type sitemapBrand struct {
 	ProductHints   []string
 }
 
-type xmlLocSet struct {
-	Locs []string `xml:"loc"`
+type sitemapURLSet struct {
+	URLs     []sitemapEntry `xml:"url"`
+	Sitemaps []sitemapEntry `xml:"sitemap"`
+}
+
+type sitemapEntry struct {
+	Loc string `xml:"loc"`
+}
+
+func (s sitemapURLSet) locs() []string {
+	out := make([]string, 0, len(s.URLs)+len(s.Sitemaps))
+	for _, u := range s.URLs {
+		if u.Loc != "" {
+			out = append(out, u.Loc)
+		}
+	}
+	for _, sm := range s.Sitemaps {
+		if sm.Loc != "" {
+			out = append(out, sm.Loc)
+		}
+	}
+	return out
 }
 
 func NewSitemapWorker(
@@ -255,12 +276,12 @@ func (w *SitemapWorker) collectSitemapURLs(ctx context.Context, sitemapURL strin
 		return nil, fmt.Errorf("read sitemap %s: %w", sitemapURL, err)
 	}
 
-	var parsed xmlLocSet
+	var parsed sitemapURLSet
 	if err := xml.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("parse sitemap %s: %w", sitemapURL, err)
 	}
 
-	locs := uniqueStrings(parsed.Locs)
+	locs := uniqueStrings(parsed.locs())
 	if len(locs) == 0 {
 		return nil, nil
 	}
@@ -272,12 +293,12 @@ func (w *SitemapWorker) collectSitemapURLs(ctx context.Context, sitemapURL strin
 			results []string
 			wg      sync.WaitGroup
 		)
+		sem := make(chan struct{}, maxConcurrentSitemapFetches)
 		for _, childURL := range locs {
-			if len(results) >= maxSitemapURLs {
-				break
-			}
+			sem <- struct{}{}
 			wg.Add(1)
 			go func(u string) {
+				defer func() { <-sem }()
 				defer wg.Done()
 				childURLs, childErr := w.collectSitemapURLs(ctx, u, depth+1)
 				if childErr != nil {

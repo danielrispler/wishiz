@@ -8,6 +8,8 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/ports"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type DiscoverFeed struct {
@@ -129,7 +131,7 @@ func extractBrand(rawURL string) string {
 	parts := strings.Split(rawURL, ".")
 	if len(parts) > 0 {
 		brand := parts[0]
-		brand = strings.Title(strings.ToLower(brand))
+		brand = cases.Title(language.English).String(strings.ToLower(brand))
 		return brand
 	}
 	return rawURL

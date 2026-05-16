@@ -21,6 +21,7 @@ import 'package:wishiz/features/product_imports/data/in_memory_product_import_re
 import 'package:wishiz/features/product_imports/data/product_import_api_client.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
 import 'package:wishiz/features/wishlists/data/api/shared_product_api_client.dart';
+import 'package:wishiz/features/wishlists/data/api/image_upload_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/api_shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
@@ -113,6 +114,10 @@ WishlistRepositoryLoader _createWishlistRepositoryLoader(
     );
     return HttpWishlistRepository.create(
       apiClient: apiClient,
+      imageUploadApiClient: ImageUploadApiClient(
+        baseUri: Uri.parse(baseUrl),
+        authToken: authToken,
+      ),
       currentUserId: user.id,
     );
   };

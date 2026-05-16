@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:wishiz/features/wishlists/data/api/image_upload_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
@@ -7,19 +8,27 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 
 class HttpWishlistRepository implements WishlistRepository {
-  HttpWishlistRepository._({required WishlistApiClient apiClient})
-    : _apiClient = apiClient;
+  HttpWishlistRepository._({
+    required WishlistApiClient apiClient,
+    required ImageUploadApiClient imageUploadApiClient,
+  }) : _apiClient = apiClient,
+       _imageUploadApiClient = imageUploadApiClient;
 
   static Future<HttpWishlistRepository> create({
     required WishlistApiClient apiClient,
+    required ImageUploadApiClient imageUploadApiClient,
     required String currentUserId,
   }) async {
-    final repository = HttpWishlistRepository._(apiClient: apiClient);
+    final repository = HttpWishlistRepository._(
+      apiClient: apiClient,
+      imageUploadApiClient: imageUploadApiClient,
+    );
     await repository.refresh();
     return repository;
   }
 
   final WishlistApiClient _apiClient;
+  final ImageUploadApiClient _imageUploadApiClient;
   final ValueNotifier<List<Wishlist>> _wishlists =
       ValueNotifier<List<Wishlist>>(const []);
 
@@ -29,6 +38,20 @@ class HttpWishlistRepository implements WishlistRepository {
     _wishlists.value = List<Wishlist>.unmodifiable(
       wishlists.map((wishlist) => wishlist.toEntity()).toList(growable: false),
     );
+  }
+
+  @override
+  Future<String> uploadImage({
+    required List<int> bytes,
+    required String fileName,
+    String? contentType,
+  }) async {
+    final uploaded = await _imageUploadApiClient.uploadImage(
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+    );
+    return uploaded.url;
   }
 
   @override

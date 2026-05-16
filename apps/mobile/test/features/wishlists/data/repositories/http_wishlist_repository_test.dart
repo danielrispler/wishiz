@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wishiz/features/wishlists/data/api/image_upload_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/wishlist_api_client.dart';
 import 'package:wishiz/features/wishlists/data/repositories/http_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
@@ -27,6 +28,10 @@ void main() {
 
       final repository = await HttpWishlistRepository.create(
         apiClient: WishlistApiClient(
+          baseUri: _serverUri(server),
+          authToken: 'test-token',
+        ),
+        imageUploadApiClient: ImageUploadApiClient(
           baseUri: _serverUri(server),
           authToken: 'test-token',
         ),
@@ -73,6 +78,10 @@ void main() {
 
       final repository = await HttpWishlistRepository.create(
         apiClient: WishlistApiClient(
+          baseUri: _serverUri(server),
+          authToken: 'test-token',
+        ),
+        imageUploadApiClient: ImageUploadApiClient(
           baseUri: _serverUri(server),
           authToken: 'test-token',
         ),
@@ -128,6 +137,10 @@ void main() {
             baseUri: _serverUri(server),
             authToken: 'test-token',
           ),
+          imageUploadApiClient: ImageUploadApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
           currentUserId: 'user-1',
         );
 
@@ -166,6 +179,10 @@ void main() {
         expect(
           HttpWishlistRepository.create(
             apiClient: WishlistApiClient(
+              baseUri: _serverUri(server),
+              authToken: 'test-token',
+            ),
+            imageUploadApiClient: ImageUploadApiClient(
               baseUri: _serverUri(server),
               authToken: 'test-token',
             ),
@@ -222,6 +239,10 @@ void main() {
 
         final repository = await HttpWishlistRepository.create(
           apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          imageUploadApiClient: ImageUploadApiClient(
             baseUri: _serverUri(server),
             authToken: 'test-token',
           ),
@@ -282,6 +303,10 @@ void main() {
 
         final repository = await HttpWishlistRepository.create(
           apiClient: WishlistApiClient(
+            baseUri: _serverUri(server),
+            authToken: 'test-token',
+          ),
+          imageUploadApiClient: ImageUploadApiClient(
             baseUri: _serverUri(server),
             authToken: 'test-token',
           ),

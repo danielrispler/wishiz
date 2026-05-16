@@ -7,6 +7,12 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 abstract class WishlistRepository {
   Future<void> refresh();
 
+  Future<String> uploadImage({
+    required List<int> bytes,
+    required String fileName,
+    String? contentType,
+  });
+
   ValueListenable<List<Wishlist>> watchWishlists();
 
   List<Wishlist> getWishlists();

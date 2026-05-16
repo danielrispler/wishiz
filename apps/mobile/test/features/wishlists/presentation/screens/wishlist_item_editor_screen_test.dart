@@ -8,8 +8,10 @@ import 'package:wishiz/features/wishlists/presentation/screens/wishlist_item_edi
 
 void main() {
   group('WishlistItemEditorScreen imported link preview', () {
-    testWidgets('shows a disclaimer for shared imports', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 2400));
+    testWidgets('shows review state and imported content for shared imports', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
@@ -23,21 +25,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Preview Item'), findsOneWidget);
-      expect(find.text('Imported details may have problems'), findsOneWidget);
-      expect(
-        find.text(
-          'Please verify the title, price, image, and link before saving. You can edit everything in this preview.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Review Item'), findsOneWidget);
+      expect(find.text('Item details'), findsOneWidget);
       expect(find.text('Verify And Save'), findsOneWidget);
+      expect(find.text('Imported mug'), findsWidgets);
     });
 
-    testWidgets('shows the same disclaimer after generating from a link', (
+    testWidgets('fills item details from a link on a phone-sized screen', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 2400));
+      await tester.binding.setSurfaceSize(const Size(412, 915));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final sharedProductRepository = _FakeSharedProductRepository();
@@ -48,10 +45,16 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.byType(TextFormField).last,
+        find.widgetWithText(TextFormField, 'Product link').first,
         'https://example.com/products/lamp',
       );
-      await tester.tap(find.text('Generate From Link'));
+      final fillFromLinkButton = find.widgetWithText(
+        OutlinedButton,
+        'Fill From Link',
+      );
+      await tester.ensureVisible(fillFromLinkButton);
+      await tester.pumpAndSettle();
+      await tester.tap(fillFromLinkButton);
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -59,8 +62,7 @@ void main() {
         'https://example.com/products/lamp',
       ]);
       expect(sharedProductRepository.requestedTargetCurrencyCodes, ['USD']);
-      expect(find.text('Preview Item'), findsOneWidget);
-      expect(find.text('Imported details may have problems'), findsOneWidget);
+      expect(find.text('Review Item'), findsOneWidget);
       expect(find.text('Verify And Save'), findsOneWidget);
       expect(find.text('Generated lamp'), findsOneWidget);
     });

@@ -79,6 +79,17 @@ class PersistentWishlistRepository implements WishlistRepository {
   @override
   Future<void> refresh() => _repository.refresh();
 
+  @override
+  Future<String> uploadImage({
+    required List<int> bytes,
+    required String fileName,
+    String? contentType,
+  }) => _repository.uploadImage(
+    bytes: bytes,
+    fileName: fileName,
+    contentType: contentType,
+  );
+
   Future<T> _persistAndReturn<T>(T value) async {
     _persist();
     await _pendingWrite;

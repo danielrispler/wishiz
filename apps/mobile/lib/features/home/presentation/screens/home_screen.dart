@@ -322,7 +322,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool?> _openSharedProductEditor({
-    required String wishlistId,
+    String? wishlistId,
     required SharedProductDraft draft,
   }) {
     return Navigator.of(context).push<bool>(
@@ -330,6 +330,9 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => WishlistItemEditorScreen(
           repository: widget.repository,
           wishlistId: wishlistId,
+          onSelectWishlist: wishlistId == null
+              ? _selectWishlistForSharedImport
+              : null,
           sharedProductRepository: widget.sharedProductRepository,
           preferredCurrencyCode: widget.currentUser.preferredCurrencyCode,
           preferredCurrencySymbol: widget.currentUser.preferredCurrencySymbol,
@@ -514,13 +517,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openImportJobEditor(ProductImportJob job) async {
-    String? wishlistId = job.wishlistId;
-    if (wishlistId == null) {
-      wishlistId = await _selectWishlistForSharedImport();
-      if (!mounted || wishlistId == null) return;
-    }
     final success = await _openSharedProductEditor(
-      wishlistId: wishlistId,
+      wishlistId: job.wishlistId,
       draft: SharedProductDraft(
         productUrl: job.normalizedUrl,
         title: job.title,
@@ -841,28 +839,61 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(
             horizontal: AppConstants.spacing3,
           ),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppConstants.radiusFull),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: _selectedYear,
+          child: PopupMenuButton<int>(
+            tooltip: 'Filter by year',
+            elevation: 0,
+            padding: EdgeInsets.zero,
+            menuPadding: EdgeInsets.zero,
+            position: PopupMenuPosition.under,
+            color: colorScheme.surfaceContainerLowest,
+            shadowColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppConstants.radiusXl),
-              items: [
-                const DropdownMenuItem(value: _allYears, child: Text('All')),
-                ...availableYears.map(
-                  (year) => DropdownMenuItem(
-                    value: year,
-                    child: Text(year.toString()),
+            ),
+            onSelected: (value) {
+              setState(() {
+                _selectedYear = value;
+              });
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<int>(
+                value: _allYears,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spacing2,
+                  vertical: AppConstants.spacing1,
+                ),
+                child: _buildYearMenuItem(
+                  label: 'All',
+                  selected: _selectedYear == _allYears,
+                ),
+              ),
+              ...availableYears.map(
+                (year) => PopupMenuItem<int>(
+                  value: year,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacing2,
+                    vertical: AppConstants.spacing1,
+                  ),
+                  child: _buildYearMenuItem(
+                    label: year.toString(),
+                    selected: _selectedYear == year,
                   ),
                 ),
+              ),
+            ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_selectedYear == _allYears ? 'All' : '$_selectedYear'),
+                const SizedBox(width: AppConstants.spacing2),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
               ],
-              onChanged: (value) {
-                setState(() {
-                  _selectedYear = value ?? _allYears;
-                });
-              },
             ),
           ),
         ),
@@ -876,6 +907,31 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildYearMenuItem({required String label, required bool selected}) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacing3,
+        vertical: AppConstants.spacing2,
+      ),
+      decoration: BoxDecoration(
+        color: selected
+            ? colorScheme.primary.withValues(alpha: 0.08)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: selected ? colorScheme.primary : null,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        ),
+      ),
     );
   }
 

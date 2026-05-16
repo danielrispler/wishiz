@@ -25,6 +25,15 @@ class InMemoryWishlistRepository implements WishlistRepository {
   Future<void> refresh() async {}
 
   @override
+  Future<String> uploadImage({
+    required List<int> bytes,
+    required String fileName,
+    String? contentType,
+  }) async {
+    throw UnsupportedError('Image uploads require the API-backed repository.');
+  }
+
+  @override
   ValueListenable<List<Wishlist>> watchWishlists() => _wishlists;
 
   @override

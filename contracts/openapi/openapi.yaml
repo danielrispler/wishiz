@@ -347,6 +347,32 @@ paths:
           $ref: '#/components/responses/WishlistNotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /uploads/images:
+    post:
+      summary: Upload an image asset
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadedImage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     WishlistID:
@@ -732,3 +758,14 @@ components:
             - message
       required:
         - error
+    UploadedImage:
+      type: object
+      properties:
+        key:
+          type: string
+        url:
+          type: string
+          format: uri
+      required:
+        - key
+        - url

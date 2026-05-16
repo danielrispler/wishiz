@@ -73,8 +73,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedFilter =
-        widget.showPurchasedOnly ? _ItemFilter.purchased : _ItemFilter.active;
+    _selectedFilter = widget.showPurchasedOnly
+        ? _ItemFilter.purchased
+        : _ItemFilter.active;
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
   }
 
@@ -147,10 +148,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   if (capability != _UserCapability.viewer)
                     IconButton(
                       tooltip: 'Share list',
-                      onPressed: () => _showShareDialog(
-                        wishlist,
-                        currentUser,
-                      ),
+                      onPressed: () => _showShareDialog(wishlist, currentUser),
                       icon: const Icon(Icons.share_outlined),
                     ),
                   if (!widget.showPurchasedOnly &&
@@ -244,47 +242,52 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     else if (visibleItems.isEmpty)
                       _buildFilteredItemsEmptyState(context)
                     else if (canReorder)
-                      Builder(builder: (context) {
-                        final reorderItems = _reorderOverride ?? visibleItems;
-                        return ReorderableListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          buildDefaultDragHandles: false,
-                          proxyDecorator: (child, index, animation) {
-                            return Material(
-                              color: Colors.transparent,
-                              child: child,
-                            );
-                          },
-                          itemCount: reorderItems.length,
-                          onReorder: (oldIndex, newIndex) {
-                            final adjustedNew =
-                                newIndex > oldIndex ? newIndex - 1 : newIndex;
-                            final next = List<WishlistItem>.from(reorderItems);
-                            next.insert(adjustedNew, next.removeAt(oldIndex));
-                            setState(() => _reorderOverride = next);
-                            _reorderItems(
-                              wishlist: wishlist,
-                              visibleItems: reorderItems,
-                              oldIndex: oldIndex,
-                              newIndex: newIndex,
-                            );
-                          },
-                          itemBuilder: (context, index) {
-                            final item = reorderItems[index];
-                            return _buildItemCard(
-                              context,
-                              wishlist: wishlist,
-                              item: item,
-                              key: ValueKey('reorder-${item.id}'),
-                              showDragHandle: true,
-                              dragIndex: index,
-                              currentUser: currentUser,
-                              capability: capability,
-                            );
-                          },
-                        );
-                      })
+                      Builder(
+                        builder: (context) {
+                          final reorderItems = _reorderOverride ?? visibleItems;
+                          return ReorderableListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            buildDefaultDragHandles: false,
+                            proxyDecorator: (child, index, animation) {
+                              return Material(
+                                color: Colors.transparent,
+                                child: child,
+                              );
+                            },
+                            itemCount: reorderItems.length,
+                            onReorder: (oldIndex, newIndex) {
+                              final adjustedNew = newIndex > oldIndex
+                                  ? newIndex - 1
+                                  : newIndex;
+                              final next = List<WishlistItem>.from(
+                                reorderItems,
+                              );
+                              next.insert(adjustedNew, next.removeAt(oldIndex));
+                              setState(() => _reorderOverride = next);
+                              _reorderItems(
+                                wishlist: wishlist,
+                                visibleItems: reorderItems,
+                                oldIndex: oldIndex,
+                                newIndex: newIndex,
+                              );
+                            },
+                            itemBuilder: (context, index) {
+                              final item = reorderItems[index];
+                              return _buildItemCard(
+                                context,
+                                wishlist: wishlist,
+                                item: item,
+                                key: ValueKey('reorder-${item.id}'),
+                                showDragHandle: true,
+                                dragIndex: index,
+                                currentUser: currentUser,
+                                capability: capability,
+                              );
+                            },
+                          );
+                        },
+                      )
                     else
                       ...visibleItems.map(
                         (item) => _buildItemCard(
@@ -308,7 +311,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
   Widget _buildHeroCard(BuildContext context, Wishlist wishlist) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hasImage = wishlist.coverImageUrl != null && wishlist.coverImageUrl!.isNotEmpty;
+    final hasImage =
+        wishlist.coverImageUrl != null && wishlist.coverImageUrl!.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -340,7 +344,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     color: colorScheme.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(Icons.list_alt_rounded, color: colorScheme.primary, size: 28),
+                  child: Icon(
+                    Icons.list_alt_rounded,
+                    color: colorScheme.primary,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: AppConstants.spacing4),
               ],
@@ -350,7 +358,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   children: [
                     Text(
                       wishlist.title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
                             fontWeight: FontWeight.bold,
                             letterSpacing: -0.5,
                           ),
@@ -360,9 +369,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       Text(
                         wishlist.description,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              height: 1.2,
-                            ),
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.2,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -452,79 +461,148 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 10,
-                ),
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showShareDialog(
-    Wishlist wishlist,
-    AppUser? currentUser,
-  ) {
+  Widget _buildInfoPill(
+    BuildContext context, {
+    required String label,
+    IconData? icon,
+    Color? color,
+    Color? textColor,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final resolvedTextColor = textColor ?? colorScheme.onSurfaceVariant;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: color ?? colorScheme.surfaceContainerHigh.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacing2,
+        vertical: 6,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: resolvedTextColor),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: resolvedTextColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showShareDialog(Wishlist wishlist, AppUser? currentUser) {
     final isOwner = currentUser?.id == wishlist.ownerUserId;
 
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Sharing'),
+          title: const Text('Shared people'),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: AppConstants.spacing4,
             vertical: AppConstants.spacing5,
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isOwner && currentUser != null)
-                  _buildSharedUserRow(
-                    dialogContext,
-                    wishlist,
-                    WishlistMember(
-                      userId: currentUser.id,
-                      fullName: currentUser.fullName,
-                      email: currentUser.email,
-                      role: WishlistMemberRole.editor,
-                      createdAt: wishlist.createdAt,
-                      updatedAt: wishlist.updatedAt,
-                    ),
-                    isOwner: isOwner,
-                    isOwnerRow: true,
-                    roleLabel: 'Owner',
-                  )
-                else
-                  _buildSharedUserRow(
-                    dialogContext,
-                    wishlist,
-                    WishlistMember(
-                      userId: wishlist.ownerUserId,
-                      fullName: wishlist.ownerFullName,
-                      email: '',
-                      role: WishlistMemberRole.editor,
-                      createdAt: wishlist.createdAt,
-                      updatedAt: wishlist.updatedAt,
-                    ),
-                    isOwner: isOwner,
-                    isOwnerRow: true,
-                    roleLabel: 'Owner',
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Everyone with access to this list.',
+                    style: Theme.of(dialogContext).textTheme.bodyMedium
+                        ?.copyWith(
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.onSurfaceVariant,
+                        ),
                   ),
-                if (wishlist.members.isNotEmpty) ...[
-                  ...wishlist.members.map(
-                    (member) => _buildSharedUserRow(
+                  const SizedBox(height: AppConstants.spacing4),
+                  if (isOwner && currentUser != null)
+                    _buildSharedUserRow(
                       dialogContext,
                       wishlist,
-                      member,
+                      WishlistMember(
+                        userId: currentUser.id,
+                        fullName: currentUser.fullName,
+                        email: currentUser.email,
+                        role: WishlistMemberRole.editor,
+                        createdAt: wishlist.createdAt,
+                        updatedAt: wishlist.updatedAt,
+                      ),
+                      currentUser: currentUser,
                       isOwner: isOwner,
+                      isOwnerRow: true,
+                      roleLabel: 'Owner',
+                    )
+                  else
+                    _buildSharedUserRow(
+                      dialogContext,
+                      wishlist,
+                      WishlistMember(
+                        userId: wishlist.ownerUserId,
+                        fullName: wishlist.ownerFullName,
+                        email: '',
+                        role: WishlistMemberRole.editor,
+                        createdAt: wishlist.createdAt,
+                        updatedAt: wishlist.updatedAt,
+                      ),
+                      currentUser: currentUser,
+                      isOwner: isOwner,
+                      isOwnerRow: true,
+                      roleLabel: 'Owner',
                     ),
-                  ),
+                  if (wishlist.members.isNotEmpty) ...[
+                    const SizedBox(height: AppConstants.spacing2),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        left: AppConstants.spacing1,
+                        bottom: AppConstants.spacing2,
+                      ),
+                      child: Text(
+                        'Collaborators',
+                        style: Theme.of(dialogContext).textTheme.labelLarge
+                            ?.copyWith(
+                              color: Theme.of(
+                                dialogContext,
+                              ).colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                      ),
+                    ),
+                    ...wishlist.members.map(
+                      (member) => _buildSharedUserRow(
+                        dialogContext,
+                        wishlist,
+                        member,
+                        currentUser: currentUser,
+                        isOwner: isOwner,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           actions: [
@@ -574,11 +652,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: isPrimary
-                          ? colorScheme.onPrimary
-                          : colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: isPrimary
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -591,22 +669,60 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     BuildContext context,
     Wishlist wishlist,
     WishlistMember user, {
+    AppUser? currentUser,
     bool isOwner = false,
     bool isOwnerRow = false,
     String? roleLabel,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final displayName = user.fullName.isEmpty ? user.email : user.fullName;
+    final subtitle = user.email.isEmpty ? 'Access already granted' : user.email;
+    final isCurrentUser = currentUser?.id == user.userId;
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.itemGap),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        color: colorScheme.surfaceContainerLowest.withValues(alpha: 0.92),
+        border: Border.all(
+          color: isCurrentUser
+              ? colorScheme.primary.withValues(alpha: 0.16)
+              : colorScheme.outlineVariant.withValues(alpha: 0.2),
+        ),
         borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       padding: const EdgeInsets.all(AppConstants.cardPadding),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  colorScheme.primary.withValues(alpha: 0.18),
+                  colorScheme.primaryContainer.withValues(alpha: 0.28),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            alignment: Alignment.center,
             child: Text(
               user.fullName.isEmpty ? '?' : user.fullName[0].toUpperCase(),
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const SizedBox(width: AppConstants.spacing4),
@@ -614,14 +730,55 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  user.fullName.isEmpty ? user.email : user.fullName,
-                  style: Theme.of(context).textTheme.titleMedium,
+                Wrap(
+                  spacing: AppConstants.spacing2,
+                  runSpacing: AppConstants.spacing2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (isCurrentUser)
+                      _buildInfoPill(
+                        context,
+                        label: '(me)',
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        textColor: colorScheme.primary,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: AppConstants.spacing1),
                 Text(
-                  roleLabel ?? user.role.label,
-                  style: Theme.of(context).textTheme.bodyMedium,
+                  subtitle,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppConstants.spacing2),
+                Wrap(
+                  spacing: AppConstants.spacing2,
+                  runSpacing: AppConstants.spacing2,
+                  children: [
+                    _buildInfoPill(
+                      context,
+                      label: roleLabel ?? user.role.label,
+                      icon: isOwnerRow
+                          ? Icons.workspace_premium_rounded
+                          : Icons.person_outline_rounded,
+                    ),
+                    if (isOwnerRow)
+                      _buildInfoPill(
+                        context,
+                        label: 'Full access',
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: 0.22,
+                        ),
+                        textColor: colorScheme.onSurface,
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -630,7 +787,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             IconButton(
               tooltip: 'Remove collaborator',
               onPressed: () => _removeCollaborator(context, wishlist, user),
-              icon: const Icon(Icons.person_remove_outlined),
+              style: IconButton.styleFrom(
+                backgroundColor: colorScheme.errorContainer.withValues(
+                  alpha: 0.12,
+                ),
+                foregroundColor: colorScheme.error,
+              ),
+              icon: const Icon(Icons.person_remove_outlined, size: 20),
             ),
         ],
       ),
@@ -641,17 +804,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final wishlist = widget.repository.findById(widget.wishlistId);
     final currentUser = widget.authRepository.watchCurrentUser().value;
-    final capability = wishlist != null ? _resolveCapability(currentUser, wishlist) : _UserCapability.viewer;
-    final showRestore = _selectedFilter == _ItemFilter.purchased &&
+    final capability = wishlist != null
+        ? _resolveCapability(currentUser, wishlist)
+        : _UserCapability.viewer;
+    final showRestore =
+        _selectedFilter == _ItemFilter.purchased &&
         wishlist != null &&
         wishlist.purchasedItems.isNotEmpty;
-    final showAdd = wishlist != null &&
+    final showAdd =
+        wishlist != null &&
         _selectedFilter != _ItemFilter.purchased &&
         capability != _UserCapability.viewer;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final addButtonMinWidth = constraints.maxWidth >= 420 ? 160.0 : constraints.maxWidth;
+        final addButtonMinWidth = constraints.maxWidth >= 420
+            ? 160.0
+            : constraints.maxWidth;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -682,10 +851,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   ),
                 ),
                 segments: const [
-                  ButtonSegment(
-                    value: _ItemFilter.all,
-                    label: Text('All'),
-                  ),
+                  ButtonSegment(value: _ItemFilter.all, label: Text('All')),
                   ButtonSegment(
                     value: _ItemFilter.active,
                     label: Text('Active'),
@@ -718,15 +884,28 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                   child: DropdownButton<String>(
                     value: _selectedSort,
                     underline: const SizedBox.shrink(),
-                    icon: Icon(Icons.sort_rounded, size: 16, color: colorScheme.primary),
+                    icon: Icon(
+                      Icons.sort_rounded,
+                      size: 16,
+                      color: colorScheme.primary,
+                    ),
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                     items: const [
-                      DropdownMenuItem(value: _sortHighestRank, child: Text('Rank')),
-                      DropdownMenuItem(value: _sortLowestRank, child: Text('Low Rank')),
-                      DropdownMenuItem(value: _sortNewestAdded, child: Text('Newest')),
+                      DropdownMenuItem(
+                        value: _sortHighestRank,
+                        child: Text('Rank'),
+                      ),
+                      DropdownMenuItem(
+                        value: _sortLowestRank,
+                        child: Text('Low Rank'),
+                      ),
+                      DropdownMenuItem(
+                        value: _sortNewestAdded,
+                        child: Text('Newest'),
+                      ),
                     ],
                     onChanged: (value) {
                       setState(() {
@@ -800,7 +979,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem>? items) {
-    final filteredItems = List<WishlistItem>.from(items ?? const <WishlistItem>[]);
+    final filteredItems = List<WishlistItem>.from(
+      items ?? const <WishlistItem>[],
+    );
 
     filteredItems.sort((left, right) {
       switch (_selectedSort) {
@@ -974,11 +1155,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                               children: [
                                 Text(
                                   item.title,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium?.copyWith(
-                                        height: 1.2,
-                                      ),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(height: 1.2),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -991,12 +1169,13 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                                         ? const SizedBox.shrink()
                                         : Text(
                                             displayedPriceLabel,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.labelMedium?.copyWith(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelMedium
+                                                ?.copyWith(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                             maxLines: 1,
@@ -1008,10 +1187,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                             ),
                           ),
                           const SizedBox(width: AppConstants.spacing2),
-                          _buildMetadataChip(
-                            context,
-                            label: '#${item.rank}',
-                          ),
+                          _buildMetadataChip(context, label: '#${item.rank}'),
                           const SizedBox(width: AppConstants.spacing2),
                           Icon(
                             isExpanded
@@ -1043,10 +1219,11 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       if (item.notes != null && item.notes!.isNotEmpty) ...[
                         Text(
                           item.notes!,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                         ),
                         const SizedBox(height: AppConstants.spacing4),
@@ -1058,10 +1235,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                           _buildMetadataChip(
                             context,
                             label: 'Rank #${item.rank}',
-                          ),
-                          _buildMetadataChip(
-                            context,
-                            label: item.status.label,
                           ),
                           _buildMetadataChip(
                             context,
@@ -1167,11 +1340,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       ),
       clipBehavior: Clip.antiAlias,
       child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-          ? _buildImage(
-              context,
-              imageSource: item.imageUrl!,
-              aspectRatio: 1,
-            )
+          ? _buildImage(context, imageSource: item.imageUrl!, aspectRatio: 1)
           : Icon(
               Icons.shopping_bag_outlined,
               color: colorScheme.onSurfaceVariant.withOpacity(0.7),
@@ -1199,7 +1368,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
       ),
     );
   }
-
 
   Future<void> _removeCollaborator(
     BuildContext context,

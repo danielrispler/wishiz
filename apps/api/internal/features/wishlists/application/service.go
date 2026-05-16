@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -213,13 +214,17 @@ func (s *Service) Create(ctx context.Context, input *CreateWishlistInput) (domai
 	if err := validateYear(input.Year); err != nil {
 		return domain.Wishlist{}, err
 	}
+	coverImageURL, err := validateRemoteImageURL("coverImageUrl", input.CoverImageURL)
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
 
 	wishlist, err := s.repo.Create(ctx, ports.CreateWishlistParams{
 		OwnerID:       s.userID(ctx),
 		Title:         title,
 		Description:   normalizeText(input.Description),
 		Year:          input.Year,
-		CoverImageURL: normalizeOptionalString(input.CoverImageURL),
+		CoverImageURL: coverImageURL,
 	})
 	if err != nil {
 		return domain.Wishlist{}, err
@@ -265,7 +270,10 @@ func (s *Service) Patch(ctx context.Context, id string, input *PatchWishlistInpu
 		params.Year = input.Year.Value
 	}
 	if input.CoverImageURL.Set {
-		params.CoverImageURL = normalizeOptionalString(input.CoverImageURL.Value)
+		params.CoverImageURL, err = validateRemoteImageURL("coverImageUrl", input.CoverImageURL.Value)
+		if err != nil {
+			return domain.Wishlist{}, err
+		}
 	}
 
 	if _, err := s.repo.Update(ctx, params); errors.Is(err, ports.ErrNotFound) {
@@ -366,6 +374,10 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 	if err != nil {
 		return domain.WishlistItem{}, err
 	}
+	imageURL, err := validateRemoteImageURL("imageUrl", input.ImageURL)
+	if err != nil {
+		return domain.WishlistItem{}, err
+	}
 
 	item, err := s.repo.AddItem(ctx, ports.AddItemParams{
 		WishlistID:  wishlistID,
@@ -374,7 +386,7 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 		PriceLabel:  normalizeOptionalString(input.PriceLabel),
 		Priority:    priority,
 		Status:      status,
-		ImageURL:    normalizeOptionalString(input.ImageURL),
+		ImageURL:    imageURL,
 		ProductURL:  normalizeOptionalString(input.ProductURL),
 		PurchasedAt: purchasedAtForStatus(status, s.nowFn()),
 	})
@@ -449,7 +461,10 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 		}
 	}
 	if input.ImageURL.Set {
-		params.ImageURL = normalizeOptionalString(input.ImageURL.Value)
+		params.ImageURL, err = validateRemoteImageURL("imageUrl", input.ImageURL.Value)
+		if err != nil {
+			return domain.WishlistItem{}, err
+		}
 	}
 	if input.ProductURL.Set {
 		params.ProductURL = normalizeOptionalString(input.ProductURL.Value)
@@ -730,6 +745,25 @@ func normalizeOptionalString(value *string) *string {
 	}
 
 	return &trimmed
+}
+
+func validateRemoteImageURL(field string, value *string) (*string, error) {
+	normalized := normalizeOptionalString(value)
+	if normalized == nil {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*normalized)
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return nil, ValidationError(field, field+" must be a valid remote URL")
+	}
+
+	switch parsed.Scheme {
+	case "http", "https":
+		return normalized, nil
+	default:
+		return nil, ValidationError(field, field+" must use http or https")
+	}
 }
 
 func validateYear(year int) error {

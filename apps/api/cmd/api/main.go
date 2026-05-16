@@ -24,6 +24,7 @@ import (
 	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
 	scrapehttp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/http"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
+	uploadshttp "github.com/danielrispler/wishiz/apps/api/internal/features/uploads/adapters/http"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
 	wishlistpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/postgres"
 	wishlistapp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/application"
@@ -31,6 +32,7 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 	httpx "github.com/danielrispler/wishiz/apps/api/internal/platform/http"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/logger"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/storage"
 )
 
 func main() {
@@ -95,6 +97,29 @@ func run() error {
 		authRepo := authpostgres.NewRepository(pool)
 		authService := authapp.NewService(authRepo)
 		authhttp.RegisterRoutes(mux, appLogger, authService)
+
+		if cfg.UploadsEnabled {
+			imageUploader, err := storage.NewS3Uploader(storage.S3Config{
+				Endpoint:        cfg.StorageS3Endpoint,
+				Region:          cfg.StorageS3Region,
+				Bucket:          cfg.StorageS3Bucket,
+				AccessKeyID:     cfg.StorageS3AccessKeyID,
+				SecretAccessKey: cfg.StorageS3SecretAccessKey,
+				UsePathStyle:    cfg.StorageS3UsePathStyle,
+				PublicBaseURL:   cfg.StoragePublicBaseURL,
+			})
+			if err != nil {
+				return fmt.Errorf("configure image storage: %w", err)
+			}
+			uploadshttp.RegisterRoutes(
+				mux,
+				appLogger,
+				imageUploader,
+				func(next http.HandlerFunc) http.HandlerFunc {
+					return authhttp.RequireAuth(authService, next)
+				},
+			)
+		}
 
 		wishlistRepo := wishlistpostgres.NewRepository(pool)
 		wishlistService := wishlistapp.NewService(wishlistRepo)

@@ -47,6 +47,40 @@ func TestServicePatchWishlistPreservesOmittedFieldsAndClearsNullableValues(t *te
 	}
 }
 
+func TestServiceCreateRejectsLocalCoverImagePath(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(newFakeRepository())
+
+	_, err := service.Create(userContext(ownerID, "owner@example.com"), &CreateWishlistInput{
+		Title:         "Birthday ideas",
+		Description:   "Warm lighting",
+		Year:          2026,
+		CoverImageURL: cloneStringPtr("/tmp/cover.png"),
+	})
+	if err == nil {
+		t.Fatalf("expected local cover image path to be rejected")
+	}
+}
+
+func TestServiceAddItemRejectsLocalImagePath(t *testing.T) {
+	t.Parallel()
+
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = wishlistWithItems(ownerID, nil)
+	service := NewService(repo)
+
+	_, err := service.AddItem(userContext(ownerID, "owner@example.com"), wishlistID1, &AddItemInput{
+		Title:    "Stoneware plates",
+		Priority: domain.ItemPriorityMedium,
+		Status:   domain.ItemStatusSaved,
+		ImageURL: cloneStringPtr("/tmp/item.png"),
+	})
+	if err == nil {
+		t.Fatalf("expected local item image path to be rejected")
+	}
+}
+
 func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepository()
@@ -985,6 +1019,10 @@ func cloneItem(item domain.WishlistItem) domain.WishlistItem {
 	cloned.ProductURL = cloneString(item.ProductURL)
 	cloned.PurchasedAt = cloneTime(item.PurchasedAt)
 	return cloned
+}
+
+func cloneStringPtr(value string) *string {
+	return &value
 }
 
 func userContext(userID string, email string) context.Context {

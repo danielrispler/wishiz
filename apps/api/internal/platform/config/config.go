@@ -12,6 +12,14 @@ type Config struct {
 	HTTPAddr                            string
 	DatabaseURL                         string
 	RunDBMigrations                     bool
+	UploadsEnabled                      bool
+	StorageS3Endpoint                   string
+	StorageS3Region                     string
+	StorageS3Bucket                     string
+	StorageS3AccessKeyID                string
+	StorageS3SecretAccessKey            string
+	StorageS3UsePathStyle               bool
+	StoragePublicBaseURL                string
 	ChromiumPath                        string
 	ExchangeRatesURL                    string
 	ExchangeRateRefreshInterval         time.Duration
@@ -23,11 +31,19 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:          getEnv("APP_ENV", "development"),
-		HTTPAddr:        getEnv("HTTP_ADDR", ":8080"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		RunDBMigrations: getEnvBool("RUN_DB_MIGRATIONS", false),
-		ChromiumPath:    getEnv("CHROMIUM_PATH", ""),
+		AppEnv:                   getEnv("APP_ENV", "development"),
+		HTTPAddr:                 getEnv("HTTP_ADDR", ":8080"),
+		DatabaseURL:              os.Getenv("DATABASE_URL"),
+		RunDBMigrations:          getEnvBool("RUN_DB_MIGRATIONS", false),
+		UploadsEnabled:           getEnvBool("UPLOADS_ENABLED", false),
+		StorageS3Endpoint:        getEnv("STORAGE_S3_ENDPOINT", ""),
+		StorageS3Region:          getEnv("STORAGE_S3_REGION", "us-east-1"),
+		StorageS3Bucket:          getEnv("STORAGE_S3_BUCKET", ""),
+		StorageS3AccessKeyID:     getEnv("STORAGE_S3_ACCESS_KEY_ID", ""),
+		StorageS3SecretAccessKey: getEnv("STORAGE_S3_SECRET_ACCESS_KEY", ""),
+		StorageS3UsePathStyle:    getEnvBool("STORAGE_S3_USE_PATH_STYLE", true),
+		StoragePublicBaseURL:     getEnv("STORAGE_PUBLIC_BASE_URL", ""),
+		ChromiumPath:             getEnv("CHROMIUM_PATH", ""),
 		ExchangeRatesURL: getEnv(
 			"EXCHANGE_RATES_URL",
 			"https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",

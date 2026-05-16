@@ -145,7 +145,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         wishlistId: wishlist.id,
         title: p.title,
         imageUrl: p.imageUrl,
-        priceLabel: p.priceLabel,
         productUrl: p.productUrl,
       );
       if (!mounted) return;
@@ -224,7 +223,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             wishlistId: wishlist.id,
             title: item.title,
             imageUrl: item.imageUrl,
-            priceLabel: item.priceLabel,
             productUrl: item.productUrl,
           );
         }
@@ -342,6 +340,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final packs = feed?.starterPacks ?? [];
     final trending = feed?.trending ?? [];
     final forYou = feed?.forYou ?? [];
+    final isFeedEmpty =
+        !_isLoading &&
+        _loadError == null &&
+        packs.isEmpty &&
+        trending.isEmpty &&
+        forYou.isEmpty;
 
     return ColoredBox(
       color: AppColors.surface,
@@ -380,6 +384,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           color: AppColors.onSurfaceVariant,
                         ),
                       ),
+                    ),
+                  ),
+                ] else if (isFeedEmpty) ...[
+                  SliverToBoxAdapter(
+                    child: _DiscoverEmptyState(
+                      hasPreferences: _selectedBrandNames.isNotEmpty,
+                      onEditPreferences: _openPreferencesSheet,
+                      onRefresh: _loadFeed,
                     ),
                   ),
                 ] else ...[
@@ -786,6 +798,107 @@ class _PreferencePill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DiscoverEmptyState extends StatelessWidget {
+  const _DiscoverEmptyState({
+    required this.hasPreferences,
+    required this.onEditPreferences,
+    required this.onRefresh,
+  });
+
+  final bool hasPreferences;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onEditPreferences;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.94),
+              AppColors.surfaceContainerLow.withValues(alpha: 0.98),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: AppColors.surfaceVariant),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.primary,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Fresh picks are on the way',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: AppColors.onSurface,
+                letterSpacing: -0.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasPreferences
+                  ? 'We do not have live product cards for your selected brands yet. The daily sitemap worker will fill this in automatically.'
+                  : 'Discover needs a first batch of live products before it can render cards. You can set a few favorite brands now and refresh after the worker runs.',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    onRefresh();
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Refresh feed'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: onEditPreferences,
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text('Edit brands'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 )
 
 var ErrInvalidContentType = errors.New("invalid content type")
@@ -18,6 +19,9 @@ type ObjectData struct {
 	Body          io.ReadCloser
 	ContentType   string
 	ContentLength int64
+	CacheControl  string
+	ETag          string
+	LastModified  time.Time
 }
 
 type Uploader interface {

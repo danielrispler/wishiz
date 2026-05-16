@@ -125,10 +125,44 @@ func (h handler) proxyStorageObject(w http.ResponseWriter, r *http.Request) {
 	if obj.ContentLength > 0 {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", obj.ContentLength))
 	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if obj.CacheControl != "" {
+		w.Header().Set("Cache-Control", obj.CacheControl)
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+	if obj.ETag != "" {
+		w.Header().Set("ETag", obj.ETag)
+	}
+	if !obj.LastModified.IsZero() {
+		w.Header().Set("Last-Modified", obj.LastModified.UTC().Format(http.TimeFormat))
+	}
+	if isNotModified(r, obj) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	if _, err := io.Copy(w, obj.Body); err != nil {
 		h.logger.Error("storage proxy stream failed", "key", key, "error", err)
 	}
+}
+
+func isNotModified(r *http.Request, obj storage.ObjectData) bool {
+	if match := strings.TrimSpace(r.Header.Get("If-None-Match")); match != "" && obj.ETag != "" {
+		for _, candidate := range strings.Split(match, ",") {
+			value := strings.TrimSpace(candidate)
+			if value == "*" || value == obj.ETag {
+				return true
+			}
+		}
+	}
+
+	if modifiedSince := strings.TrimSpace(r.Header.Get("If-Modified-Since")); modifiedSince != "" && !obj.LastModified.IsZero() {
+		t, err := http.ParseTime(modifiedSince)
+		if err == nil && !obj.LastModified.After(t) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func sniffBytes(file io.Reader) []byte {

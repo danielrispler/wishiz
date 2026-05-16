@@ -204,8 +204,7 @@ CREATE TABLE IF NOT EXISTS discover_products (
     brand TEXT NOT NULL,
     category TEXT NOT NULL,
     image_url TEXT NOT NULL,
-    price_label TEXT,
-    product_url TEXT,
+    product_url TEXT NOT NULL,
     save_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -217,6 +216,7 @@ CREATE TABLE IF NOT EXISTS discover_products (
 CREATE INDEX IF NOT EXISTS discover_products_category_idx ON discover_products (category);
 CREATE INDEX IF NOT EXISTS discover_products_brand_idx ON discover_products (brand);
 CREATE INDEX IF NOT EXISTS discover_products_trending_idx ON discover_products (save_count DESC, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS discover_products_product_url_uidx ON discover_products (product_url);
 
 CREATE TRIGGER discover_products_set_updated_at
     BEFORE UPDATE ON discover_products

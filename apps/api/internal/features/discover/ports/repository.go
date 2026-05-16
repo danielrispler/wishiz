@@ -14,7 +14,6 @@ type SeedProductInput struct {
 	Brand      string
 	Category   string
 	ImageURL   string
-	PriceLabel *string
 	ProductURL *string
 }
 

@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/shared/widgets/wishiz_image.dart';
 
 enum _MetadataPillStyle { standard, value }
 
@@ -198,10 +197,9 @@ class WishlistSummaryCard extends StatelessWidget {
     required TextDirection textDirection,
   }) {
     final textStyle = textTheme.labelMedium?.copyWith(
-      fontWeight:
-          pill.style == _MetadataPillStyle.value
-              ? FontWeight.w700
-              : FontWeight.w600,
+      fontWeight: pill.style == _MetadataPillStyle.value
+          ? FontWeight.w700
+          : FontWeight.w600,
       fontSize: 11.5,
     );
     final painter = TextPainter(
@@ -231,18 +229,17 @@ class WishlistSummaryCard extends StatelessWidget {
         height: 112,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child:
-              hasImage
-                  ? _buildCoverImage(context, colorScheme: colorScheme)
-                  : Container(
-                    color: colorScheme.surfaceContainerHigh,
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.auto_awesome_mosaic_rounded,
-                      color: colorScheme.primary,
-                      size: 24,
-                    ),
+          child: hasImage
+              ? _buildCoverImage(context, colorScheme: colorScheme)
+              : Container(
+                  color: colorScheme.surfaceContainerHigh,
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.auto_awesome_mosaic_rounded,
+                    color: colorScheme.primary,
+                    size: 24,
                   ),
+                ),
         ),
       ),
     );
@@ -268,19 +265,27 @@ class WishlistSummaryCard extends StatelessWidget {
     );
 
     if (kIsWeb || isRemote) {
-      return Image.network(
-        source,
+      return WishizNetworkImage(
+        imageUrl: source,
+        width: 112,
+        height: 112,
         fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => fallback,
+        borderRadius: BorderRadius.circular(18),
+        backgroundColor: colorScheme.surfaceContainerHigh,
+        errorChild: fallback,
+        measurementLabel: 'wishlist.summary_cover',
       );
     }
 
-    return Image.file(
-      File(source),
+    return WishizImage(
+      source: source,
+      width: 112,
+      height: 112,
       fit: BoxFit.cover,
-      gaplessPlayback: true,
-      errorBuilder: (context, error, stackTrace) => fallback,
+      borderRadius: BorderRadius.circular(18),
+      backgroundColor: colorScheme.surfaceContainerHigh,
+      errorChild: fallback,
+      measurementLabel: 'wishlist.summary_cover',
     );
   }
 

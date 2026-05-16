@@ -154,6 +154,13 @@ func run() error {
 
 		discoverRepo := discoverpostgres.NewRepository(pool)
 		discoverService := discoverapp.NewService(discoverRepo, scrapeService)
+		discoverSitemapWorker := discoverapp.NewSitemapWorker(
+			appLogger,
+			discoverRepo,
+			scrapeService,
+			cfg.DiscoverSitemapRefreshInterval,
+		)
+		discoverSitemapWorker.Start(ctx)
 		discoverhttp.RegisterRoutes(
 			mux,
 			appLogger,

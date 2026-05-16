@@ -4,7 +4,6 @@ class Product {
   final String brand;
   final String category;
   final String imageUrl;
-  final String? priceLabel;
   final String? productUrl;
   final int saveCount;
   final bool isSavedByUser;
@@ -16,34 +15,31 @@ class Product {
     required this.category,
     required this.imageUrl,
     required this.saveCount,
-    this.priceLabel,
     this.productUrl,
     this.isSavedByUser = false,
   });
 
   Product copyWith({bool? isSavedByUser, int? saveCount}) => Product(
-        id: id,
-        title: title,
-        brand: brand,
-        category: category,
-        imageUrl: imageUrl,
-        priceLabel: priceLabel,
-        productUrl: productUrl,
-        saveCount: saveCount ?? this.saveCount,
-        isSavedByUser: isSavedByUser ?? this.isSavedByUser,
-      );
+    id: id,
+    title: title,
+    brand: brand,
+    category: category,
+    imageUrl: imageUrl,
+    productUrl: productUrl,
+    saveCount: saveCount ?? this.saveCount,
+    isSavedByUser: isSavedByUser ?? this.isSavedByUser,
+  );
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
-        id: json['id'] as String,
-        title: json['title'] as String,
-        brand: json['brand'] as String,
-        category: json['category'] as String? ?? '',
-        imageUrl: json['imageUrl'] as String,
-        priceLabel: json['priceLabel'] as String?,
-        productUrl: json['productUrl'] as String?,
-        saveCount: json['saveCount'] as int? ?? 0,
-        isSavedByUser: json['savedByUser'] as bool? ?? false,
-      );
+    id: json['id'] as String,
+    title: json['title'] as String,
+    brand: json['brand'] as String,
+    category: json['category'] as String? ?? '',
+    imageUrl: json['imageUrl'] as String,
+    productUrl: json['productUrl'] as String?,
+    saveCount: json['saveCount'] as int? ?? 0,
+    isSavedByUser: json['savedByUser'] as bool? ?? false,
+  );
 
   static List<Product> sample = [
     const Product(
@@ -52,7 +48,6 @@ class Product {
       brand: 'NET—A—PORTER',
       category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/slingback/400/500',
-      priceLabel: '\$795',
       saveCount: 2100,
     ),
     const Product(
@@ -61,7 +56,6 @@ class Product {
       brand: 'REFORMATION',
       category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/slip/400/500',
-      priceLabel: '\$320',
       saveCount: 1400,
       isSavedByUser: true,
     ),
@@ -71,7 +65,6 @@ class Product {
       brand: 'KHAITE',
       category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/cashmere/400/500',
-      priceLabel: '\$890',
       saveCount: 1100,
     ),
     const Product(
@@ -80,7 +73,6 @@ class Product {
       brand: 'MISSOMA',
       category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/cuff/400/500',
-      priceLabel: '\$210',
       saveCount: 980,
     ),
     const Product(
@@ -89,7 +81,6 @@ class Product {
       brand: 'SOPHIE BUHAI',
       category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/pearl/400/500',
-      priceLabel: '\$340',
       saveCount: 612,
     ),
     const Product(
@@ -98,7 +89,6 @@ class Product {
       brand: 'DIPTYQUE',
       category: 'beauty',
       imageUrl: 'https://picsum.photos/seed/diptyque/400/500',
-      priceLabel: '\$190',
       saveCount: 2400,
     ),
     const Product(
@@ -107,7 +97,6 @@ class Product {
       brand: 'POLÈNE',
       category: 'accessories',
       imageUrl: 'https://picsum.photos/seed/polene/400/500',
-      priceLabel: '\$420',
       saveCount: 1800,
     ),
     const Product(
@@ -116,7 +105,6 @@ class Product {
       brand: 'TOTÊME',
       category: 'fashion',
       imageUrl: 'https://picsum.photos/seed/toteme/400/500',
-      priceLabel: '\$380',
       saveCount: 744,
     ),
   ];

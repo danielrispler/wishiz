@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/discover/models/starter_pack.dart';
+import 'package:wishiz/shared/widgets/wishiz_image.dart';
 
 class StarterPackCard extends StatelessWidget {
   const StarterPackCard({
@@ -89,10 +90,12 @@ class _Cover extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            pack.coverImageUrl,
+          WishizNetworkImage(
+            imageUrl: pack.coverImageUrl,
+            height: 280,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const DecoratedBox(
+            measurementLabel: 'discover.starter_pack_cover',
+            errorChild: const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -107,7 +110,11 @@ class _Cover extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                colors: [Color(0x8C302950), Color(0x10302950), Colors.transparent],
+                colors: [
+                  Color(0x8C302950),
+                  Color(0x10302950),
+                  Colors.transparent,
+                ],
                 stops: [0, 0.5, 0.7],
               ),
             ),
@@ -123,11 +130,7 @@ class _Cover extends StatelessWidget {
             right: 14,
             child: _CountBadge(count: pack.itemCount),
           ),
-          Positioned(
-            left: 14,
-            bottom: 14,
-            child: _PreviewStack(pack: pack),
-          ),
+          Positioned(left: 14, bottom: 14, child: _PreviewStack(pack: pack)),
         ],
       ),
     );
@@ -222,10 +225,6 @@ class _PreviewStack extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
-                image: DecorationImage(
-                  image: NetworkImage(shown[i]),
-                  fit: BoxFit.cover,
-                ),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x26302950),
@@ -233,6 +232,16 @@ class _PreviewStack extends StatelessWidget {
                     offset: Offset(0, 2),
                   ),
                 ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: WishizNetworkImage(
+                imageUrl: shown[i],
+                width: 28,
+                height: 28,
+                fit: BoxFit.cover,
+                borderRadius: BorderRadius.circular(14),
+                backgroundColor: Colors.white24,
+                measurementLabel: 'discover.starter_pack_avatar',
               ),
             ),
           ),

@@ -94,15 +94,6 @@ func (s *Service) SeedProduct(ctx context.Context, rawURL, category string) (dom
 		return domain.DiscoverProduct{}, ValidationError("url", "could not extract product name or image from URL")
 	}
 
-	var priceLabel *string
-	if scraped.PriceAmount != "" {
-		pl := scraped.PriceAmount
-		if scraped.PriceCurrency != "" {
-			pl = scraped.PriceCurrency + " " + pl
-		}
-		priceLabel = &pl
-	}
-
 	var productURL *string
 	if rawURL != "" {
 		u := rawURL
@@ -114,7 +105,6 @@ func (s *Service) SeedProduct(ctx context.Context, rawURL, category string) (dom
 		Brand:      extractBrand(rawURL),
 		Category:   category,
 		ImageURL:   scraped.ImageURL,
-		PriceLabel: priceLabel,
 		ProductURL: productURL,
 	})
 }

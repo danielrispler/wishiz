@@ -8,7 +8,6 @@ type DiscoverProduct struct {
 	Brand       string
 	Category    string
 	ImageURL    string
-	PriceLabel  *string
 	ProductURL  *string
 	SaveCount   int
 	SavedByUser bool

@@ -25,6 +25,7 @@ type Config struct {
 	ExchangeRateRefreshInterval         time.Duration
 	ProductImportWorkerCount            int
 	ProductImportPollInterval           time.Duration
+	DiscoverSitemapRefreshInterval      time.Duration
 	ShareBaseURL                        string
 	AndroidAppLinkSHA256CertFingerprint string
 	InternalAPIKey                      string
@@ -52,7 +53,11 @@ func Load() (Config, error) {
 		ExchangeRateRefreshInterval: getEnvDuration("EXCHANGE_RATE_REFRESH_INTERVAL", 12*time.Hour),
 		ProductImportWorkerCount:    getEnvInt("PRODUCT_IMPORT_WORKER_COUNT", 5),
 		ProductImportPollInterval:   getEnvDuration("PRODUCT_IMPORT_POLL_INTERVAL", 2*time.Second),
-		ShareBaseURL:                getEnv("SHARE_BASE_URL", "https://wishiz.app"),
+		DiscoverSitemapRefreshInterval: getEnvDuration(
+			"DISCOVER_SITEMAP_REFRESH_INTERVAL",
+			24*time.Hour,
+		),
+		ShareBaseURL: getEnv("SHARE_BASE_URL", "https://wishiz.app"),
 		AndroidAppLinkSHA256CertFingerprint: getEnv(
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
 			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",

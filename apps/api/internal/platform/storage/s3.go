@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -113,10 +114,28 @@ func (u *S3Uploader) GetObject(ctx context.Context, key string) (ObjectData, err
 		contentLength = *out.ContentLength
 	}
 
+	var cacheControl string
+	if out.CacheControl != nil {
+		cacheControl = *out.CacheControl
+	}
+
+	var etag string
+	if out.ETag != nil {
+		etag = *out.ETag
+	}
+
+	var lastModified time.Time
+	if out.LastModified != nil {
+		lastModified = *out.LastModified
+	}
+
 	return ObjectData{
 		Body:          out.Body,
 		ContentType:   contentType,
 		ContentLength: contentLength,
+		CacheControl:  cacheControl,
+		ETag:          etag,
+		LastModified:  lastModified,
 	}, nil
 }
 

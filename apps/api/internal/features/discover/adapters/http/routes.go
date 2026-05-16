@@ -234,7 +234,6 @@ type productResponse struct {
 	Brand       string  `json:"brand"`
 	Category    string  `json:"category"`
 	ImageURL    string  `json:"imageUrl"`
-	PriceLabel  *string `json:"priceLabel"`
 	ProductURL  *string `json:"productUrl"`
 	SaveCount   int     `json:"saveCount"`
 	SavedByUser bool    `json:"savedByUser"`
@@ -257,7 +256,6 @@ func mapProduct(p domain.DiscoverProduct) productResponse {
 		Brand:       p.Brand,
 		Category:    p.Category,
 		ImageURL:    p.ImageURL,
-		PriceLabel:  p.PriceLabel,
 		ProductURL:  p.ProductURL,
 		SaveCount:   p.SaveCount,
 		SavedByUser: p.SavedByUser,

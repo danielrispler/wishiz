@@ -28,7 +28,6 @@ func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) 
 			p.brand,
 			p.category,
 			p.image_url,
-			p.price_label,
 			p.product_url,
 			p.save_count,
 			p.created_at,
@@ -56,7 +55,6 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, brands []stri
 			p.brand,
 			p.category,
 			p.image_url,
-			p.price_label,
 			p.product_url,
 			p.save_count,
 			p.created_at,
@@ -121,7 +119,6 @@ func (r *Repository) getPackItems(ctx context.Context, packID, userID string) ([
 			p.brand,
 			p.category,
 			p.image_url,
-			p.price_label,
 			p.product_url,
 			p.save_count,
 			p.created_at,
@@ -247,7 +244,7 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT p.title, p.image_url, p.price_label, p.product_url
+		SELECT p.title, p.image_url, p.product_url
 		FROM starter_pack_items spi
 		JOIN discover_products p ON p.id = spi.product_id
 		WHERE spi.pack_id = $1::uuid
@@ -261,13 +258,12 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 	type packItem struct {
 		title      string
 		imageURL   string
-		priceLabel *string
 		productURL *string
 	}
 	var items []packItem
 	for rows.Next() {
 		var it packItem
-		if err := rows.Scan(&it.title, &it.imageURL, &it.priceLabel, &it.productURL); err != nil {
+		if err := rows.Scan(&it.title, &it.imageURL, &it.productURL); err != nil {
 			return 0, fmt.Errorf("scan pack item: %w", err)
 		}
 		items = append(items, it)
@@ -280,7 +276,7 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 		_, err = tx.Exec(ctx, `
 			INSERT INTO wishlist_items (wishlist_id, title, rank, image_url, price_label, product_url)
 			VALUES ($1::uuid, $2, $3, $4, $5, $6)
-		`, wishlistID, it.title, maxRank+i+1, it.imageURL, it.priceLabel, it.productURL)
+		`, wishlistID, it.title, maxRank+i+1, it.imageURL, nil, it.productURL)
 		if err != nil {
 			return 0, fmt.Errorf("insert wishlist item: %w", err)
 		}
@@ -294,14 +290,21 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 
 func (r *Repository) SeedProduct(ctx context.Context, in ports.SeedProductInput) (domain.DiscoverProduct, error) {
 	row := r.pool.QueryRow(ctx, `
-		INSERT INTO discover_products (title, brand, category, image_url, price_label, product_url)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO discover_products (title, brand, category, image_url, product_url)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (product_url) DO UPDATE
+		SET
+			title = EXCLUDED.title,
+			brand = EXCLUDED.brand,
+			category = EXCLUDED.category,
+			image_url = EXCLUDED.image_url,
+			updated_at = NOW()
 		RETURNING
-			id::text, title, brand, category, image_url, price_label, product_url, save_count, created_at
-	`, in.Title, in.Brand, in.Category, in.ImageURL, in.PriceLabel, in.ProductURL)
+			id::text, title, brand, category, image_url, product_url, save_count, created_at
+	`, in.Title, in.Brand, in.Category, in.ImageURL, in.ProductURL)
 
 	var p domain.DiscoverProduct
-	err := row.Scan(&p.ID, &p.Title, &p.Brand, &p.Category, &p.ImageURL, &p.PriceLabel, &p.ProductURL, &p.SaveCount, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Title, &p.Brand, &p.Category, &p.ImageURL, &p.ProductURL, &p.SaveCount, &p.CreatedAt)
 	if err != nil {
 		return domain.DiscoverProduct{}, fmt.Errorf("seed product: %w", err)
 	}
@@ -350,7 +353,7 @@ func collectProducts(rows pgx.Rows) ([]domain.DiscoverProduct, error) {
 		var p domain.DiscoverProduct
 		if err := rows.Scan(
 			&p.ID, &p.Title, &p.Brand, &p.Category,
-			&p.ImageURL, &p.PriceLabel, &p.ProductURL,
+			&p.ImageURL, &p.ProductURL,
 			&p.SaveCount, &p.CreatedAt, &p.SavedByUser,
 		); err != nil {
 			return nil, fmt.Errorf("scan discover product: %w", err)

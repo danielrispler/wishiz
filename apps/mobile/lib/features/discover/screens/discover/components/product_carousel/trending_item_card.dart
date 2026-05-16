@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/discover/models/product.dart';
+import 'package:wishiz/shared/widgets/wishiz_image.dart';
 import 'save_button.dart';
 
 class TrendingItemCard extends StatelessWidget {
@@ -34,10 +35,14 @@ class TrendingItemCard extends StatelessWidget {
                     bottom: 14,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        product.imageUrl,
+                      child: WishizNetworkImage(
+                        imageUrl: product.imageUrl,
+                        width: 158,
+                        height: 196,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const DecoratedBox(
+                        borderRadius: BorderRadius.circular(16),
+                        measurementLabel: 'discover.trending_card',
+                        errorChild: const DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -88,17 +93,6 @@ class TrendingItemCard extends StatelessWidget {
                 letterSpacing: -0.2,
               ),
             ),
-            const SizedBox(height: 4),
-            if (product.priceLabel != null && product.priceLabel!.isNotEmpty)
-              Text(
-                product.priceLabel!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primary,
-                  letterSpacing: -0.2,
-                ),
-              ),
           ],
         ),
       ),
@@ -129,7 +123,11 @@ class _SaveCountChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.favorite_rounded, size: 10, color: AppColors.primary),
+          const Icon(
+            Icons.favorite_rounded,
+            size: 10,
+            color: AppColors.primary,
+          ),
           const SizedBox(width: 4),
           Text(
             _format(saves),

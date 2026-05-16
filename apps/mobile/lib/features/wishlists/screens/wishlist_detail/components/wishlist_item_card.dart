@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
+import 'package:wishiz/shared/widgets/wishiz_image.dart';
 import 'wishlist_detail_chips.dart';
 
 class WishlistItemCard extends StatefulWidget {
@@ -46,7 +47,9 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
       padding: const EdgeInsets.only(bottom: AppConstants.itemGap),
       child: Dismissible(
         key: ValueKey('dismiss-${widget.item.id}'),
-        direction: widget.canEdit ? DismissDirection.horizontal : DismissDirection.none,
+        direction: widget.canEdit
+            ? DismissDirection.horizontal
+            : DismissDirection.none,
         background: _SwipeBackground(
           color: widget.item.status == WishlistItemStatus.purchased
               ? Colors.blue.shade600
@@ -55,7 +58,9 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
           icon: widget.item.status == WishlistItemStatus.purchased
               ? Icons.restore_outlined
               : Icons.check_circle_outline,
-          label: widget.item.status == WishlistItemStatus.purchased ? 'Restore' : 'Purchased',
+          label: widget.item.status == WishlistItemStatus.purchased
+              ? 'Restore'
+              : 'Purchased',
         ),
         secondaryBackground: const _SwipeBackground(
           color: Colors.red,
@@ -76,7 +81,9 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
             borderRadius: BorderRadius.circular(AppConstants.radiusXl),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.04),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.04),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -104,10 +111,14 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                             ReorderableDragStartListener(
                               index: widget.dragIndex!,
                               child: Padding(
-                                padding: const EdgeInsets.only(right: AppConstants.spacing2),
+                                padding: const EdgeInsets.only(
+                                  right: AppConstants.spacing2,
+                                ),
                                 child: Icon(
                                   Icons.drag_indicator,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -120,7 +131,8 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                               children: [
                                 Text(
                                   widget.item.title,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(height: 1.2),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(height: 1.2),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -133,10 +145,15 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                                         ? const SizedBox.shrink()
                                         : Text(
                                             widget.displayedPriceLabel!,
-                                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                              color: Theme.of(context).colorScheme.primary,
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelMedium
+                                                ?.copyWith(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -149,9 +166,14 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                           WishlistMetadataChip(label: '#${widget.item.rank}'),
                           const SizedBox(width: AppConstants.spacing2),
                           Icon(
-                            _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                            _isExpanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
                             size: 20,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.5),
                           ),
                         ],
                       ),
@@ -163,17 +185,24 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                 firstChild: const SizedBox.shrink(),
                 secondChild: Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    AppConstants.cardPadding, 0, AppConstants.cardPadding, AppConstants.spacing3,
+                    AppConstants.cardPadding,
+                    0,
+                    AppConstants.cardPadding,
+                    AppConstants.spacing3,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.item.notes != null && widget.item.notes!.isNotEmpty) ...[
+                      if (widget.item.notes != null &&
+                          widget.item.notes!.isNotEmpty) ...[
                         Text(
                           widget.item.notes!,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                         const SizedBox(height: AppConstants.spacing4),
                       ],
@@ -181,10 +210,13 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          WishlistMetadataChip(label: 'Rank #${widget.item.rank}'),
+                          WishlistMetadataChip(
+                            label: 'Rank #${widget.item.rank}',
+                          ),
                           WishlistMetadataChip(
                             key: ValueKey('days-on-list-${widget.item.id}'),
-                            label: '${widget.item.daysOnList} day${widget.item.daysOnList == 1 ? '' : 's'} on list',
+                            label:
+                                '${widget.item.daysOnList} day${widget.item.daysOnList == 1 ? '' : 's'} on list',
                           ),
                         ],
                       ),
@@ -218,7 +250,9 @@ class _WishlistItemCardState extends State<WishlistItemCard> {
                     ],
                   ),
                 ),
-                crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                crossFadeState: _isExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
                 duration: const Duration(milliseconds: 180),
               ),
             ],
@@ -249,7 +283,11 @@ class _ItemThumbnail extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null && imageUrl.isNotEmpty
           ? _ItemImage(imageUrl: imageUrl)
-          : Icon(Icons.shopping_bag_outlined, color: colorScheme.onSurfaceVariant.withOpacity(0.7), size: 22),
+          : Icon(
+              Icons.shopping_bag_outlined,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              size: 22,
+            ),
     );
   }
 }
@@ -263,8 +301,12 @@ class _ItemImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final uri = Uri.tryParse(imageUrl);
-    final isRemote = uri != null &&
-        (uri.scheme == 'http' || uri.scheme == 'https' || uri.scheme == 'blob' || uri.scheme == 'data');
+    final isRemote =
+        uri != null &&
+        (uri.scheme == 'http' ||
+            uri.scheme == 'https' ||
+            uri.scheme == 'blob' ||
+            uri.scheme == 'data');
     final fallback = Container(
       color: colorScheme.surfaceContainerHigh,
       alignment: Alignment.center,
@@ -272,8 +314,26 @@ class _ItemImage extends StatelessWidget {
     );
 
     final image = kIsWeb || isRemote
-        ? Image.network(imageUrl, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => fallback)
-        : Image.file(File(imageUrl), fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => fallback);
+        ? WishizNetworkImage(
+            imageUrl: imageUrl,
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
+            backgroundColor: colorScheme.surfaceContainerHigh,
+            errorChild: fallback,
+            measurementLabel: 'wishlist.item_thumbnail',
+          )
+        : WishizImage(
+            source: imageUrl,
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(AppConstants.radiusXl - 8),
+            backgroundColor: colorScheme.surfaceContainerHigh,
+            errorChild: fallback,
+            measurementLabel: 'wishlist.item_thumbnail',
+          );
 
     return InkWell(
       onTap: () => _openImageViewer(context, imageUrl, isRemote),
@@ -285,7 +345,11 @@ class _ItemImage extends StatelessWidget {
     );
   }
 
-  Future<void> _openImageViewer(BuildContext context, String source, bool isRemote) {
+  Future<void> _openImageViewer(
+    BuildContext context,
+    String source,
+    bool isRemote,
+  ) {
     return showDialog<void>(
       context: context,
       builder: (context) => Dialog.fullscreen(
@@ -336,16 +400,26 @@ class _SwipeBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(AppConstants.radiusXl)),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXl),
+      ),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing4),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: alignment == Alignment.centerLeft ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        crossAxisAlignment: alignment == Alignment.centerLeft
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.end,
         children: [
           Icon(icon, color: Colors.white),
           const SizedBox(height: 6),
-          Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white)),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: Colors.white),
+          ),
         ],
       ),
     );
@@ -376,18 +450,26 @@ class _ActionButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isPrimary ? colorScheme.primary : colorScheme.surfaceContainerHigh,
+            color: isPrimary
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18, color: isPrimary ? colorScheme.onPrimary : colorScheme.primary),
+              Icon(
+                icon,
+                size: 18,
+                color: isPrimary ? colorScheme.onPrimary : colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: isPrimary ? colorScheme.onPrimary : colorScheme.onSurface,
+                  color: isPrimary
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),

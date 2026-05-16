@@ -121,13 +121,57 @@ func TestGetCurrentUserUsesAuthenticatedContext(t *testing.T) {
 	}
 }
 
+func TestSavePreferencesPersistsPreferredBrands(t *testing.T) {
+	t.Parallel()
+
+	service := &stubService{
+		authenticate: func(_ context.Context, token string) (domain.User, error) {
+			if token != "session-token" {
+				t.Fatalf("unexpected token %q", token)
+			}
+			return sampleUser(), nil
+		},
+		savePreferences: func(_ context.Context, userID string, brands []string) (domain.User, error) {
+			if userID != sampleUser().ID {
+				t.Fatalf("unexpected user id %q", userID)
+			}
+			if len(brands) != 2 || brands[0] != "Zara" || brands[1] != "Reformation" {
+				t.Fatalf("unexpected brands %#v", brands)
+			}
+			user := sampleUser()
+			user.PreferredBrands = brands
+			return user, nil
+		},
+	}
+
+	response := performRequest(
+		t,
+		service,
+		http.MethodPatch,
+		"/auth/me/onboarding",
+		`{"brands":["Zara","Reformation"]}`,
+		"Bearer session-token",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var payload userResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.PreferredBrands) != 2 {
+		t.Fatalf("expected preferred brands in response, got %#v", payload.PreferredBrands)
+	}
+}
+
 type stubService struct {
 	signUp            func(context.Context, *application.SignUpInput) (domain.User, string, error)
 	logIn             func(context.Context, *application.LogInInput) (domain.User, string, error)
 	authenticate      func(context.Context, string) (domain.User, error)
 	getCurrentUser    func(context.Context, string) (domain.User, error)
 	updateCurrentUser func(context.Context, string, *application.UpdateCurrentUserInput) (domain.User, error)
-	savePreferences   func(context.Context, string, []string, []string) (domain.User, error)
+	savePreferences   func(context.Context, string, []string) (domain.User, error)
 	logOut            func(context.Context, string) error
 }
 
@@ -166,11 +210,11 @@ func (s *stubService) UpdateCurrentUser(ctx context.Context, userID string, inpu
 	return s.updateCurrentUser(ctx, userID, input)
 }
 
-func (s *stubService) SavePreferences(ctx context.Context, userID string, categories []string, brands []string) (domain.User, error) {
+func (s *stubService) SavePreferences(ctx context.Context, userID string, brands []string) (domain.User, error) {
 	if s.savePreferences == nil {
 		return domain.User{}, errors.New("unexpected SavePreferences call")
 	}
-	return s.savePreferences(ctx, userID, categories, brands)
+	return s.savePreferences(ctx, userID, brands)
 }
 
 func (s *stubService) LogOut(ctx context.Context, rawToken string) error {
@@ -208,5 +252,6 @@ func sampleUser() domain.User {
 		PreferredCurrencyCode: "USD",
 		NotificationsEnabled:  true,
 		ReminderDays:          14,
+		PreferredBrands:       []string{"Zara"},
 	}
 }

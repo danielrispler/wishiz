@@ -49,7 +49,9 @@ void main() {
     await tester.tap(find.byType(TextFormField).at(1));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byType(TextFormField).at(2), 'dana@example.com');
+      find.byType(TextFormField).at(2),
+      'dana@example.com',
+    );
     await tester.enterText(find.byType(TextFormField).at(3), 'password123');
     await tester.enterText(find.byType(TextFormField).at(4), 'password123');
 
@@ -85,8 +87,9 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async =>
-      AuthResult.success(getCurrentUser()!);
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+  }) async => AuthResult.success(getCurrentUser()!);
 
   @override
   Future<void> logOut() async {}

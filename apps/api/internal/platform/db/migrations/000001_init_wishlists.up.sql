@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS app_users (
     preferred_currency_code TEXT NOT NULL DEFAULT 'USD',
     notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     reminder_days INTEGER NOT NULL DEFAULT 14,
-    onboarding_categories TEXT[] NOT NULL DEFAULT '{}',
     preferred_brands TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

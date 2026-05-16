@@ -9,7 +9,6 @@ class AppUser {
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
     this.reminderDays = 14,
-    this.onboardingCategories = const [],
     this.preferredBrands = const [],
   });
 
@@ -33,7 +32,6 @@ class AppUser {
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
-  final List<String> onboardingCategories;
   final List<String> preferredBrands;
 
   String get preferredCurrencySymbol =>
@@ -47,7 +45,6 @@ class AppUser {
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
     int? reminderDays,
-    List<String>? onboardingCategories,
     List<String>? preferredBrands,
   }) {
     return AppUser(
@@ -59,7 +56,6 @@ class AppUser {
           preferredCurrencyCode ?? this.preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       reminderDays: reminderDays ?? this.reminderDays,
-      onboardingCategories: onboardingCategories ?? this.onboardingCategories,
       preferredBrands: preferredBrands ?? this.preferredBrands,
     );
   }

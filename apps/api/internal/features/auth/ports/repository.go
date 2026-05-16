@@ -18,7 +18,7 @@ type Repository interface {
 	GetUserByEmail(ctx context.Context, email string) (domain.User, string, error)
 	GetUserByID(ctx context.Context, id string) (domain.User, string, error)
 	UpdateUser(ctx context.Context, params UpdateUserParams) (domain.User, error)
-	UpdateUserPreferences(ctx context.Context, userID string, categories []domain.Preference, brands []string) (domain.User, error)
+	UpdateUserPreferences(ctx context.Context, userID string, brands []string) (domain.User, error)
 	CreateSession(ctx context.Context, params CreateSessionParams) error
 	GetUserBySessionTokenHash(ctx context.Context, tokenHash string) (domain.User, error)
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error
@@ -43,7 +43,6 @@ type UpdateUserParams struct {
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
 	ReminderDays          int
-	OnboardingCategories  []domain.Preference
 	PreferredBrands       []string
 }
 

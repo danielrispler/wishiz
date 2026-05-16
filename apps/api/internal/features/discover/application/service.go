@@ -17,7 +17,7 @@ type DiscoverFeed struct {
 }
 
 type Service struct {
-	repo         ports.Repository
+	repo          ports.Repository
 	scrapeService *scrapeapp.Service
 }
 
@@ -25,13 +25,13 @@ func NewService(repo ports.Repository, scrapeService *scrapeapp.Service) *Servic
 	return &Service{repo: repo, scrapeService: scrapeService}
 }
 
-func (s *Service) GetFeed(ctx context.Context, userID string, categories, brands []string) (DiscoverFeed, error) {
+func (s *Service) GetFeed(ctx context.Context, userID string, brands []string) (DiscoverFeed, error) {
 	trending, err := s.repo.GetTrending(ctx, userID, 10)
 	if err != nil {
 		return DiscoverFeed{}, err
 	}
 
-	forYou, err := s.repo.GetForYou(ctx, userID, categories, brands, 20)
+	forYou, err := s.repo.GetForYou(ctx, userID, brands, 20)
 	if err != nil {
 		return DiscoverFeed{}, err
 	}

@@ -45,8 +45,8 @@ func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) 
 	return collectProducts(rows)
 }
 
-func (r *Repository) GetForYou(ctx context.Context, userID string, categories, brands []string, limit int) ([]domain.DiscoverProduct, error) {
-	if len(categories) == 0 && len(brands) == 0 {
+func (r *Repository) GetForYou(ctx context.Context, userID string, brands []string, limit int) ([]domain.DiscoverProduct, error) {
+	if len(brands) == 0 {
 		return r.GetTrending(ctx, userID, limit)
 	}
 	rows, err := r.pool.Query(ctx, `
@@ -64,11 +64,10 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, categories, b
 		FROM discover_products p
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $1::uuid
-		WHERE (cardinality($2::text[]) = 0 OR p.category = ANY($2::text[]))
-		   OR (cardinality($3::text[]) = 0 OR p.brand = ANY($3::text[]))
+		WHERE p.brand = ANY($2::text[])
 		ORDER BY RANDOM()
-		LIMIT $4
-	`, userID, categories, brands, limit)
+		LIMIT $3
+	`, userID, brands, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get for-you products: %w", err)
 	}

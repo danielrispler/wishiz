@@ -19,7 +19,7 @@ type Service interface {
 	Authenticate(ctx context.Context, rawToken string) (domain.User, error)
 	GetCurrentUser(ctx context.Context, userID string) (domain.User, error)
 	UpdateCurrentUser(ctx context.Context, userID string, input *application.UpdateCurrentUserInput) (domain.User, error)
-	SavePreferences(ctx context.Context, userID string, categories []string, brands []string) (domain.User, error)
+	SavePreferences(ctx context.Context, userID string, brands []string) (domain.User, error)
 	LogOut(ctx context.Context, rawToken string) error
 }
 
@@ -55,8 +55,7 @@ type updateCurrentUserRequest struct {
 }
 
 type savePreferencesRequest struct {
-	Categories []string `json:"categories"`
-	Brands     []string `json:"brands"`
+	Brands []string `json:"brands"`
 }
 
 type authResponse struct {
@@ -72,7 +71,6 @@ type userResponse struct {
 	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
 	NotificationsEnabled  bool      `json:"notificationsEnabled"`
 	ReminderDays          int       `json:"reminderDays"`
-	OnboardingCategories  []string  `json:"onboardingCategories"`
 	PreferredBrands       []string  `json:"preferredBrands"`
 }
 
@@ -215,14 +213,11 @@ func (h handler) savePreferences(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
 		return
 	}
-	if request.Categories == nil {
-		request.Categories = []string{}
-	}
 	if request.Brands == nil {
 		request.Brands = []string{}
 	}
 
-	updatedUser, err := h.service.SavePreferences(r.Context(), user.ID, request.Categories, request.Brands)
+	updatedUser, err := h.service.SavePreferences(r.Context(), user.ID, request.Brands)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -263,10 +258,6 @@ func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func mapUser(user domain.User) userResponse {
-	cats := make([]string, len(user.OnboardingCategories))
-	for i, p := range user.OnboardingCategories {
-		cats[i] = string(p)
-	}
 	brands := user.PreferredBrands
 	if brands == nil {
 		brands = []string{}
@@ -279,7 +270,6 @@ func mapUser(user domain.User) userResponse {
 		PreferredCurrencyCode: user.PreferredCurrencyCode,
 		NotificationsEnabled:  user.NotificationsEnabled,
 		ReminderDays:          user.ReminderDays,
-		OnboardingCategories:  cats,
 		PreferredBrands:       brands,
 	}
 }

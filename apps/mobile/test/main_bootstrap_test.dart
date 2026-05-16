@@ -98,8 +98,9 @@ class _FakeAuthRepository implements AuthRepository {
   }) async => const AuthResult.failure('unused');
 
   @override
-  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async =>
-      AuthResult.success(getCurrentUser()!);
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+  }) async => AuthResult.success(getCurrentUser()!);
 
   @override
   Future<void> logOut() async {

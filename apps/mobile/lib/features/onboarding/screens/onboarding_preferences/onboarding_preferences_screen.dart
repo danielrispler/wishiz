@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
-import 'package:wishiz/features/onboarding/domain/entities/preference_category.dart';
-import 'package:wishiz/features/onboarding/screens/onboarding_preferences/components/category_card.dart';
+import 'package:wishiz/features/discover/domain/entities/brand_group.dart';
 
 class OnboardingPreferencesScreen extends StatefulWidget {
   const OnboardingPreferencesScreen({
@@ -24,31 +23,30 @@ class OnboardingPreferencesScreen extends StatefulWidget {
 
 class _OnboardingPreferencesScreenState
     extends State<OnboardingPreferencesScreen> {
-  final _selectedIds = ValueNotifier<Set<String>>({});
+  final _selectedBrands = ValueNotifier<Set<String>>({});
   bool _isSaving = false;
 
   @override
   void dispose() {
-    _selectedIds.dispose();
+    _selectedBrands.dispose();
     super.dispose();
   }
 
-  void _toggleCategory(String id) {
-    final current = Set<String>.of(_selectedIds.value);
-    if (current.contains(id)) {
-      current.remove(id);
+  void _toggleBrand(String brand) {
+    final current = Set<String>.of(_selectedBrands.value);
+    if (current.contains(brand)) {
+      current.remove(brand);
     } else {
-      current.add(id);
+      current.add(brand);
     }
-    _selectedIds.value = current;
+    _selectedBrands.value = current;
   }
 
   Future<void> _startExploring() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     await widget.authRepository.savePreferences(
-      categoryIds: _selectedIds.value.toList(),
-      brandNames: const [],
+      brandNames: _selectedBrands.value.toList(),
     );
     if (!mounted) return;
     widget.onComplete();
@@ -74,41 +72,92 @@ class _OnboardingPreferencesScreenState
                   children: [
                     const SizedBox(height: AppConstants.spacing8),
                     Text(
-                      'Select your favorite categories',
+                      'Pick the fashion brands you love',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: AppConstants.spacing3),
                     Text(
-                      "We'll personalize your experience",
+                      "We'll shape Discover around these labels first.",
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: AppConstants.spacing8),
                     ValueListenableBuilder<Set<String>>(
-                      valueListenable: _selectedIds,
-                      builder: (context, selectedIds, _) {
-                        return GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          mainAxisSpacing: AppConstants.itemGap,
-                          crossAxisSpacing: AppConstants.itemGap,
-                          childAspectRatio: 1.1,
-                          children: PreferenceCategory.all
-                              .map(
-                                (category) => CategoryCard(
-                                  key: ValueKey(category.id),
-                                  category: category,
-                                  isSelected: selectedIds.contains(category.id),
-                                  onTap: () => _toggleCategory(category.id),
-                                ),
-                              )
-                              .toList(),
+                      valueListenable: _selectedBrands,
+                      builder: (context, selectedBrands, _) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: BrandGroup.all
+                              .map((group) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: AppConstants.sectionGap,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        group.label,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              color: AppColors.onSurface,
+                                            ),
+                                      ),
+                                      const SizedBox(
+                                        height: AppConstants.spacing3,
+                                      ),
+                                      Wrap(
+                                        spacing: AppConstants.spacing2,
+                                        runSpacing: AppConstants.spacing2,
+                                        children: group.brands
+                                            .map((brand) {
+                                              final isSelected = selectedBrands
+                                                  .contains(brand);
+                                              return FilterChip(
+                                                label: Text(brand),
+                                                selected: isSelected,
+                                                onSelected: (_) =>
+                                                    _toggleBrand(brand),
+                                                selectedColor: colorScheme
+                                                    .primary
+                                                    .withValues(alpha: 0.14),
+                                                checkmarkColor:
+                                                    colorScheme.primary,
+                                                backgroundColor: AppColors
+                                                    .surfaceContainerLowest,
+                                                side: BorderSide(
+                                                  color: isSelected
+                                                      ? colorScheme.primary
+                                                      : AppColors
+                                                            .outlineVariant,
+                                                ),
+                                                labelStyle: TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  color: isSelected
+                                                      ? colorScheme.primary
+                                                      : AppColors.onSurface,
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 10,
+                                                    ),
+                                              );
+                                            })
+                                            .toList(growable: false),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              })
+                              .toList(growable: false),
                         );
                       },
                     ),
-                    const SizedBox(height: AppConstants.sectionGap),
                   ],
                 ),
               ),
@@ -121,9 +170,9 @@ class _OnboardingPreferencesScreenState
               child: Column(
                 children: [
                   ValueListenableBuilder<Set<String>>(
-                    valueListenable: _selectedIds,
-                    builder: (context, selectedIds, _) {
-                      final hasSelection = selectedIds.isNotEmpty;
+                    valueListenable: _selectedBrands,
+                    builder: (context, selectedBrands, _) {
+                      final hasSelection = selectedBrands.isNotEmpty;
                       return AnimatedOpacity(
                         opacity: hasSelection ? 1.0 : 0.5,
                         duration: const Duration(milliseconds: 180),
@@ -165,11 +214,10 @@ class _OnboardingPreferencesScreenState
                                   )
                                 : Text(
                                     'Start Exploring',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleSmall?.copyWith(
-                                      color: Colors.white,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(color: Colors.white),
                                   ),
                           ),
                         ),

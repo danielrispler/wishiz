@@ -27,10 +27,7 @@ abstract class AuthRepository {
     String? newPassword,
   });
 
-  Future<AuthResult> savePreferences({
-    required List<String> categoryIds,
-    required List<String> brandNames,
-  });
+  Future<AuthResult> savePreferences({required List<String> brandNames});
 
   Future<void> logOut();
 }

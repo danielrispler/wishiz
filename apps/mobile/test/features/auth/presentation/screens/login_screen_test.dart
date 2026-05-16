@@ -12,15 +12,14 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: LoginScreen(
-          authRepository: authRepository,
-          onShowSignUp: () {},
-        ),
+        home: LoginScreen(authRepository: authRepository, onShowSignUp: () {}),
       ),
     );
 
     await tester.enterText(
-        find.byType(TextFormField).at(0), 'dana@example.com');
+      find.byType(TextFormField).at(0),
+      'dana@example.com',
+    );
     await tester.enterText(find.byType(TextFormField).at(1), 'password123');
 
     await tester.tap(find.text('Log In'));
@@ -44,12 +43,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
-    loginCalls.add(
-      _LoginCall(
-        email: email,
-        password: password,
-      ),
-    );
+    loginCalls.add(_LoginCall(email: email, password: password));
     final user = AppUser(
       id: 'user-1',
       email: email,
@@ -61,8 +55,9 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> saveOnboardingCategories(List<String> categoryIds) async =>
-      AuthResult.success(getCurrentUser()!);
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+  }) async => AuthResult.success(getCurrentUser()!);
 
   @override
   Future<void> logOut() async {}
@@ -96,10 +91,7 @@ class _FakeAuthRepository implements AuthRepository {
 }
 
 class _LoginCall {
-  const _LoginCall({
-    required this.email,
-    required this.password,
-  });
+  const _LoginCall({required this.email, required this.password});
 
   final String email;
   final String password;

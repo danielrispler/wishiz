@@ -13,20 +13,12 @@ import (
 
 type AuthMiddleware func(http.HandlerFunc) http.HandlerFunc
 
-type UserReader interface {
-	GetPreferredCategories(ctx context.Context, userID string) ([]string, []string, error)
-}
-
 type Service interface {
-	GetFeed(ctx context.Context, userID string, categories, brands []string) (application.DiscoverFeed, error)
+	GetFeed(ctx context.Context, userID string, brands []string) (application.DiscoverFeed, error)
 	ToggleSave(ctx context.Context, userID, productID string) (bool, int, error)
 	GrabStarterPack(ctx context.Context, userID, packID, wishlistID string) (int, error)
 	SeedProduct(ctx context.Context, rawURL, category string) (domain.DiscoverProduct, error)
 	CreateStarterPack(ctx context.Context, title, subtitle, coverImageURL string, productIDs []string) (domain.StarterPack, error)
-}
-
-type AuthService interface {
-	GetCurrentUser(ctx context.Context, userID string) (interface{ GetPreferences() ([]string, []string) }, error)
 }
 
 type handler struct {
@@ -37,7 +29,7 @@ type handler struct {
 }
 
 type authGetter interface {
-	GetPreferences(ctx context.Context, userID string) (categories []string, brands []string, err error)
+	GetPreferences(ctx context.Context, userID string) ([]string, error)
 }
 
 func RegisterRoutes(
@@ -76,9 +68,9 @@ func (h handler) requireInternalKey(next http.HandlerFunc) http.HandlerFunc {
 // ---- Feed ----
 
 type feedResponse struct {
-	StarterPacks []starterPackResponse  `json:"starterPacks"`
-	Trending     []productResponse      `json:"trending"`
-	ForYou       []productResponse      `json:"forYou"`
+	StarterPacks []starterPackResponse `json:"starterPacks"`
+	Trending     []productResponse     `json:"trending"`
+	ForYou       []productResponse     `json:"forYou"`
 }
 
 func (h handler) getFeed(w http.ResponseWriter, r *http.Request) {
@@ -88,13 +80,13 @@ func (h handler) getFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	categories, brands, err := h.authService.GetPreferences(r.Context(), user.ID)
+	brands, err := h.authService.GetPreferences(r.Context(), user.ID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 
-	feed, err := h.service.GetFeed(r.Context(), user.ID, categories, brands)
+	feed, err := h.service.GetFeed(r.Context(), user.ID, brands)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

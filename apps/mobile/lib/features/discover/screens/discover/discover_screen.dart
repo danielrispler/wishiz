@@ -8,7 +8,6 @@ import 'package:wishiz/features/discover/domain/entities/discover_feed.dart';
 import 'package:wishiz/features/discover/domain/repositories/discover_repository.dart';
 import 'package:wishiz/features/discover/models/product.dart';
 import 'package:wishiz/features/discover/models/starter_pack.dart';
-import 'package:wishiz/features/onboarding/domain/entities/preference_category.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'components/product_carousel/product_carousel.dart';
@@ -34,7 +33,6 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  late Set<String> _selectedCategoryIds;
   late Set<String> _selectedBrandNames;
 
   DiscoverFeed? _feed;
@@ -44,7 +42,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedCategoryIds = widget.currentUser.onboardingCategories.toSet();
     _selectedBrandNames = widget.currentUser.preferredBrands.toSet();
     _loadFeed();
   }
@@ -52,12 +49,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   @override
   void didUpdateWidget(covariant DiscoverScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_sameSet(
-      oldWidget.currentUser.onboardingCategories.toSet(),
-      widget.currentUser.onboardingCategories.toSet(),
-    )) {
-      _selectedCategoryIds = widget.currentUser.onboardingCategories.toSet();
-    }
     if (!_sameSet(
       oldWidget.currentUser.preferredBrands.toSet(),
       widget.currentUser.preferredBrands.toSet(),
@@ -101,6 +92,26 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   void _handleToggleSave(Product p, bool _) async {
+    if (p.isSavedByUser) {
+      _optimisticToggle(p);
+      try {
+        if (widget.discoverRepository != null) {
+          await widget.discoverRepository!.toggleSave(p.id);
+        }
+      } catch (_) {
+        if (!mounted) return;
+        _optimisticToggle(p);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Could not remove that save right now.'),
+            ),
+          );
+      }
+      return;
+    }
+
     final wishlistRepository = widget.wishlistRepository;
     if (wishlistRepository == null) {
       _optimisticToggle(p);
@@ -285,7 +296,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Future<void> _openPreferencesSheet() async {
-    var draftCategories = Set<String>.of(_selectedCategoryIds);
     var draftBrands = Set<String>.of(_selectedBrandNames);
 
     await showModalBottomSheet<void>(
@@ -295,18 +305,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       backgroundColor: AppColors.surface,
       builder: (sheetContext) {
         return _PreferencesSheet(
-          initialCategories: draftCategories,
           initialBrands: draftBrands,
-          onChanged: ({required Set<String> categories, required Set<String> brands}) {
-            draftCategories = categories;
-            draftBrands = brands;
-          },
+          onChanged: (brands) => draftBrands = brands,
         );
       },
     );
 
     final result = await widget.authRepository.savePreferences(
-      categoryIds: _orderedCategoryIds(draftCategories),
       brandNames: draftBrands.toList(),
     );
 
@@ -314,7 +319,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
     if (result.isSuccess) {
       setState(() {
-        _selectedCategoryIds = draftCategories;
         _selectedBrandNames = draftBrands;
       });
       _loadFeed();
@@ -324,7 +328,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              result.errorMessage ?? 'Unable to save your preferences right now.',
+              result.errorMessage ??
+                  'Unable to save your preferences right now.',
             ),
           ),
         );
@@ -371,7 +376,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Text(
                         _loadError!,
-                        style: const TextStyle(color: AppColors.onSurfaceVariant),
+                        style: const TextStyle(
+                          color: AppColors.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
@@ -407,10 +414,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   SliverToBoxAdapter(
                     child: SectionHeader(
                       label: 'For you',
-                      eyebrow: _selectedCategoryIds.isEmpty &&
-                              _selectedBrandNames.isEmpty
+                      eyebrow: _selectedBrandNames.isEmpty
                           ? 'Set your preferences to tailor this mix'
-                          : 'Shaped by the categories and brands you picked',
+                          : 'Shaped by the fashion brands you picked',
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 14)),
@@ -430,13 +436,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  List<String> _orderedCategoryIds(Set<String> selectedIds) {
-    return PreferenceCategory.all
-        .where((category) => selectedIds.contains(category.id))
-        .map((category) => category.id)
-        .toList(growable: false);
-  }
-
   bool _sameSet(Set<String> left, Set<String> right) {
     if (left.length != right.length) return false;
     for (final value in left) {
@@ -450,32 +449,28 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
 class _PreferencesSheet extends StatefulWidget {
   const _PreferencesSheet({
-    required this.initialCategories,
     required this.initialBrands,
     required this.onChanged,
   });
 
-  final Set<String> initialCategories;
   final Set<String> initialBrands;
-  final void Function({required Set<String> categories, required Set<String> brands}) onChanged;
+  final ValueChanged<Set<String>> onChanged;
 
   @override
   State<_PreferencesSheet> createState() => _PreferencesSheetState();
 }
 
 class _PreferencesSheetState extends State<_PreferencesSheet> {
-  late Set<String> _categories;
   late Set<String> _brands;
 
   @override
   void initState() {
     super.initState();
-    _categories = Set<String>.of(widget.initialCategories);
     _brands = Set<String>.of(widget.initialBrands);
   }
 
   void _notifyChanged() {
-    widget.onChanged(categories: _categories, brands: _brands);
+    widget.onChanged(_brands);
   }
 
   @override
@@ -483,7 +478,10 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          20, 8, 20, 20 + MediaQuery.of(context).viewInsets.bottom,
+          20,
+          8,
+          20,
+          20 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Center(
           child: ConstrainedBox(
@@ -552,23 +550,25 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: group.brands.map((brand) {
-                      final isSelected = _brands.contains(brand);
-                      return _PreferenceChip(
-                        label: brand,
-                        isSelected: isSelected,
-                        onTap: () {
-                          setState(() {
-                            if (isSelected) {
-                              _brands.remove(brand);
-                            } else {
-                              _brands.add(brand);
-                            }
-                          });
-                          _notifyChanged();
-                        },
-                      );
-                    }).toList(growable: false),
+                    children: group.brands
+                        .map((brand) {
+                          final isSelected = _brands.contains(brand);
+                          return _PreferenceChip(
+                            label: brand,
+                            isSelected: isSelected,
+                            onTap: () {
+                              setState(() {
+                                if (isSelected) {
+                                  _brands.remove(brand);
+                                } else {
+                                  _brands.add(brand);
+                                }
+                              });
+                              _notifyChanged();
+                            },
+                          );
+                        })
+                        .toList(growable: false),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -608,9 +608,7 @@ class _PreferenceChip extends StatelessWidget {
         color: isSelected ? AppColors.primary : AppColors.onSurface,
       ),
       backgroundColor: AppColors.surfaceContainerLowest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(999),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
     );
   }
@@ -733,7 +731,8 @@ class _PreferenceRow extends StatelessWidget {
                         ]
                       : [
                           _PreferencePill(
-                            label: '$brandCount brand${brandCount == 1 ? '' : 's'}',
+                            label:
+                                '$brandCount brand${brandCount == 1 ? '' : 's'}',
                             icon: Icons.favorite_border_rounded,
                           ),
                         ],

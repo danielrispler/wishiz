@@ -195,10 +195,7 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> savePreferences({
-    required List<String> categoryIds,
-    required List<String> brandNames,
-  }) async {
+  Future<AuthResult> savePreferences({required List<String> brandNames}) async {
     final currentUser = _currentUser;
     if (currentUser == null) {
       return const AuthResult.failure('No account is signed in right now.');
@@ -210,7 +207,6 @@ class LocalAuthRepository implements AuthRepository {
     }
 
     final updatedUser = _storedUsers[index].copyWith(
-      onboardingCategories: categoryIds,
       preferredBrands: brandNames,
     );
     _storedUsers[index] = updatedUser;
@@ -220,7 +216,6 @@ class LocalAuthRepository implements AuthRepository {
       await _persist();
     } catch (_) {
       _storedUsers[index] = _storedUsers[index].copyWith(
-        onboardingCategories: currentUser.onboardingCategories,
         preferredBrands: currentUser.preferredBrands,
       );
       _setCurrentUser(currentUser);
@@ -302,7 +297,6 @@ class _StoredUser {
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
     this.reminderDays = 14,
-    this.onboardingCategories = const [],
     this.preferredBrands = const [],
   });
 
@@ -314,7 +308,6 @@ class _StoredUser {
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
-  final List<String> onboardingCategories;
   final List<String> preferredBrands;
 
   AppUser toAppUser() {
@@ -326,7 +319,6 @@ class _StoredUser {
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
-      onboardingCategories: onboardingCategories,
       preferredBrands: preferredBrands,
     );
   }
@@ -340,7 +332,6 @@ class _StoredUser {
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
     int? reminderDays,
-    List<String>? onboardingCategories,
     List<String>? preferredBrands,
   }) {
     return _StoredUser(
@@ -353,7 +344,6 @@ class _StoredUser {
           preferredCurrencyCode ?? this.preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       reminderDays: reminderDays ?? this.reminderDays,
-      onboardingCategories: onboardingCategories ?? this.onboardingCategories,
       preferredBrands: preferredBrands ?? this.preferredBrands,
     );
   }
@@ -368,7 +358,6 @@ class _StoredUser {
       'preferredCurrencyCode': preferredCurrencyCode,
       'notificationsEnabled': notificationsEnabled,
       'reminderDays': reminderDays,
-      'onboardingCategories': onboardingCategories,
       'preferredBrands': preferredBrands,
     };
   }
@@ -389,9 +378,6 @@ class _StoredUser {
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
       reminderDays: json['reminderDays'] as int? ?? 14,
-      onboardingCategories:
-          (json['onboardingCategories'] as List<dynamic>?)?.cast<String>() ??
-          const [],
       preferredBrands:
           (json['preferredBrands'] as List<dynamic>?)?.cast<String>() ??
           const [],

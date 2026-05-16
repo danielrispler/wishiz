@@ -41,7 +41,6 @@ func (r *Repository) CreateUser(ctx context.Context, params ports.CreateUserPara
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
-			onboarding_categories,
 			preferred_brands,
 			created_at,
 			updated_at
@@ -67,7 +66,6 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.U
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
-			onboarding_categories,
 			preferred_brands,
 			created_at,
 			updated_at,
@@ -96,7 +94,6 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (domain.User, s
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
-			onboarding_categories,
 			preferred_brands,
 			created_at,
 			updated_at,
@@ -116,7 +113,6 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (domain.User, s
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserParams) (domain.User, error) {
-	rawCats := preferencesToStrings(params.OnboardingCategories)
 	rawBrands := params.PreferredBrands
 	if rawBrands == nil {
 		rawBrands = []string{}
@@ -131,8 +127,7 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 			preferred_currency_code = $6,
 			notifications_enabled = $7,
 			reminder_days = $8,
-			onboarding_categories = $9,
-			preferred_brands = $10,
+			preferred_brands = $9,
 			updated_at = NOW()
 		WHERE id = $1::uuid
 		RETURNING
@@ -143,12 +138,11 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
-			onboarding_categories,
 			preferred_brands,
 			created_at,
 			updated_at
 	`, params.ID, params.Email, params.FullName, params.Birthday, params.PasswordHash,
-		params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays, rawCats, rawBrands)
+		params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays, rawBrands)
 
 	user, err := scanUser(row)
 	if isUniqueViolation(err) {
@@ -163,14 +157,13 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 	return user, nil
 }
 
-func (r *Repository) UpdateUserPreferences(ctx context.Context, userID string, categories []domain.Preference, brands []string) (domain.User, error) {
-	rawCats := preferencesToStrings(categories)
+func (r *Repository) UpdateUserPreferences(ctx context.Context, userID string, brands []string) (domain.User, error) {
 	if brands == nil {
 		brands = []string{}
 	}
 	row := r.pool.QueryRow(ctx, `
 		UPDATE app_users
-		SET onboarding_categories = $2, preferred_brands = $3, updated_at = NOW()
+		SET preferred_brands = $2, updated_at = NOW()
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
@@ -180,11 +173,10 @@ func (r *Repository) UpdateUserPreferences(ctx context.Context, userID string, c
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
-			onboarding_categories,
 			preferred_brands,
 			created_at,
 			updated_at
-	`, userID, rawCats, brands)
+	`, userID, brands)
 
 	user, err := scanUser(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -222,7 +214,6 @@ func (r *Repository) GetUserBySessionTokenHash(ctx context.Context, tokenHash st
 			u.preferred_currency_code,
 			u.notifications_enabled,
 			u.reminder_days,
-			u.onboarding_categories,
 			u.preferred_brands,
 			u.created_at,
 			u.updated_at
@@ -258,7 +249,6 @@ func (r *Repository) DeleteSessionByTokenHash(ctx context.Context, tokenHash str
 
 func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 	var user domain.User
-	var rawCategories []string
 	var rawBrands []string
 	err := row.Scan(
 		&user.ID,
@@ -268,7 +258,6 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 		&user.PreferredCurrencyCode,
 		&user.NotificationsEnabled,
 		&user.ReminderDays,
-		&rawCategories,
 		&rawBrands,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -276,7 +265,6 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 	if err != nil {
 		return domain.User{}, err
 	}
-	user.OnboardingCategories = stringsToPreferences(rawCategories)
 	user.PreferredBrands = rawBrands
 	if user.PreferredBrands == nil {
 		user.PreferredBrands = []string{}
@@ -286,7 +274,6 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 
 func scanUserWithPasswordHash(row interface{ Scan(...any) error }) (domain.User, string, error) {
 	var user domain.User
-	var rawCategories []string
 	var rawBrands []string
 	var passwordHash string
 	err := row.Scan(
@@ -297,7 +284,6 @@ func scanUserWithPasswordHash(row interface{ Scan(...any) error }) (domain.User,
 		&user.PreferredCurrencyCode,
 		&user.NotificationsEnabled,
 		&user.ReminderDays,
-		&rawCategories,
 		&rawBrands,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -306,31 +292,11 @@ func scanUserWithPasswordHash(row interface{ Scan(...any) error }) (domain.User,
 	if err != nil {
 		return domain.User{}, "", err
 	}
-	user.OnboardingCategories = stringsToPreferences(rawCategories)
 	user.PreferredBrands = rawBrands
 	if user.PreferredBrands == nil {
 		user.PreferredBrands = []string{}
 	}
 	return user, passwordHash, nil
-}
-
-func preferencesToStrings(prefs []domain.Preference) []string {
-	if len(prefs) == 0 {
-		return []string{}
-	}
-	raw := make([]string, len(prefs))
-	for i, p := range prefs {
-		raw[i] = string(p)
-	}
-	return raw
-}
-
-func stringsToPreferences(raw []string) []domain.Preference {
-	prefs := make([]domain.Preference, len(raw))
-	for i, s := range raw {
-		prefs[i] = domain.Preference(s)
-	}
-	return prefs
 }
 
 func isUniqueViolation(err error) bool {

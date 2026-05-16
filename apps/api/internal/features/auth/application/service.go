@@ -187,7 +187,6 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
 		NotificationsEnabled:  input.NotificationsEnabled,
 		ReminderDays:          normalizeReminderDays(input.ReminderDays),
-		OnboardingCategories:  currentUser.OnboardingCategories,
 		PreferredBrands:       currentUser.PreferredBrands,
 	})
 	if errors.Is(err, ports.ErrEmailConflict) {
@@ -200,19 +199,15 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	return updated, nil
 }
 
-func (s *Service) SavePreferences(ctx context.Context, userID string, rawCategories []string, rawBrands []string) (domain.User, error) {
+func (s *Service) SavePreferences(ctx context.Context, userID string, rawBrands []string) (domain.User, error) {
 	if strings.TrimSpace(userID) == "" {
 		return domain.User{}, ValidationError("userID", "userID is required")
-	}
-	prefs, err := parsePreferences(rawCategories)
-	if err != nil {
-		return domain.User{}, err
 	}
 	brands, err := parseBrands(rawBrands)
 	if err != nil {
 		return domain.User{}, err
 	}
-	user, err := s.repo.UpdateUserPreferences(ctx, userID, prefs, brands)
+	user, err := s.repo.UpdateUserPreferences(ctx, userID, brands)
 	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, NotFound("user not found")
 	}
@@ -237,19 +232,15 @@ func parseBrands(raw []string) ([]string, error) {
 	return brands, nil
 }
 
-func (s *Service) GetPreferences(ctx context.Context, userID string) (categories []string, brands []string, err error) {
+func (s *Service) GetPreferences(ctx context.Context, userID string) ([]string, error) {
 	user, _, err := s.repo.GetUserByID(ctx, userID)
 	if errors.Is(err, ports.ErrNotFound) {
-		return nil, nil, NotFound("user not found")
+		return nil, NotFound("user not found")
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	cats := make([]string, len(user.OnboardingCategories))
-	for i, p := range user.OnboardingCategories {
-		cats[i] = string(p)
-	}
-	return cats, user.PreferredBrands, nil
+	return user.PreferredBrands, nil
 }
 
 func (s *Service) LogOut(ctx context.Context, rawToken string) error {
@@ -262,18 +253,6 @@ func (s *Service) LogOut(ctx context.Context, rawToken string) error {
 		return nil
 	}
 	return err
-}
-
-func parsePreferences(raw []string) ([]domain.Preference, error) {
-	prefs := make([]domain.Preference, 0, len(raw))
-	for _, s := range raw {
-		p, err := domain.ParsePreference(strings.ToLower(strings.TrimSpace(s)))
-		if err != nil {
-			return nil, ValidationError("categories", fmt.Sprintf("invalid category %q", s))
-		}
-		prefs = append(prefs, p)
-	}
-	return prefs, nil
 }
 
 func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserParams, error) {

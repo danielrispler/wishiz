@@ -489,7 +489,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   Widget _buildDetailsSection(BuildContext context) {
     return EditorSectionCard(
       title: 'Item details',
-      description: 'Use a clear name, short notes, and an easy-to-read price.',
       child: Column(
         children: [
           LayoutBuilder(

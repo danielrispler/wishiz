@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	utls "github.com/refraction-networking/utls"
 
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 )
@@ -23,7 +25,7 @@ type Scraper struct {
 func NewScraper(resolver scrapeapp.HostResolver) *Scraper {
 	return &Scraper{
 		client: &http.Client{
-			Transport: http.DefaultTransport,
+			Transport: newUTLSTransport(),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				ctx := req.Context()
 				if err := scrapeapp.IsRedirectAllowed(ctx, resolver, req.URL.String()); err != nil {
@@ -168,5 +170,37 @@ func javascriptRedirect(html string) string {
 
 var metaRefreshPattern = regexp.MustCompile(`(?i)url\s*=\s*['"]?([^'";]+)`)
 var javascriptRedirectPattern = regexp.MustCompile(`(?i)(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]`)
+
+func newUTLSTransport() *http.Transport {
+	return &http.Transport{
+		ForceAttemptHTTP2: false,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := net.DialTimeout(network, addr, 10*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			host, _, _ := net.SplitHostPort(addr)
+			uConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+
+			if err := uConn.BuildHandshakeState(); err != nil {
+				conn.Close()
+				return nil, err
+			}
+
+			for _, ext := range uConn.Extensions {
+				if alpn, ok := ext.(*utls.ALPNExtension); ok {
+					alpn.AlpnProtocols = []string{"http/1.1"}
+					break
+				}
+			}
+
+			if err := uConn.HandshakeContext(ctx); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return uConn, nil
+		},
+	}
+}
 
 var _ scrapeapp.Scraper = (*Scraper)(nil)

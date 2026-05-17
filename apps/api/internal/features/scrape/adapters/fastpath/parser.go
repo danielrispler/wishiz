@@ -69,6 +69,10 @@ func detectMerchant(host string) string {
 		return "derococo"
 	case strings.Contains(normalized, "factory54.co.il"):
 		return "factory54"
+	case strings.Contains(normalized, "aloyoga.com"):
+		return "aloyoga"
+	case strings.Contains(normalized, "lululemon.com"):
+		return "lululemon"
 	default:
 		return ""
 	}
@@ -173,8 +177,8 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 		}
 	case "factory54":
 		priceText := firstNonEmpty(
-			textOf(document, `.price > .sale-price > .price-inverse.inline`),
-			textOf(document, `.price > .price-inverse.inline`),
+			textOf(document, `.price > .sale-price`),
+			textOf(document, `.sale-price`),
 		)
 		return scrapeapp.Product{
 			Name: firstNonEmpty(
@@ -184,6 +188,45 @@ func extractMerchantProduct(document *goquery.Document, merchant string) scrapea
 			ImageURL: firstNonEmpty(
 				metaContent(document, "og:image", "property"),
 				firstSource(document, `img[itemprop="image"]`, "src"),
+			),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
+		}
+	case "aloyoga":
+		// Shopify store: price in .Price class (capital P), JS-rendered
+		priceText := firstNonEmpty(
+			textOf(document, `.Price`),
+			textOf(document, `[class*="Price"]`),
+		)
+		return scrapeapp.Product{
+			Name: firstNonEmpty(
+				textOf(document, "h1"),
+				metaContent(document, "og:title", "property"),
+			),
+			ImageURL: firstNonEmpty(
+				metaContent(document, "og:image", "property"),
+				firstSource(document, `img[class*="product"]`, "src", "srcset"),
+			),
+			PriceAmount:     amountFromText(priceText),
+			PriceCurrency:   currencyFromText(priceText),
+			PriceConfidence: scrapeapp.PriceConfidenceHigh,
+			PriceSource:     scrapeapp.PriceSourceMerchantSelector,
+			PriceRawText:    priceText,
+		}
+	case "lululemon":
+		// CSS module class name contains "price_price__" followed by hash
+		priceText := textOf(document, `[class*="price_price__"]`)
+		return scrapeapp.Product{
+			Name: firstNonEmpty(
+				textOf(document, "h1"),
+				metaContent(document, "og:title", "property"),
+			),
+			ImageURL: firstNonEmpty(
+				metaContent(document, "og:image", "property"),
+				firstSource(document, `[class*="product"] img`, "src", "srcset"),
 			),
 			PriceAmount:     amountFromText(priceText),
 			PriceCurrency:   currencyFromText(priceText),

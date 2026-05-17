@@ -42,6 +42,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// Tracks which wishlist each saved product was added to (by product id).
   final Map<String, Wishlist> _savedProductWishlists = {};
 
+  /// Tracks the wishlist item id for products saved in this session.
+  final Map<String, String> _savedItemIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +63,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  Future<void> _loadFeed() async {
+  Future<void> _loadFeed({bool showShimmer = true}) async {
     if (widget.discoverRepository == null) {
       setState(() {
         _feed = DiscoverFeed(
@@ -74,7 +77,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
 
     setState(() {
-      _isLoading = true;
+      if (showShimmer) _isLoading = true;
       _loadError = null;
     });
 
@@ -135,7 +138,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       if (widget.discoverRepository != null) {
         await widget.discoverRepository!.toggleSave(p.id);
       }
-      await wishlistRepository.addWishlistItem(
+      final item = await wishlistRepository.addWishlistItem(
         wishlistId: wishlist.id,
         title: p.title,
         imageUrl: p.imageUrl,
@@ -143,6 +146,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         priceLabel: p.priceLabel,
       );
       if (!mounted) return true;
+      setState(() => _savedItemIds[p.id] = item.id);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -152,22 +156,43 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     } catch (_) {
       if (!mounted) return false;
       _optimisticToggle(p);
-      setState(() => _savedProductWishlists.remove(p.id));
+      setState(() {
+        _savedProductWishlists.remove(p.id);
+        _savedItemIds.remove(p.id);
+      });
       return false;
     }
   }
 
   /// Removes product from its saved list.
   Future<void> _removeFromList(Product p) async {
+    final wishlist = _savedProductWishlists[p.id];
+    final itemId = _savedItemIds[p.id];
+
     _optimisticToggle(p);
-    setState(() => _savedProductWishlists.remove(p.id));
+    setState(() {
+      _savedProductWishlists.remove(p.id);
+      _savedItemIds.remove(p.id);
+    });
     try {
       if (widget.discoverRepository != null) {
         await widget.discoverRepository!.toggleSave(p.id);
       }
+      if (wishlist != null &&
+          itemId != null &&
+          widget.wishlistRepository != null) {
+        await widget.wishlistRepository!.deleteWishlistItem(
+          wishlistId: wishlist.id,
+          itemId: itemId,
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       _optimisticToggle(p);
+      setState(() {
+        if (wishlist != null) _savedProductWishlists[p.id] = wishlist;
+        if (itemId != null) _savedItemIds[p.id] = itemId;
+      });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -284,15 +309,26 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       },
     );
 
+    if (_sameSet(draftBrands, _selectedBrandNames)) return;
+
+    await _savePreferences(draftBrands);
+  }
+
+  Future<void> _removeBrandPreference(String brand) async {
+    final nextBrands = Set<String>.of(_selectedBrandNames)..remove(brand);
+    await _savePreferences(nextBrands);
+  }
+
+  Future<void> _savePreferences(Set<String> brandNames) async {
     final result = await widget.authRepository.savePreferences(
-      brandNames: draftBrands.toList(),
+      brandNames: brandNames.toList(),
     );
 
     if (!mounted) return;
 
     if (result.isSuccess) {
       setState(() {
-        _selectedBrandNames = draftBrands;
+        _selectedBrandNames = brandNames;
       });
       _loadFeed();
     } else {
@@ -328,7 +364,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         children: [
           const _AmbientBackdrop(),
           RefreshIndicator(
-            onRefresh: _loadFeed,
+            onRefresh: () => _loadFeed(showShimmer: false),
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
@@ -340,6 +376,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   child: _PreferenceRow(
                     selectedBrandNames: _selectedBrandNames,
                     onEdit: _openPreferencesSheet,
+                    onRemoveBrand: _removeBrandPreference,
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 18)),
@@ -516,6 +553,7 @@ class _PreferencesSheet extends StatefulWidget {
 
 class _PreferencesSheetState extends State<_PreferencesSheet> {
   late Set<String> _brands;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -529,6 +567,22 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final normalizedQuery = _searchQuery.trim().toLowerCase();
+    final filteredGroups = BrandGroup.all
+        .map((group) {
+          final brands = group.brands
+              .where(
+                (brand) => normalizedQuery.isEmpty
+                    ? true
+                    : brand.toLowerCase().contains(normalizedQuery),
+              )
+              .toList(growable: false);
+          return (label: group.label, brands: brands);
+        })
+        .where((group) => group.brands.isNotEmpty)
+        .toList(growable: false);
+    final selectedBrands = _brands.toList()..sort();
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
@@ -581,17 +635,128 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Brands',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.onSurfaceVariant,
-                    letterSpacing: 0.6,
+                Row(
+                  children: [
+                    const Text(
+                      'Brands',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurfaceVariant,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _brands.isEmpty
+                          ? null
+                          : () {
+                              setState(_brands.clear);
+                              _notifyChanged();
+                            },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Clear all',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search brands',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.9),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(
+                        color: AppColors.surfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: AppColors.primary),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
-                for (final group in BrandGroup.all) ...[
+                if (selectedBrands.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final brand in selectedBrands)
+                        InputChip(
+                          label: Text(brand),
+                          onDeleted: () {
+                            setState(() {
+                              _brands.remove(brand);
+                            });
+                            _notifyChanged();
+                          },
+                          deleteIcon: const Icon(Icons.close_rounded, size: 16),
+                          deleteIconColor: AppColors.primary,
+                          backgroundColor: AppColors.primary.withValues(
+                            alpha: 0.08,
+                          ),
+                          side: BorderSide(
+                            color: AppColors.primary.withValues(alpha: 0.2),
+                          ),
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.onSurface,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (filteredGroups.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.surfaceVariant),
+                    ),
+                    child: const Text(
+                      'No brands match your search.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                for (final group in filteredGroups) ...[
                   Text(
                     group.label,
                     style: const TextStyle(
@@ -674,10 +839,12 @@ class _PreferenceRow extends StatelessWidget {
   const _PreferenceRow({
     required this.selectedBrandNames,
     required this.onEdit,
+    required this.onRemoveBrand,
   });
 
   final Set<String> selectedBrandNames;
   final VoidCallback onEdit;
+  final ValueChanged<String> onRemoveBrand;
 
   @override
   Widget build(BuildContext context) {
@@ -768,7 +935,11 @@ class _PreferenceRow extends StatelessWidget {
                     runSpacing: 6,
                     children: [
                       for (final brand in previewBrands)
-                        _PreferencePill(label: brand, compact: true),
+                        _PreferencePill(
+                          label: brand,
+                          compact: true,
+                          onDeleted: () => onRemoveBrand(brand),
+                        ),
                       if (remainingBrands > 0)
                         _PreferencePill(
                           label: '+$remainingBrands',
@@ -792,12 +963,14 @@ class _PreferencePill extends StatelessWidget {
     this.icon,
     this.isPlaceholder = false,
     this.compact = false,
+    this.onDeleted,
   });
 
   final String label;
   final IconData? icon;
   final bool isPlaceholder;
   final bool compact;
+  final VoidCallback? onDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -830,6 +1003,18 @@ class _PreferencePill extends StatelessWidget {
               color: isPlaceholder ? AppColors.primary : AppColors.onSurface,
             ),
           ),
+          if (onDeleted != null) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: onDeleted,
+              behavior: HitTestBehavior.opaque,
+              child: Icon(
+                Icons.close_rounded,
+                size: compact ? 14 : 16,
+                color: AppColors.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );

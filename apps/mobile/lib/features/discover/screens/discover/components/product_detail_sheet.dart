@@ -33,6 +33,32 @@ class ProductDetailSheet extends StatefulWidget {
   State<ProductDetailSheet> createState() => _ProductDetailSheetState();
 }
 
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.surfaceVariant),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppColors.onSurfaceVariant,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductDetailSheetState extends State<ProductDetailSheet> {
   late bool _isSaved;
   bool _isLoading = false;
@@ -179,6 +205,18 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                     color: AppColors.onSurface,
                     letterSpacing: -0.2,
                   ),
+                ),
+              ],
+              if (p.category.isNotEmpty || (p.gender?.isNotEmpty ?? false)) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    if (p.category.isNotEmpty)
+                      _MetaChip(label: p.category),
+                    if (p.gender?.isNotEmpty ?? false)
+                      _MetaChip(label: p.gender!),
+                  ],
                 ),
               ],
               const SizedBox(height: 20),

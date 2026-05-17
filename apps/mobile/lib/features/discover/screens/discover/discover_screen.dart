@@ -294,16 +294,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 const SliverToBoxAdapter(child: _DisplayTitle()),
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                const SliverToBoxAdapter(child: _SearchBar()),
-                const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                const SliverToBoxAdapter(child: SizedBox(height: 10)),
                 SliverToBoxAdapter(
                   child: _PreferenceRow(
                     selectedBrandNames: _selectedBrandNames,
                     onEdit: _openPreferencesSheet,
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                const SliverToBoxAdapter(child: SizedBox(height: 18)),
                 if (_isLoading) ...[
                   SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -653,20 +651,20 @@ class _PreferenceRow extends StatelessWidget {
               Text(
                 'For you',
                 style: TextStyle(
-                  fontSize: 17,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: AppColors.onSurface,
                   letterSpacing: -0.25,
                 ),
               ),
-              SizedBox(height: 4),
+              SizedBox(height: 2),
               Text(
-                'Fine-tune what discovery should lean into.',
+                'Fine-tune your mix.',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: AppColors.onSurfaceVariant,
-                  height: 1.3,
+                  height: 1.2,
                 ),
               ),
             ],
@@ -677,12 +675,14 @@ class _PreferenceRow extends StatelessWidget {
             style: FilledButton.styleFrom(
               foregroundColor: AppColors.primary,
               backgroundColor: AppColors.surfaceContainerLow,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
-            icon: const Icon(Icons.tune_rounded, size: 18),
+            icon: const Icon(Icons.tune_rounded, size: 16),
             label: const Text(
               'Edit',
               style: TextStyle(fontWeight: FontWeight.w700),
@@ -691,7 +691,7 @@ class _PreferenceRow extends StatelessWidget {
 
           return Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -701,7 +701,7 @@ class _PreferenceRow extends StatelessWidget {
                   AppColors.surfaceContainerLow.withValues(alpha: 0.96),
                 ],
               ),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: AppColors.surfaceVariant.withValues(alpha: 0.8),
               ),
@@ -721,19 +721,19 @@ class _PreferenceRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: title),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       editButton,
                     ],
                   )
                 else ...[
                   title,
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   Align(alignment: Alignment.centerLeft, child: editButton),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: brandCount == 0
                       ? [
                           const _PreferencePill(
@@ -773,12 +773,12 @@ class _PreferencePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: isPlaceholder
             ? AppColors.surfaceContainerLow
             : AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isPlaceholder ? AppColors.primary : AppColors.surfaceVariant,
         ),
@@ -787,13 +787,13 @@ class _PreferencePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 16, color: AppColors.primary),
-            const SizedBox(width: 6),
+            Icon(icon, size: 14, color: AppColors.primary),
+            const SizedBox(width: 5),
           ],
           Text(
             label,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: isPlaceholder ? AppColors.primary : AppColors.onSurface,
             ),
@@ -1061,42 +1061,6 @@ class _DisplayTitle extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SearchBar extends StatelessWidget {
-  const _SearchBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.surfaceVariant),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.search_rounded, size: 20, color: AppColors.primary),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Search products or brands',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

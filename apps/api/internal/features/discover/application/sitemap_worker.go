@@ -464,14 +464,28 @@ func stringPtr(value string) *string {
 
 func newUTLSTransport() *http.Transport {
 	return &http.Transport{
-		ForceAttemptHTTP2: true,
+		ForceAttemptHTTP2: false,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := net.Dial(network, addr)
+			conn, err := net.DialTimeout(network, addr, 10*time.Second)
 			if err != nil {
 				return nil, err
 			}
 			host, _, _ := net.SplitHostPort(addr)
 			uConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+
+			if err := uConn.BuildHandshakeState(); err != nil {
+				conn.Close()
+				return nil, err
+			}
+
+			// Strip "h2" from ALPN to force HTTP/1.1 and prevent the framing mismatch
+			for _, ext := range uConn.Extensions {
+				if alpn, ok := ext.(*utls.ALPNExtension); ok {
+					alpn.AlpnProtocols = []string{"http/1.1"}
+					break
+				}
+			}
+
 			if err := uConn.HandshakeContext(ctx); err != nil {
 				conn.Close()
 				return nil, err

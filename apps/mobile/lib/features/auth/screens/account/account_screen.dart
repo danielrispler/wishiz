@@ -26,6 +26,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TextEditingController _newPasswordController;
 
   late DateTime _selectedBirthday;
+  late String? _selectedGender;
   late String _selectedCurrencyCode;
   late AppUser _savedUserSnapshot;
 
@@ -45,6 +46,7 @@ class _AccountScreenState extends State<AccountScreen> {
     _currentPasswordController = TextEditingController();
     _newPasswordController = TextEditingController();
     _selectedBirthday = user.birthday;
+    _selectedGender = user.gender;
     _selectedCurrencyCode = user.preferredCurrencyCode;
   }
 
@@ -62,6 +64,7 @@ class _AccountScreenState extends State<AccountScreen> {
     return _fullNameController.text.trim() != _savedUserSnapshot.fullName ||
         _emailController.text.trim() != _savedUserSnapshot.email ||
         !_isSameDate(_selectedBirthday, _savedUserSnapshot.birthday) ||
+        _selectedGender != _savedUserSnapshot.gender ||
         _selectedCurrencyCode != _savedUserSnapshot.preferredCurrencyCode ||
         _currentPasswordController.text.trim().isNotEmpty ||
         _newPasswordController.text.trim().isNotEmpty;
@@ -95,6 +98,7 @@ class _AccountScreenState extends State<AccountScreen> {
       email: _emailController.text.trim(),
       fullName: _fullNameController.text.trim(),
       birthday: _selectedBirthday,
+      gender: _selectedGender,
       preferredCurrencyCode: _selectedCurrencyCode,
       notificationsEnabled: user.notificationsEnabled,
       reminderDays: user.reminderDays,
@@ -189,13 +193,15 @@ class _AccountScreenState extends State<AccountScreen> {
                           birthdayController: _birthdayController,
                           currentPasswordController: _currentPasswordController,
                           newPasswordController: _newPasswordController,
+                          selectedGender: _selectedGender,
                           selectedCurrencyCode: _selectedCurrencyCode,
                           isChangingPassword: _isChangingPassword,
                           onSelectBirthday: _selectBirthday,
+                          onGenderChanged: (gender) =>
+                              setState(() => _selectedGender = gender),
                           onTogglePasswordEditing: _togglePasswordEditing,
-                          onCurrencyChanged: (code) => setState(
-                            () => _selectedCurrencyCode = code,
-                          ),
+                          onCurrencyChanged: (code) =>
+                              setState(() => _selectedCurrencyCode = code),
                           onFieldChanged: () => setState(() {}),
                           validateRequired: _validateRequired,
                           validateEmail: _validateEmail,
@@ -255,7 +261,9 @@ class _AccountScreenState extends State<AccountScreen> {
   String? _validateOptionalPassword(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return null;
-    if (trimmed.length < 6) return 'Use at least 6 characters for a new password.';
+    if (trimmed.length < 6) {
+      return 'Use at least 6 characters for a new password.';
+    }
     return null;
   }
 

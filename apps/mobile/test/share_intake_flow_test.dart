@@ -645,6 +645,7 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<AuthResult> savePreferences({
     required List<String> brandNames,
+    String? gender,
   }) async => AuthResult.success(getCurrentUser()!);
 
   @override
@@ -658,6 +659,7 @@ class FakeAuthRepository implements AuthRepository {
     required String password,
     required String fullName,
     required DateTime birthday,
+    String? gender,
   }) async {
     final user = AppUser(
       id: 'user-1',
@@ -674,6 +676,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String fullName,
     required DateTime birthday,
+    String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,

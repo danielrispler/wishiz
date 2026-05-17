@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     email CITEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
     birthday DATE NOT NULL,
+    gender TEXT,
     password_hash TEXT NOT NULL,
     preferred_currency_code TEXT NOT NULL DEFAULT 'USD',
     notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     preferred_brands TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT app_users_gender_check CHECK (gender IS NULL OR gender IN ('man', 'woman')),
     CONSTRAINT app_users_preferred_currency_code_check CHECK (preferred_currency_code ~ '^[A-Z]{3}$'),
     CONSTRAINT app_users_reminder_days_check CHECK (reminder_days BETWEEN 0 AND 365)
 );

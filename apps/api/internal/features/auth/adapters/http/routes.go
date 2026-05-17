@@ -19,7 +19,7 @@ type Service interface {
 	Authenticate(ctx context.Context, rawToken string) (domain.User, error)
 	GetCurrentUser(ctx context.Context, userID string) (domain.User, error)
 	UpdateCurrentUser(ctx context.Context, userID string, input *application.UpdateCurrentUserInput) (domain.User, error)
-	SavePreferences(ctx context.Context, userID string, brands []string) (domain.User, error)
+	SavePreferences(ctx context.Context, userID string, brands []string, gender *string) (domain.User, error)
 	LogOut(ctx context.Context, rawToken string) error
 }
 
@@ -33,6 +33,7 @@ type signUpRequest struct {
 	Password              string    `json:"password"`
 	FullName              string    `json:"fullName"`
 	Birthday              time.Time `json:"birthday"`
+	Gender                *string   `json:"gender"`
 	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
 	NotificationsEnabled  bool      `json:"notificationsEnabled"`
 	ReminderDays          int       `json:"reminderDays"`
@@ -47,6 +48,7 @@ type updateCurrentUserRequest struct {
 	Email                 string    `json:"email"`
 	FullName              string    `json:"fullName"`
 	Birthday              time.Time `json:"birthday"`
+	Gender                *string   `json:"gender"`
 	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
 	NotificationsEnabled  bool      `json:"notificationsEnabled"`
 	ReminderDays          int       `json:"reminderDays"`
@@ -56,6 +58,7 @@ type updateCurrentUserRequest struct {
 
 type savePreferencesRequest struct {
 	Brands []string `json:"brands"`
+	Gender *string  `json:"gender"`
 }
 
 type authResponse struct {
@@ -68,6 +71,7 @@ type userResponse struct {
 	Email                 string    `json:"email"`
 	FullName              string    `json:"fullName"`
 	Birthday              time.Time `json:"birthday"`
+	Gender                *string   `json:"gender"`
 	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
 	NotificationsEnabled  bool      `json:"notificationsEnabled"`
 	ReminderDays          int       `json:"reminderDays"`
@@ -123,6 +127,7 @@ func (h handler) signUp(w http.ResponseWriter, r *http.Request) {
 		Password:              request.Password,
 		FullName:              request.FullName,
 		Birthday:              request.Birthday,
+		Gender:                request.Gender,
 		PreferredCurrencyCode: request.PreferredCurrencyCode,
 		NotificationsEnabled:  request.NotificationsEnabled,
 		ReminderDays:          request.ReminderDays,
@@ -187,6 +192,7 @@ func (h handler) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		Email:                 request.Email,
 		FullName:              request.FullName,
 		Birthday:              request.Birthday,
+		Gender:                request.Gender,
 		PreferredCurrencyCode: request.PreferredCurrencyCode,
 		NotificationsEnabled:  request.NotificationsEnabled,
 		ReminderDays:          request.ReminderDays,
@@ -217,7 +223,7 @@ func (h handler) savePreferences(w http.ResponseWriter, r *http.Request) {
 		request.Brands = []string{}
 	}
 
-	updatedUser, err := h.service.SavePreferences(r.Context(), user.ID, request.Brands)
+	updatedUser, err := h.service.SavePreferences(r.Context(), user.ID, request.Brands, request.Gender)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -267,6 +273,7 @@ func mapUser(user domain.User) userResponse {
 		Email:                 user.Email,
 		FullName:              user.FullName,
 		Birthday:              user.Birthday,
+		Gender:                user.Gender,
 		PreferredCurrencyCode: user.PreferredCurrencyCode,
 		NotificationsEnabled:  user.NotificationsEnabled,
 		ReminderDays:          user.ReminderDays,

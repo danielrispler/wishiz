@@ -27,24 +27,26 @@ func (r *Repository) CreateUser(ctx context.Context, params ports.CreateUserPara
 			email,
 			full_name,
 			birthday,
+			gender,
 			password_hash,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING
 			id::text,
 			email,
 			full_name,
 			birthday,
+			gender,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
 			preferred_brands,
 			created_at,
 			updated_at
-	`, params.Email, params.FullName, params.Birthday, params.PasswordHash, params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays)
+	`, params.Email, params.FullName, params.Birthday, params.Gender, params.PasswordHash, params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays)
 
 	user, err := scanUser(row)
 	if isUniqueViolation(err) {
@@ -63,6 +65,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.U
 			email,
 			full_name,
 			birthday,
+			gender,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
@@ -91,6 +94,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (domain.User, s
 			email,
 			full_name,
 			birthday,
+			gender,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
@@ -123,11 +127,12 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 			email = $2,
 			full_name = $3,
 			birthday = $4,
-			password_hash = $5,
-			preferred_currency_code = $6,
-			notifications_enabled = $7,
-			reminder_days = $8,
-			preferred_brands = $9,
+			gender = $5,
+			password_hash = $6,
+			preferred_currency_code = $7,
+			notifications_enabled = $8,
+			reminder_days = $9,
+			preferred_brands = $10,
 			updated_at = NOW()
 		WHERE id = $1::uuid
 		RETURNING
@@ -135,13 +140,14 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 			email,
 			full_name,
 			birthday,
+			gender,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
 			preferred_brands,
 			created_at,
 			updated_at
-	`, params.ID, params.Email, params.FullName, params.Birthday, params.PasswordHash,
+	`, params.ID, params.Email, params.FullName, params.Birthday, params.Gender, params.PasswordHash,
 		params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays, rawBrands)
 
 	user, err := scanUser(row)
@@ -170,6 +176,7 @@ func (r *Repository) UpdateUserPreferences(ctx context.Context, userID string, b
 			email,
 			full_name,
 			birthday,
+			gender,
 			preferred_currency_code,
 			notifications_enabled,
 			reminder_days,
@@ -211,6 +218,7 @@ func (r *Repository) GetUserBySessionTokenHash(ctx context.Context, tokenHash st
 			u.email,
 			u.full_name,
 			u.birthday,
+			u.gender,
 			u.preferred_currency_code,
 			u.notifications_enabled,
 			u.reminder_days,
@@ -255,6 +263,7 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 		&user.Email,
 		&user.FullName,
 		&user.Birthday,
+		&user.Gender,
 		&user.PreferredCurrencyCode,
 		&user.NotificationsEnabled,
 		&user.ReminderDays,
@@ -281,6 +290,7 @@ func scanUserWithPasswordHash(row interface{ Scan(...any) error }) (domain.User,
 		&user.Email,
 		&user.FullName,
 		&user.Birthday,
+		&user.Gender,
 		&user.PreferredCurrencyCode,
 		&user.NotificationsEnabled,
 		&user.ReminderDays,

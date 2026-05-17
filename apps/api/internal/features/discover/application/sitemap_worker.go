@@ -84,6 +84,8 @@ var brandSitemaps = map[string]string{
 	"Pistola":       "https://pistoladenim.com/sitemap.xml",
 	"Eloquii":       "https://www.eloquii.com/sitemap.xml",
 	"Good American": "https://www.goodamerican.com/sitemap.xml",
+	"nars":          "https://www.narscosmetics.co.il/sitemap.xml",
+	"brandymelville": "https://us.brandymelville.com/sitemap.xml",
 }
 
 type SitemapWorker struct {

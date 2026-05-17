@@ -18,6 +18,7 @@ class AuthApiClient {
     required String password,
     required String fullName,
     required DateTime birthday,
+    String? gender,
   }) async {
     final response = await _requestJson(
       'POST',
@@ -27,6 +28,7 @@ class AuthApiClient {
         'password': password,
         'fullName': fullName,
         'birthday': birthday.toUtc().toIso8601String(),
+        'gender': gender,
       },
       expectedStatusCodes: const {HttpStatus.created},
     );
@@ -64,6 +66,7 @@ class AuthApiClient {
     required String email,
     required String fullName,
     required DateTime birthday,
+    String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
@@ -78,6 +81,7 @@ class AuthApiClient {
         'email': email,
         'fullName': fullName,
         'birthday': birthday.toUtc().toIso8601String(),
+        'gender': gender,
         'preferredCurrencyCode': preferredCurrencyCode,
         'notificationsEnabled': notificationsEnabled,
         'reminderDays': reminderDays,
@@ -93,12 +97,13 @@ class AuthApiClient {
   Future<AppUserDto> updatePreferences({
     required String authToken,
     required List<String> brandNames,
+    String? gender,
   }) async {
     final response = await _requestJson(
       'PATCH',
       '/auth/me/onboarding',
       authToken: authToken,
-      body: {'brands': brandNames},
+      body: {'brands': brandNames, 'gender': gender},
       expectedStatusCodes: const {HttpStatus.ok},
     );
 
@@ -186,6 +191,7 @@ class AppUserDto {
     required this.email,
     required this.fullName,
     required this.birthday,
+    required this.gender,
     required this.preferredCurrencyCode,
     required this.notificationsEnabled,
     required this.reminderDays,
@@ -198,6 +204,7 @@ class AppUserDto {
       email: json['email'] as String,
       fullName: json['fullName'] as String,
       birthday: DateTime.parse(json['birthday'] as String),
+      gender: json['gender'] as String?,
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
       reminderDays: json['reminderDays'] as int? ?? 14,
@@ -211,6 +218,7 @@ class AppUserDto {
   final String email;
   final String fullName;
   final DateTime birthday;
+  final String? gender;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
@@ -222,6 +230,7 @@ class AppUserDto {
       email: email,
       fullName: fullName,
       birthday: birthday,
+      gender: gender,
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,

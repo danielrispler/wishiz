@@ -54,6 +54,7 @@ class LocalAuthRepository implements AuthRepository {
     required String password,
     required String fullName,
     required DateTime birthday,
+    String? gender,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
     final alreadyExists = _storedUsers.any(
@@ -70,6 +71,7 @@ class LocalAuthRepository implements AuthRepository {
       email: normalizedEmail,
       fullName: fullName.trim(),
       birthday: birthday,
+      gender: gender,
       passwordHash: _hashPassword(password),
     );
     _storedUsers.add(storedUser);
@@ -121,6 +123,7 @@ class LocalAuthRepository implements AuthRepository {
     required String email,
     required String fullName,
     required DateTime birthday,
+    String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
@@ -170,6 +173,7 @@ class LocalAuthRepository implements AuthRepository {
       email: normalizedEmail,
       fullName: fullName.trim(),
       birthday: birthday,
+      gender: gender,
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
@@ -195,7 +199,10 @@ class LocalAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> savePreferences({required List<String> brandNames}) async {
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+    String? gender,
+  }) async {
     final currentUser = _currentUser;
     if (currentUser == null) {
       return const AuthResult.failure('No account is signed in right now.');
@@ -207,6 +214,7 @@ class LocalAuthRepository implements AuthRepository {
     }
 
     final updatedUser = _storedUsers[index].copyWith(
+      gender: gender,
       preferredBrands: brandNames,
     );
     _storedUsers[index] = updatedUser;
@@ -216,6 +224,7 @@ class LocalAuthRepository implements AuthRepository {
       await _persist();
     } catch (_) {
       _storedUsers[index] = _storedUsers[index].copyWith(
+        gender: currentUser.gender,
         preferredBrands: currentUser.preferredBrands,
       );
       _setCurrentUser(currentUser);
@@ -293,6 +302,7 @@ class _StoredUser {
     required this.email,
     required this.fullName,
     required this.birthday,
+    this.gender,
     required this.passwordHash,
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
@@ -304,6 +314,7 @@ class _StoredUser {
   final String email;
   final String fullName;
   final DateTime birthday;
+  final String? gender;
   final String passwordHash;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
@@ -316,6 +327,7 @@ class _StoredUser {
       email: email,
       fullName: fullName,
       birthday: birthday,
+      gender: gender,
       preferredCurrencyCode: preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled,
       reminderDays: reminderDays,
@@ -328,6 +340,7 @@ class _StoredUser {
     String? email,
     String? fullName,
     DateTime? birthday,
+    String? gender,
     String? passwordHash,
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
@@ -339,6 +352,7 @@ class _StoredUser {
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       birthday: birthday ?? this.birthday,
+      gender: gender ?? this.gender,
       passwordHash: passwordHash ?? this.passwordHash,
       preferredCurrencyCode:
           preferredCurrencyCode ?? this.preferredCurrencyCode,
@@ -354,6 +368,7 @@ class _StoredUser {
       'email': email,
       'fullName': fullName,
       'birthday': birthday.toIso8601String(),
+      'gender': gender,
       'passwordHash': passwordHash,
       'preferredCurrencyCode': preferredCurrencyCode,
       'notificationsEnabled': notificationsEnabled,
@@ -374,6 +389,7 @@ class _StoredUser {
       birthday: json['birthday'] != null
           ? DateTime.parse(json['birthday'] as String)
           : DateTime.now().subtract(const Duration(days: 365 * 18)),
+      gender: json['gender'] as String?,
       passwordHash: json['passwordHash'] as String,
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,

@@ -70,6 +70,9 @@ func TestSignUpReturnsTokenAndUser(t *testing.T) {
 			if input.FullName != "Maya Hope" {
 				t.Fatalf("unexpected full name %q", input.FullName)
 			}
+			if input.Gender == nil || *input.Gender != "woman" {
+				t.Fatalf("unexpected gender %#v", input.Gender)
+			}
 			return sampleUser(), "signup-token", nil
 		},
 	}
@@ -79,7 +82,7 @@ func TestSignUpReturnsTokenAndUser(t *testing.T) {
 		service,
 		http.MethodPost,
 		"/auth/signup",
-		`{"email":"maya@example.com","password":"secret","fullName":"Maya Hope","birthday":"1992-06-15T00:00:00Z","preferredCurrencyCode":"USD","notificationsEnabled":true,"reminderDays":14}`,
+		`{"email":"maya@example.com","password":"secret","fullName":"Maya Hope","birthday":"1992-06-15T00:00:00Z","gender":"woman","preferredCurrencyCode":"USD","notificationsEnabled":true,"reminderDays":14}`,
 		"",
 	)
 	if response.Code != http.StatusCreated {
@@ -131,12 +134,15 @@ func TestSavePreferencesPersistsPreferredBrands(t *testing.T) {
 			}
 			return sampleUser(), nil
 		},
-		savePreferences: func(_ context.Context, userID string, brands []string) (domain.User, error) {
+		savePreferences: func(_ context.Context, userID string, brands []string, gender *string) (domain.User, error) {
 			if userID != sampleUser().ID {
 				t.Fatalf("unexpected user id %q", userID)
 			}
 			if len(brands) != 2 || brands[0] != "Zara" || brands[1] != "Reformation" {
 				t.Fatalf("unexpected brands %#v", brands)
+			}
+			if gender == nil || *gender != "woman" {
+				t.Fatalf("unexpected gender %#v", gender)
 			}
 			user := sampleUser()
 			user.PreferredBrands = brands
@@ -149,7 +155,7 @@ func TestSavePreferencesPersistsPreferredBrands(t *testing.T) {
 		service,
 		http.MethodPatch,
 		"/auth/me/onboarding",
-		`{"brands":["Zara","Reformation"]}`,
+		`{"brands":["Zara","Reformation"],"gender":"woman"}`,
 		"Bearer session-token",
 	)
 	if response.Code != http.StatusOK {
@@ -171,7 +177,7 @@ type stubService struct {
 	authenticate      func(context.Context, string) (domain.User, error)
 	getCurrentUser    func(context.Context, string) (domain.User, error)
 	updateCurrentUser func(context.Context, string, *application.UpdateCurrentUserInput) (domain.User, error)
-	savePreferences   func(context.Context, string, []string) (domain.User, error)
+	savePreferences   func(context.Context, string, []string, *string) (domain.User, error)
 	logOut            func(context.Context, string) error
 }
 
@@ -210,11 +216,11 @@ func (s *stubService) UpdateCurrentUser(ctx context.Context, userID string, inpu
 	return s.updateCurrentUser(ctx, userID, input)
 }
 
-func (s *stubService) SavePreferences(ctx context.Context, userID string, brands []string) (domain.User, error) {
+func (s *stubService) SavePreferences(ctx context.Context, userID string, brands []string, gender *string) (domain.User, error) {
 	if s.savePreferences == nil {
 		return domain.User{}, errors.New("unexpected SavePreferences call")
 	}
-	return s.savePreferences(ctx, userID, brands)
+	return s.savePreferences(ctx, userID, brands, gender)
 }
 
 func (s *stubService) LogOut(ctx context.Context, rawToken string) error {
@@ -244,11 +250,13 @@ func performRequest(t *testing.T, service Service, method string, path string, b
 }
 
 func sampleUser() domain.User {
+	gender := "woman"
 	return domain.User{
 		ID:                    "11111111-1111-1111-1111-111111111111",
 		Email:                 "maya@example.com",
 		FullName:              "Maya Hope",
 		Birthday:              time.Date(1992, 6, 15, 0, 0, 0, 0, time.UTC),
+		Gender:                &gender,
 		PreferredCurrencyCode: "USD",
 		NotificationsEnabled:  true,
 		ReminderDays:          14,

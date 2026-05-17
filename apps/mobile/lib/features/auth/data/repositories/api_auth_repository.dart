@@ -71,6 +71,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
     required String password,
     required String fullName,
     required DateTime birthday,
+    String? gender,
   }) async {
     try {
       final session = await _apiClient.signUp(
@@ -78,6 +79,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
         password: password,
         fullName: fullName,
         birthday: birthday,
+        gender: gender,
       );
       _setSession(user: session.user.toEntity(), token: session.token);
       await _persist();
@@ -107,6 +109,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
     required String email,
     required String fullName,
     required DateTime birthday,
+    String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
@@ -123,6 +126,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
         email: email,
         fullName: fullName,
         birthday: birthday,
+        gender: gender,
         preferredCurrencyCode: preferredCurrencyCode,
         notificationsEnabled: notificationsEnabled,
         reminderDays: reminderDays,
@@ -142,7 +146,10 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
   }
 
   @override
-  Future<AuthResult> savePreferences({required List<String> brandNames}) async {
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+    String? gender,
+  }) async {
     if (_sessionToken == null) {
       return const AuthResult.failure('No account is signed in right now.');
     }
@@ -151,6 +158,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
       final user = await _apiClient.updatePreferences(
         authToken: _sessionToken!,
         brandNames: brandNames,
+        gender: gender,
       );
       _setSession(user: user.toEntity(), token: _sessionToken!);
       await _persist();
@@ -243,6 +251,7 @@ class _StoredSessionPayload {
               'email': user!.email,
               'fullName': user!.fullName,
               'birthday': user!.birthday.toUtc().toIso8601String(),
+              'gender': user!.gender,
               'preferredCurrencyCode': user!.preferredCurrencyCode,
               'notificationsEnabled': user!.notificationsEnabled,
               'reminderDays': user!.reminderDays,

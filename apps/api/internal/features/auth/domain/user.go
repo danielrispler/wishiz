@@ -7,6 +7,7 @@ type User struct {
 	Email                 string
 	FullName              string
 	Birthday              time.Time
+	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
 	ReminderDays          int

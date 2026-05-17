@@ -207,11 +207,15 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   ),
                 ),
               ],
-              if (p.category.isNotEmpty || (p.gender?.isNotEmpty ?? false)) ...[
+              if ((p.productType?.isNotEmpty ?? false) ||
+                  p.category.isNotEmpty ||
+                  (p.gender?.isNotEmpty ?? false)) ...[
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 6,
                   children: [
+                    if (p.productType?.isNotEmpty ?? false)
+                      _MetaChip(label: p.productType!),
                     if (p.category.isNotEmpty)
                       _MetaChip(label: p.category),
                     if (p.gender?.isNotEmpty ?? false)

@@ -11,9 +11,11 @@ class AccountFormSection extends StatefulWidget {
     required this.birthdayController,
     required this.currentPasswordController,
     required this.newPasswordController,
+    required this.selectedGender,
     required this.selectedCurrencyCode,
     required this.isChangingPassword,
     required this.onSelectBirthday,
+    required this.onGenderChanged,
     required this.onTogglePasswordEditing,
     required this.onCurrencyChanged,
     required this.onFieldChanged,
@@ -29,9 +31,11 @@ class AccountFormSection extends StatefulWidget {
   final TextEditingController birthdayController;
   final TextEditingController currentPasswordController;
   final TextEditingController newPasswordController;
+  final String? selectedGender;
   final String selectedCurrencyCode;
   final bool isChangingPassword;
   final VoidCallback onSelectBirthday;
+  final ValueChanged<String?> onGenderChanged;
   final VoidCallback onTogglePasswordEditing;
   final ValueChanged<String> onCurrencyChanged;
   final VoidCallback onFieldChanged;
@@ -105,6 +109,31 @@ class _AccountFormSectionState extends State<AccountFormSection> {
                       border: InputBorder.none,
                     ),
                     validator: widget.validateRequired,
+                  ),
+                ),
+                const SizedBox(height: AppConstants.itemGap),
+                _LabeledField(
+                  label: 'Gender',
+                  hint: 'Used to keep Discover aligned with what you shop for',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: widget.selectedGender,
+                    decoration: const InputDecoration(
+                      hintText: 'Select your gender',
+                      border: InputBorder.none,
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Prefer not to say'),
+                      ),
+                      ...AppUser.supportedGenders.map(
+                        (gender) => DropdownMenuItem<String>(
+                          value: gender,
+                          child: Text(AppUser.genderLabel(gender)),
+                        ),
+                      ),
+                    ],
+                    onChanged: widget.onGenderChanged,
                   ),
                 ),
               ],

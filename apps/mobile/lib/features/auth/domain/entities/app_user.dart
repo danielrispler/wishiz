@@ -6,6 +6,7 @@ class AppUser {
     required this.email,
     required this.fullName,
     required this.birthday,
+    this.gender,
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
     this.reminderDays = 14,
@@ -24,11 +25,13 @@ class AppUser {
     'GBP': '£',
     'ILS': '₪',
   };
+  static const List<String> supportedGenders = ['woman', 'man'];
 
   final String id;
   final String email;
   final String fullName;
   final DateTime birthday;
+  final String? gender;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;
   final int reminderDays;
@@ -37,11 +40,23 @@ class AppUser {
   String get preferredCurrencySymbol =>
       CurrencyUtils.symbolFor(preferredCurrencyCode);
 
+  static String genderLabel(String value) {
+    switch (value) {
+      case 'woman':
+        return 'Woman';
+      case 'man':
+        return 'Man';
+      default:
+        return value;
+    }
+  }
+
   AppUser copyWith({
     String? id,
     String? email,
     String? fullName,
     DateTime? birthday,
+    String? gender,
     String? preferredCurrencyCode,
     bool? notificationsEnabled,
     int? reminderDays,
@@ -52,6 +67,7 @@ class AppUser {
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       birthday: birthday ?? this.birthday,
+      gender: gender ?? this.gender,
       preferredCurrencyCode:
           preferredCurrencyCode ?? this.preferredCurrencyCode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,

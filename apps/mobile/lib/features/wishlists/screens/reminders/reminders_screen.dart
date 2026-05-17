@@ -5,10 +5,7 @@ import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 
 class RemindersScreen extends StatefulWidget {
-  const RemindersScreen({
-    super.key,
-    required this.authRepository,
-  });
+  const RemindersScreen({super.key, required this.authRepository});
 
   final AuthRepository authRepository;
 
@@ -42,6 +39,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
       email: currentUser.email,
       fullName: currentUser.fullName,
       birthday: currentUser.birthday,
+      gender: currentUser.gender,
       preferredCurrencyCode: currentUser.preferredCurrencyCode,
       notificationsEnabled: _notificationsEnabled,
       reminderDays: _reminderDays,
@@ -134,11 +132,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
             child: FilledButton(
               onPressed:
                   _isSavingReminderSettings ||
-                          (_notificationsEnabled ==
-                                  currentUser.notificationsEnabled &&
-                              _reminderDays == currentUser.reminderDays)
-                      ? null
-                      : () => _saveReminderSettings(currentUser),
+                      (_notificationsEnabled ==
+                              currentUser.notificationsEnabled &&
+                          _reminderDays == currentUser.reminderDays)
+                  ? null
+                  : () => _saveReminderSettings(currentUser),
               child: Text(
                 _isSavingReminderSettings
                     ? 'Saving...'

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	authdomain "github.com/danielrispler/wishiz/apps/api/internal/features/auth/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/application"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
@@ -14,7 +15,7 @@ import (
 type AuthMiddleware func(http.HandlerFunc) http.HandlerFunc
 
 type Service interface {
-	GetFeed(ctx context.Context, userID string, brands []string) (application.DiscoverFeed, error)
+	GetFeed(ctx context.Context, userID string, brands []string, gender *string) (application.DiscoverFeed, error)
 	ToggleSave(ctx context.Context, userID, productID string) (bool, int, error)
 	GrabStarterPack(ctx context.Context, userID, packID, wishlistID string) (int, error)
 	SeedProduct(ctx context.Context, rawURL, category string) (domain.DiscoverProduct, error)
@@ -29,7 +30,7 @@ type handler struct {
 }
 
 type authGetter interface {
-	GetPreferences(ctx context.Context, userID string) ([]string, error)
+	GetCurrentUser(ctx context.Context, userID string) (authdomain.User, error)
 }
 
 func RegisterRoutes(
@@ -80,13 +81,13 @@ func (h handler) getFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	brands, err := h.authService.GetPreferences(r.Context(), user.ID)
+	currentUser, err := h.authService.GetCurrentUser(r.Context(), user.ID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 
-	feed, err := h.service.GetFeed(r.Context(), user.ID, brands)
+	feed, err := h.service.GetFeed(r.Context(), user.ID, currentUser.PreferredBrands, currentUser.Gender)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

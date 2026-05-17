@@ -28,6 +28,7 @@ type CreateUserParams struct {
 	Email                 string
 	FullName              string
 	Birthday              time.Time
+	Gender                *string
 	PasswordHash          string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
@@ -39,6 +40,7 @@ type UpdateUserParams struct {
 	Email                 string
 	FullName              string
 	Birthday              time.Time
+	Gender                *string
 	PasswordHash          string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool

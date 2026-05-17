@@ -68,11 +68,13 @@ func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) 
 	return collectProducts(rows)
 }
 
-func (r *Repository) GetForYou(ctx context.Context, userID string, brands []string, limit int) ([]domain.DiscoverProduct, error) {
-	if len(brands) == 0 {
+func (r *Repository) GetForYou(ctx context.Context, userID string, brands []string, gender *string, limit int) ([]domain.DiscoverProduct, error) {
+	genderFilters := genderDiscoverFilters(gender)
+	if len(brands) == 0 && len(genderFilters) == 0 {
 		return r.GetTrending(ctx, userID, limit)
 	}
-	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+
+	baseQuery := fmt.Sprintf(`
 		SELECT
 			p.id::text,
 			p.title,
@@ -92,14 +94,52 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, brands []stri
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $1::uuid
 		%s
+	`, savedWishlistItemLateral("$1"))
+
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	switch {
+	case len(brands) > 0 && len(genderFilters) > 0:
+		rows, err = r.pool.Query(ctx, baseQuery+`
+		WHERE p.brand = ANY($2::text[])
+			AND LOWER(COALESCE(p.gender, '')) = ANY($3::text[])
+		ORDER BY RANDOM()
+		LIMIT $4
+	`, userID, brands, genderFilters, limit)
+	case len(brands) > 0:
+		rows, err = r.pool.Query(ctx, baseQuery+`
 		WHERE p.brand = ANY($2::text[])
 		ORDER BY RANDOM()
 		LIMIT $3
-	`, savedWishlistItemLateral("$1")), userID, brands, limit)
+	`, userID, brands, limit)
+	default:
+		rows, err = r.pool.Query(ctx, baseQuery+`
+		WHERE LOWER(COALESCE(p.gender, '')) = ANY($2::text[])
+		ORDER BY RANDOM()
+		LIMIT $3
+	`, userID, genderFilters, limit)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get for-you products: %w", err)
 	}
 	return collectProducts(rows)
+}
+
+func genderDiscoverFilters(gender *string) []string {
+	if gender == nil {
+		return nil
+	}
+
+	switch *gender {
+	case "man":
+		return []string{"men", "man", "male"}
+	case "woman":
+		return []string{"women", "woman", "female"}
+	default:
+		return nil
+	}
 }
 
 func (r *Repository) GetStarterPacks(ctx context.Context, userID string) ([]domain.StarterPack, error) {

@@ -27,13 +27,13 @@ func NewService(repo ports.Repository, scrapeService *scrapeapp.Service) *Servic
 	return &Service{repo: repo, scrapeService: scrapeService}
 }
 
-func (s *Service) GetFeed(ctx context.Context, userID string, brands []string) (DiscoverFeed, error) {
+func (s *Service) GetFeed(ctx context.Context, userID string, brands []string, gender *string) (DiscoverFeed, error) {
 	trending, err := s.repo.GetTrending(ctx, userID, 10)
 	if err != nil {
 		return DiscoverFeed{}, err
 	}
 
-	forYou, err := s.repo.GetForYou(ctx, userID, brands, 20)
+	forYou, err := s.repo.GetForYou(ctx, userID, brands, gender, 20)
 	if err != nil {
 		return DiscoverFeed{}, err
 	}

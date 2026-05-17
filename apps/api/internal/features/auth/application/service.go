@@ -35,6 +35,7 @@ type SignUpInput struct {
 	Password              string
 	FullName              string
 	Birthday              time.Time
+	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
 	ReminderDays          int
@@ -49,6 +50,7 @@ type UpdateCurrentUserInput struct {
 	Email                 string
 	FullName              string
 	Birthday              time.Time
+	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
 	ReminderDays          int
@@ -183,6 +185,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		Email:                 email,
 		FullName:              fullName,
 		Birthday:              input.Birthday.UTC(),
+		Gender:                normalizeGender(input.Gender),
 		PasswordHash:          passwordHash,
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
 		NotificationsEnabled:  input.NotificationsEnabled,
@@ -199,7 +202,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	return updated, nil
 }
 
-func (s *Service) SavePreferences(ctx context.Context, userID string, rawBrands []string) (domain.User, error) {
+func (s *Service) SavePreferences(ctx context.Context, userID string, rawBrands []string, gender *string) (domain.User, error) {
 	if strings.TrimSpace(userID) == "" {
 		return domain.User{}, ValidationError("userID", "userID is required")
 	}
@@ -207,7 +210,25 @@ func (s *Service) SavePreferences(ctx context.Context, userID string, rawBrands 
 	if err != nil {
 		return domain.User{}, err
 	}
-	user, err := s.repo.UpdateUserPreferences(ctx, userID, brands)
+	user, passwordHash, err := s.repo.GetUserByID(ctx, userID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return domain.User{}, NotFound("user not found")
+	}
+	if err != nil {
+		return domain.User{}, err
+	}
+	user, err = s.repo.UpdateUser(ctx, ports.UpdateUserParams{
+		ID:                    user.ID,
+		Email:                 user.Email,
+		FullName:              user.FullName,
+		Birthday:              user.Birthday.UTC(),
+		Gender:                normalizeGender(gender),
+		PasswordHash:          passwordHash,
+		PreferredCurrencyCode: user.PreferredCurrencyCode,
+		NotificationsEnabled:  user.NotificationsEnabled,
+		ReminderDays:          user.ReminderDays,
+		PreferredBrands:       brands,
+	})
 	if errors.Is(err, ports.ErrNotFound) {
 		return domain.User{}, NotFound("user not found")
 	}
@@ -280,11 +301,28 @@ func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserPara
 		Email:                 email,
 		FullName:              fullName,
 		Birthday:              input.Birthday.UTC(),
+		Gender:                normalizeGender(input.Gender),
 		PasswordHash:          passwordHash,
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
 		NotificationsEnabled:  input.NotificationsEnabled,
 		ReminderDays:          normalizeReminderDays(input.ReminderDays),
 	}, nil
+}
+
+func normalizeGender(raw *string) *string {
+	if raw == nil {
+		return nil
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(*raw))
+	switch normalized {
+	case "":
+		return nil
+	case "man", "woman":
+		return &normalized
+	default:
+		return nil
+	}
 }
 
 func (s *Service) createSession(ctx context.Context, userID string) (string, error) {

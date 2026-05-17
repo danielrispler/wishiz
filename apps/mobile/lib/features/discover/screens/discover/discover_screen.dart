@@ -358,6 +358,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Future<void> _savePreferences(Set<String> brandNames) async {
     final result = await widget.authRepository.savePreferences(
       brandNames: brandNames.toList(),
+      gender: widget.authRepository.getCurrentUser()?.gender,
     );
 
     if (!mounted) return;

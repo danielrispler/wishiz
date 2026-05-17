@@ -12,6 +12,7 @@ abstract class AuthRepository {
     required String password,
     required String fullName,
     required DateTime birthday,
+    String? gender,
   });
 
   Future<AuthResult> logIn({required String email, required String password});
@@ -20,6 +21,7 @@ abstract class AuthRepository {
     required String email,
     required String fullName,
     required DateTime birthday,
+    String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
     required int reminderDays,
@@ -27,7 +29,10 @@ abstract class AuthRepository {
     String? newPassword,
   });
 
-  Future<AuthResult> savePreferences({required List<String> brandNames});
+  Future<AuthResult> savePreferences({
+    required List<String> brandNames,
+    String? gender,
+  });
 
   Future<void> logOut();
 }

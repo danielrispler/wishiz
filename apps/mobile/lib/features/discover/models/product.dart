@@ -7,6 +7,9 @@ class Product {
   final String? productUrl;
   final int saveCount;
   final bool isSavedByUser;
+  final String? priceLabel;
+  final String? gender;
+  final String? productType;
 
   const Product({
     required this.id,
@@ -17,9 +20,18 @@ class Product {
     required this.saveCount,
     this.productUrl,
     this.isSavedByUser = false,
+    this.priceLabel,
+    this.gender,
+    this.productType,
   });
 
-  Product copyWith({bool? isSavedByUser, int? saveCount}) => Product(
+  Product copyWith({
+    bool? isSavedByUser,
+    int? saveCount,
+    String? priceLabel,
+    String? gender,
+    String? productType,
+  }) => Product(
     id: id,
     title: title,
     brand: brand,
@@ -28,6 +40,9 @@ class Product {
     productUrl: productUrl,
     saveCount: saveCount ?? this.saveCount,
     isSavedByUser: isSavedByUser ?? this.isSavedByUser,
+    priceLabel: priceLabel ?? this.priceLabel,
+    gender: gender ?? this.gender,
+    productType: productType ?? this.productType,
   );
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -39,6 +54,9 @@ class Product {
     productUrl: json['productUrl'] as String?,
     saveCount: json['saveCount'] as int? ?? 0,
     isSavedByUser: json['savedByUser'] as bool? ?? false,
+    priceLabel: json['priceLabel'] as String?,
+    gender: json['gender'] as String?,
+    productType: json['productType'] as String?,
   );
 
   static List<Product> sample = [

@@ -205,7 +205,10 @@ CREATE TABLE IF NOT EXISTS discover_products (
     category TEXT NOT NULL,
     image_url TEXT NOT NULL,
     product_url TEXT NOT NULL,
-    save_count INTEGER NOT NULL DEFAULT 0,
+    save_count   INTEGER NOT NULL DEFAULT 0,
+    price_label  TEXT,
+    gender       TEXT,
+    product_type TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT discover_products_category_check CHECK (

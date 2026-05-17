@@ -93,6 +93,20 @@ class TrendingItemCard extends StatelessWidget {
                 letterSpacing: -0.2,
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              (product.priceLabel?.isNotEmpty ?? false) ? product.priceLabel! : 'View on site',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: (product.priceLabel?.isNotEmpty ?? false)
+                    ? AppColors.onSurface
+                    : AppColors.onSurfaceVariant,
+                letterSpacing: -0.1,
+              ),
+            ),
           ],
         ),
       ),

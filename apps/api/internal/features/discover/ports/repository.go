@@ -10,11 +10,14 @@ import (
 var ErrNotFound = errors.New("discover repository: not found")
 
 type SeedProductInput struct {
-	Title      string
-	Brand      string
-	Category   string
-	ImageURL   string
-	ProductURL *string
+	Title       string
+	Brand       string
+	Category    string
+	ImageURL    string
+	ProductURL  *string
+	PriceLabel  *string
+	Gender      *string
+	ProductType *string
 }
 
 type Repository interface {

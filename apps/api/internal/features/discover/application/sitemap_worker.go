@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/ports"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
@@ -141,7 +144,8 @@ func NewSitemapWorker(
 		repo:          repo,
 		scrapeService: scrapeService,
 		httpClient: &http.Client{
-			Timeout: 20 * time.Second,
+			Timeout:   20 * time.Second,
+			Transport: newUTLSTransport(),
 		},
 		refreshInterval: refreshInterval,
 		rng:             rand.New(rand.NewSource(time.Now().UnixNano())), //nolint:gosec
@@ -225,21 +229,41 @@ func (w *SitemapWorker) refreshBrand(ctx context.Context, brand sitemapBrand) (i
 			}
 		}
 
-		product, err := w.scrapeService.Scrape(ctx, productURL, "USD")
+		cleanURL, sanitizeErr := sanitizeProductURL(productURL)
+		if sanitizeErr != nil {
+			w.logger.Warn("discover url sanitize failed", "brand", brand.Name, "url", productURL, "error", sanitizeErr)
+			continue
+		}
+
+		product, err := w.scrapeService.Scrape(ctx, cleanURL, "USD")
 		if err != nil && product.Name == "" && product.ImageURL == "" {
-			w.logger.Warn("discover scrape failed", "brand", brand.Name, "url", productURL, "error", err)
+			w.logger.Warn("discover scrape failed", "brand", brand.Name, "url", cleanURL, "error", err)
 			continue
 		}
 		if strings.TrimSpace(product.Name) == "" || strings.TrimSpace(product.ImageURL) == "" {
 			continue
 		}
 
+		var priceLabel *string
+		if product.PriceAmount != "" && product.PriceConfidence != scrapeapp.PriceConfidenceSuspicious {
+			label := product.PriceAmount
+			if product.PriceCurrency != "" {
+				label = product.PriceCurrency + " " + product.PriceAmount
+			}
+			priceLabel = &label
+		}
+
+		gender, productType := extractProductMeta(cleanURL, product.Name)
+
 		_, err = w.repo.SeedProduct(ctx, ports.SeedProductInput{
-			Title:      strings.TrimSpace(product.Name),
-			Brand:      brand.Name,
-			Category:   discoverFashionCategory,
-			ImageURL:   strings.TrimSpace(product.ImageURL),
-			ProductURL: stringPtr(productURL),
+			Title:       strings.TrimSpace(product.Name),
+			Brand:       brand.Name,
+			Category:    discoverFashionCategory,
+			ImageURL:    strings.TrimSpace(product.ImageURL),
+			ProductURL:  stringPtr(cleanURL),
+			PriceLabel:  priceLabel,
+			Gender:      gender,
+			ProductType: productType,
 		})
 		if err != nil {
 			w.logger.Warn("discover seed failed", "brand", brand.Name, "url", productURL, "error", err)
@@ -436,4 +460,85 @@ func stringPtr(value string) *string {
 	}
 	v := value
 	return &v
+}
+
+func newUTLSTransport() *http.Transport {
+	return &http.Transport{
+		ForceAttemptHTTP2: true,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := net.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+			host, _, _ := net.SplitHostPort(addr)
+			uConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+			if err := uConn.HandshakeContext(ctx); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return uConn, nil
+		},
+	}
+}
+
+func sanitizeProductURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.Scheme == "" {
+		u.Scheme = "https"
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("url must use http or https: %s", raw)
+	}
+	return u.String(), nil
+}
+
+func extractProductMeta(productURL, title string) (gender, productType *string) {
+	combined := strings.ToLower(productURL + " " + title)
+	urlLower := strings.ToLower(productURL)
+
+	maleKW := []string{"/men/", "-men-", "mens", "/boy", "male"}
+	femaleKW := []string{"/women/", "-women-", "womens", "/girl", "female"}
+	for _, kw := range maleKW {
+		if strings.Contains(combined, kw) {
+			g := "Men"
+			gender = &g
+			break
+		}
+	}
+	if gender == nil {
+		for _, kw := range femaleKW {
+			if strings.Contains(combined, kw) {
+				g := "Women"
+				gender = &g
+				break
+			}
+		}
+	}
+
+	typeMap := map[string]string{
+		"/shoes/":    "Shoes",
+		"/bags/":     "Bags",
+		"/pants/":    "Pants",
+		"/dresses/":  "Dresses",
+		"/tops/":     "Tops",
+		"/jackets/":  "Jackets",
+		"/skirts/":   "Skirts",
+		"/shorts/":   "Shorts",
+		"/swimwear/": "Swimwear",
+		"/lingerie/": "Lingerie",
+		"/jeans/":    "Jeans",
+		"/coats/":    "Coats",
+	}
+	for kw, pt := range typeMap {
+		if strings.Contains(urlLower, kw) {
+			p := pt
+			productType = &p
+			break
+		}
+	}
+	return
 }

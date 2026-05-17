@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
@@ -7,12 +6,10 @@ import 'package:wishiz/features/discover/domain/entities/brand_group.dart';
 import 'package:wishiz/features/discover/domain/entities/discover_feed.dart';
 import 'package:wishiz/features/discover/domain/repositories/discover_repository.dart';
 import 'package:wishiz/features/discover/models/product.dart';
-import 'package:wishiz/features/discover/models/starter_pack.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'components/product_carousel/product_carousel.dart';
 import 'components/section_header.dart';
-import 'components/starter_pack_carousel/starter_pack_carousel.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({
@@ -61,7 +58,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     if (widget.discoverRepository == null) {
       setState(() {
         _feed = DiscoverFeed(
-          starterPacks: StarterPack.sample,
+          starterPacks: const [],
           trending: List.of(Product.sample.take(4)),
           forYou: List.of(Product.sample.skip(4).take(4)),
         );
@@ -181,70 +178,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }).toList();
   }
 
-  Future<void> _handleGrabPack(StarterPack pack) async {
-    final wishlistRepository = widget.wishlistRepository;
-    if (wishlistRepository == null) {
-      HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.onSurface,
-          behavior: SnackBarBehavior.floating,
-          content: Text('Added "${pack.title}" to your lists'),
-        ),
-      );
-      return;
-    }
-
-    final wishlists = wishlistRepository
-        .getWishlists()
-        .where((w) => !w.isArchived)
-        .toList(growable: false);
-
-    if (wishlists.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Create a wishlist first.')),
-        );
-      return;
-    }
-
-    final wishlist = await _showWishlistPicker(wishlists);
-    if (!mounted || wishlist == null) return;
-
-    HapticFeedback.mediumImpact();
-
-    try {
-      if (widget.discoverRepository != null) {
-        await widget.discoverRepository!.grabStarterPack(pack.id, wishlist.id);
-      } else {
-        for (final item in pack.items) {
-          await wishlistRepository.addWishlistItem(
-            wishlistId: wishlist.id,
-            title: item.title,
-            imageUrl: item.imageUrl,
-            productUrl: item.productUrl,
-          );
-        }
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.onSurface,
-          behavior: SnackBarBehavior.floating,
-          content: Text('Added "${pack.title}" to "${wishlist.title}"'),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Could not grab that pack right now.')),
-        );
-    }
-  }
-
   Future<Wishlist?> _showWishlistPicker(List<Wishlist> wishlists) {
     return showModalBottomSheet<Wishlist>(
       context: context,
@@ -337,14 +270,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   @override
   Widget build(BuildContext context) {
     final feed = _feed;
-    final packs = feed?.starterPacks ?? [];
     final trending = feed?.trending ?? [];
     final forYou = feed?.forYou ?? [];
     final isFeedEmpty =
         !_isLoading &&
         _loadError == null &&
-        packs.isEmpty &&
         trending.isEmpty &&
+        forYou.isEmpty;
+    final shouldShowForYouWarning =
+        !_isLoading &&
+        _loadError == null &&
+        _selectedBrandNames.isNotEmpty &&
         forYou.isEmpty;
 
     return ColoredBox(
@@ -369,8 +305,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 28)),
                 if (_isLoading) ...[
-                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 440)),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
@@ -395,19 +329,29 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     ),
                   ),
                 ] else ...[
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: SectionHeader(
-                      label: 'Starter Packs',
-                      eyebrow: 'Curated collections, ready to grab',
+                      label: 'For you',
+                      eyebrow: _selectedBrandNames.isEmpty
+                          ? 'Set your preferences to tailor this mix'
+                          : 'Shaped by the fashion brands you picked',
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 14)),
-                  SliverToBoxAdapter(
-                    child: StarterPackCarousel(
-                      packs: packs,
-                      onGrab: _handleGrabPack,
+                  if (shouldShowForYouWarning) ...[
+                    SliverToBoxAdapter(
+                      child: _ForYouEmptyWarning(
+                        onEditPreferences: _openPreferencesSheet,
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    SliverToBoxAdapter(
+                      child: ProductCarousel(
+                        products: forYou,
+                        onToggleSave: _handleToggleSave,
+                      ),
+                    ),
+                  ],
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   const SliverToBoxAdapter(
                     child: SectionHeader(
@@ -419,22 +363,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   SliverToBoxAdapter(
                     child: ProductCarousel(
                       products: trending,
-                      onToggleSave: _handleToggleSave,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  SliverToBoxAdapter(
-                    child: SectionHeader(
-                      label: 'For you',
-                      eyebrow: _selectedBrandNames.isEmpty
-                          ? 'Set your preferences to tailor this mix'
-                          : 'Shaped by the fashion brands you picked',
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
-                  SliverToBoxAdapter(
-                    child: ProductCarousel(
-                      products: forYou,
                       onToggleSave: _handleToggleSave,
                     ),
                   ),
@@ -454,6 +382,79 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       if (!right.contains(value)) return false;
     }
     return true;
+  }
+}
+
+class _ForYouEmptyWarning extends StatelessWidget {
+  const _ForYouEmptyWarning({required this.onEditPreferences});
+
+  final VoidCallback onEditPreferences;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  size: 18,
+                  color: AppColors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'No items match your current filters yet.',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Try adding more brands or loosening your preferences to get a fuller mix.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: onEditPreferences,
+                      behavior: HitTestBehavior.opaque,
+                      child: const Text(
+                        'Edit preferences',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

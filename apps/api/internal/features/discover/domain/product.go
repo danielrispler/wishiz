@@ -12,6 +12,9 @@ type DiscoverProduct struct {
 	SaveCount   int
 	SavedByUser bool
 	CreatedAt   time.Time
+	PriceLabel  *string
+	Gender      *string
+	ProductType *string
 }
 
 type StarterPack struct {

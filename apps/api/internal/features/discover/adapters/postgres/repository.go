@@ -31,7 +31,10 @@ func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) 
 			p.product_url,
 			p.save_count,
 			p.created_at,
-			(dps.user_id IS NOT NULL) AS saved_by_user
+			(dps.user_id IS NOT NULL) AS saved_by_user,
+			p.price_label,
+			p.gender,
+			p.product_type
 		FROM discover_products p
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $1::uuid
@@ -58,7 +61,10 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, brands []stri
 			p.product_url,
 			p.save_count,
 			p.created_at,
-			(dps.user_id IS NOT NULL) AS saved_by_user
+			(dps.user_id IS NOT NULL) AS saved_by_user,
+			p.price_label,
+			p.gender,
+			p.product_type
 		FROM discover_products p
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $1::uuid
@@ -122,7 +128,10 @@ func (r *Repository) getPackItems(ctx context.Context, packID, userID string) ([
 			p.product_url,
 			p.save_count,
 			p.created_at,
-			(dps.user_id IS NOT NULL) AS saved_by_user
+			(dps.user_id IS NOT NULL) AS saved_by_user,
+			p.price_label,
+			p.gender,
+			p.product_type
 		FROM starter_pack_items spi
 		JOIN discover_products p ON p.id = spi.product_id
 		LEFT JOIN discover_product_saves dps
@@ -290,21 +299,26 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 
 func (r *Repository) SeedProduct(ctx context.Context, in ports.SeedProductInput) (domain.DiscoverProduct, error) {
 	row := r.pool.QueryRow(ctx, `
-		INSERT INTO discover_products (title, brand, category, image_url, product_url)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO discover_products (title, brand, category, image_url, product_url, price_label, gender, product_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (product_url) DO UPDATE
 		SET
 			title = EXCLUDED.title,
 			brand = EXCLUDED.brand,
 			category = EXCLUDED.category,
 			image_url = EXCLUDED.image_url,
+			price_label = EXCLUDED.price_label,
+			gender = EXCLUDED.gender,
+			product_type = EXCLUDED.product_type,
 			updated_at = NOW()
 		RETURNING
-			id::text, title, brand, category, image_url, product_url, save_count, created_at
-	`, in.Title, in.Brand, in.Category, in.ImageURL, in.ProductURL)
+			id::text, title, brand, category, image_url, product_url, save_count, created_at,
+			price_label, gender, product_type
+	`, in.Title, in.Brand, in.Category, in.ImageURL, in.ProductURL, in.PriceLabel, in.Gender, in.ProductType)
 
 	var p domain.DiscoverProduct
-	err := row.Scan(&p.ID, &p.Title, &p.Brand, &p.Category, &p.ImageURL, &p.ProductURL, &p.SaveCount, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Title, &p.Brand, &p.Category, &p.ImageURL, &p.ProductURL, &p.SaveCount, &p.CreatedAt,
+		&p.PriceLabel, &p.Gender, &p.ProductType)
 	if err != nil {
 		return domain.DiscoverProduct{}, fmt.Errorf("seed product: %w", err)
 	}
@@ -355,6 +369,7 @@ func collectProducts(rows pgx.Rows) ([]domain.DiscoverProduct, error) {
 			&p.ID, &p.Title, &p.Brand, &p.Category,
 			&p.ImageURL, &p.ProductURL,
 			&p.SaveCount, &p.CreatedAt, &p.SavedByUser,
+			&p.PriceLabel, &p.Gender, &p.ProductType,
 		); err != nil {
 			return nil, fmt.Errorf("scan discover product: %w", err)
 		}

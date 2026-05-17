@@ -10,6 +10,8 @@ class Product {
   final String? priceLabel;
   final String? gender;
   final String? productType;
+  final String? savedItemId;
+  final String? savedWishlistId;
 
   const Product({
     required this.id,
@@ -23,6 +25,8 @@ class Product {
     this.priceLabel,
     this.gender,
     this.productType,
+    this.savedItemId,
+    this.savedWishlistId,
   });
 
   Product copyWith({
@@ -43,6 +47,8 @@ class Product {
     priceLabel: priceLabel ?? this.priceLabel,
     gender: gender ?? this.gender,
     productType: productType ?? this.productType,
+    savedItemId: savedItemId,
+    savedWishlistId: savedWishlistId,
   );
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -57,6 +63,8 @@ class Product {
     priceLabel: json['priceLabel'] as String?,
     gender: json['gender'] as String?,
     productType: json['productType'] as String?,
+    savedItemId: json['savedItemId'] as String?,
+    savedWishlistId: json['savedWishlistId'] as String?,
   );
 
   static List<Product> sample = [

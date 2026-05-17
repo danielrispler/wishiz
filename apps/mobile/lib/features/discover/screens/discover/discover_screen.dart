@@ -38,12 +38,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   DiscoverFeed? _feed;
   bool _isLoading = true;
   String? _loadError;
+  int _activeFeedRequestId = 0;
 
   /// Tracks which wishlist each saved product was added to (by product id).
   final Map<String, Wishlist> _savedProductWishlists = {};
 
-  /// Tracks the wishlist item id for products saved in this session.
+  /// Tracks the wishlist item id for saved products (session-added or pre-loaded).
   final Map<String, String> _savedItemIds = {};
+
+  /// Tracks wishlist id for products pre-loaded as saved from the feed.
+  final Map<String, String> _savedWishlistIds = {};
 
   @override
   void initState() {
@@ -64,7 +68,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Future<void> _loadFeed({bool showShimmer = true}) async {
+    final requestId = ++_activeFeedRequestId;
+
     if (widget.discoverRepository == null) {
+      if (!mounted || requestId != _activeFeedRequestId) return;
       setState(() {
         _feed = DiscoverFeed(
           starterPacks: const [],
@@ -83,13 +90,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
     try {
       final feed = await widget.discoverRepository!.getFeed();
-      if (!mounted) return;
+      if (!mounted || requestId != _activeFeedRequestId) return;
       setState(() {
         _feed = feed;
         _isLoading = false;
+        _hydrateSavedStateFromFeed(feed);
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestId != _activeFeedRequestId) return;
       setState(() {
         _isLoading = false;
         _loadError = 'Could not load the feed. Pull to refresh.';
@@ -167,22 +175,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// Removes product from its saved list.
   Future<void> _removeFromList(Product p) async {
     final wishlist = _savedProductWishlists[p.id];
+    final preloadedWishlistId = _savedWishlistIds[p.id];
+    final wishlistId = wishlist?.id ?? preloadedWishlistId;
     final itemId = _savedItemIds[p.id];
 
     _optimisticToggle(p);
     setState(() {
       _savedProductWishlists.remove(p.id);
+      _savedWishlistIds.remove(p.id);
       _savedItemIds.remove(p.id);
     });
     try {
       if (widget.discoverRepository != null) {
         await widget.discoverRepository!.toggleSave(p.id);
       }
-      if (wishlist != null &&
+      if (wishlistId != null &&
           itemId != null &&
           widget.wishlistRepository != null) {
         await widget.wishlistRepository!.deleteWishlistItem(
-          wishlistId: wishlist.id,
+          wishlistId: wishlistId,
           itemId: itemId,
         );
       }
@@ -191,6 +202,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _optimisticToggle(p);
       setState(() {
         if (wishlist != null) _savedProductWishlists[p.id] = wishlist;
+        if (preloadedWishlistId != null) {
+          _savedWishlistIds[p.id] = preloadedWishlistId;
+        }
         if (itemId != null) _savedItemIds[p.id] = itemId;
       });
       ScaffoldMessenger.of(context)
@@ -232,6 +246,28 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         forYou: _toggleInList(_feed!.forYou, p),
       );
     });
+  }
+
+  void _hydrateSavedStateFromFeed(DiscoverFeed feed) {
+    for (final product in feed.trending) {
+      _hydrateSavedProduct(product);
+    }
+    for (final product in feed.forYou) {
+      _hydrateSavedProduct(product);
+    }
+  }
+
+  void _hydrateSavedProduct(Product product) {
+    if (!product.isSavedByUser || _savedItemIds.containsKey(product.id)) {
+      return;
+    }
+
+    if (product.savedItemId != null) {
+      _savedItemIds[product.id] = product.savedItemId!;
+    }
+    if (product.savedWishlistId != null) {
+      _savedWishlistIds[product.id] = product.savedWishlistId!;
+    }
   }
 
   List<Product> _toggleInList(List<Product> list, Product target) {
@@ -362,91 +398,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       color: AppColors.surface,
       child: Stack(
         children: [
-          const _AmbientBackdrop(),
+          const RepaintBoundary(child: _AmbientBackdrop()),
           RefreshIndicator(
             onRefresh: () => _loadFeed(showShimmer: false),
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                const SliverToBoxAdapter(child: _DisplayTitle()),
-                const SliverToBoxAdapter(child: SizedBox(height: 10)),
-                SliverToBoxAdapter(
-                  child: _PreferenceRow(
-                    selectedBrandNames: _selectedBrandNames,
-                    onEdit: _openPreferencesSheet,
-                    onRemoveBrand: _removeBrandPreference,
-                  ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 18)),
-                if (_isLoading) ...[
-                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  SliverToBoxAdapter(child: _ShimmerCarousel(height: 296)),
-                ] else if (_loadError != null) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Text(
-                        _loadError!,
-                        style: const TextStyle(
-                          color: AppColors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ] else if (isFeedEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: _DiscoverEmptyState(
-                      hasPreferences: _selectedBrandNames.isNotEmpty,
-                      onEditPreferences: _openPreferencesSheet,
-                      onRefresh: _loadFeed,
-                    ),
-                  ),
-                ] else ...[
-                  SliverToBoxAdapter(
-                    child: SectionHeader(
-                      label: 'For you',
-                      eyebrow: _selectedBrandNames.isEmpty
-                          ? 'Set your preferences to tailor this mix'
-                          : 'Shaped by the fashion brands you picked',
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
-                  if (shouldShowForYouWarning) ...[
-                    SliverToBoxAdapter(
-                      child: _ForYouEmptyWarning(
-                        onEditPreferences: _openPreferencesSheet,
-                      ),
-                    ),
-                  ] else ...[
-                    SliverToBoxAdapter(
-                      child: ProductCarousel(
-                        products: forYou,
-                        onToggleSave: _handleToggleSave,
-                        onProductTap: _showProductDetail,
-                      ),
-                    ),
-                  ],
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  const SliverToBoxAdapter(
-                    child: SectionHeader(
-                      label: 'Trending now',
-                      eyebrow: 'What women are saving this week',
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
-                  SliverToBoxAdapter(
-                    child: ProductCarousel(
-                      products: trending,
-                      onToggleSave: _handleToggleSave,
-                      onProductTap: _showProductDetail,
-                    ),
-                  ),
-                ],
-                const SliverToBoxAdapter(child: SizedBox(height: 110)),
-              ],
+            child: _DiscoverScrollView(
+              isLoading: _isLoading,
+              loadError: _loadError,
+              isFeedEmpty: isFeedEmpty,
+              shouldShowForYouWarning: shouldShowForYouWarning,
+              selectedBrandNames: _selectedBrandNames,
+              trending: trending,
+              forYou: forYou,
+              onEditPreferences: _openPreferencesSheet,
+              onRemoveBrand: _removeBrandPreference,
+              onRefresh: _loadFeed,
+              onToggleSave: _handleToggleSave,
+              onProductTap: _showProductDetail,
             ),
           ),
         ],
@@ -553,12 +520,28 @@ class _PreferencesSheet extends StatefulWidget {
 
 class _PreferencesSheetState extends State<_PreferencesSheet> {
   late Set<String> _brands;
+  late final List<_PreparedBrandGroup> _preparedGroups;
   String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _brands = Set<String>.of(widget.initialBrands);
+    _preparedGroups = BrandGroup.all
+        .map(
+          (group) => _PreparedBrandGroup(
+            label: group.label,
+            brands: group.brands
+                .map(
+                  (brand) => _PreparedBrandOption(
+                    label: brand,
+                    normalizedLabel: brand.toLowerCase(),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
   }
 
   void _notifyChanged() {
@@ -568,13 +551,13 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
   @override
   Widget build(BuildContext context) {
     final normalizedQuery = _searchQuery.trim().toLowerCase();
-    final filteredGroups = BrandGroup.all
+    final filteredGroups = _preparedGroups
         .map((group) {
           final brands = group.brands
               .where(
                 (brand) => normalizedQuery.isEmpty
                     ? true
-                    : brand.toLowerCase().contains(normalizedQuery),
+                    : brand.normalizedLabel.contains(normalizedQuery),
               )
               .toList(growable: false);
           return (label: group.label, brands: brands);
@@ -771,16 +754,16 @@ class _PreferencesSheetState extends State<_PreferencesSheet> {
                     runSpacing: 8,
                     children: group.brands
                         .map((brand) {
-                          final isSelected = _brands.contains(brand);
+                          final isSelected = _brands.contains(brand.label);
                           return _PreferenceChip(
-                            label: brand,
+                            label: brand.label,
                             isSelected: isSelected,
                             onTap: () {
                               setState(() {
                                 if (isSelected) {
-                                  _brands.remove(brand);
+                                  _brands.remove(brand.label);
                                 } else {
-                                  _brands.add(brand);
+                                  _brands.add(brand.label);
                                 }
                               });
                               _notifyChanged();
@@ -848,16 +831,14 @@ class _PreferenceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brandCount = selectedBrandNames.length;
-    final sortedBrands = selectedBrandNames.toList()..sort();
-    final previewBrands = sortedBrands.take(4).toList(growable: false);
-    final remainingBrands = brandCount - previewBrands.length;
+    final previewData = _PreferencePreviewData.fromBrands(selectedBrandNames);
+    final brandCount = previewData.brandCount;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final useWideHeader = constraints.maxWidth >= 360;
+          final useWideHeader = constraints.maxWidth >= 430;
           final summary = brandCount == 0
               ? 'Add brands to tailor this mix.'
               : '$brandCount brand${brandCount == 1 ? '' : 's'} selected';
@@ -934,15 +915,15 @@ class _PreferenceRow extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final brand in previewBrands)
+                      for (final brand in previewData.previewBrands)
                         _PreferencePill(
                           label: brand,
                           compact: true,
                           onDeleted: () => onRemoveBrand(brand),
                         ),
-                      if (remainingBrands > 0)
+                      if (previewData.remainingBrands > 0)
                         _PreferencePill(
-                          label: '+$remainingBrands',
+                          label: '+${previewData.remainingBrands}',
                           compact: true,
                         ),
                     ],
@@ -953,6 +934,180 @@ class _PreferenceRow extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _DiscoverScrollView extends StatelessWidget {
+  const _DiscoverScrollView({
+    required this.isLoading,
+    required this.loadError,
+    required this.isFeedEmpty,
+    required this.shouldShowForYouWarning,
+    required this.selectedBrandNames,
+    required this.trending,
+    required this.forYou,
+    required this.onEditPreferences,
+    required this.onRemoveBrand,
+    required this.onRefresh,
+    required this.onToggleSave,
+    required this.onProductTap,
+  });
+
+  final bool isLoading;
+  final String? loadError;
+  final bool isFeedEmpty;
+  final bool shouldShowForYouWarning;
+  final Set<String> selectedBrandNames;
+  final List<Product> trending;
+  final List<Product> forYou;
+  final VoidCallback onEditPreferences;
+  final ValueChanged<String> onRemoveBrand;
+  final Future<void> Function() onRefresh;
+  final void Function(Product product, bool isSaved) onToggleSave;
+  final void Function(Product product) onProductTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        const SliverToBoxAdapter(
+          child: RepaintBoundary(child: _DisplayTitle()),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 10)),
+        SliverToBoxAdapter(
+          child: RepaintBoundary(
+            child: _PreferenceRow(
+              selectedBrandNames: selectedBrandNames,
+              onEdit: onEditPreferences,
+              onRemoveBrand: onRemoveBrand,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 18)),
+        if (isLoading) ...[
+          const SliverToBoxAdapter(
+            child: RepaintBoundary(child: _ShimmerCarousel(height: 296)),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(
+            child: RepaintBoundary(child: _ShimmerCarousel(height: 296)),
+          ),
+        ] else if (loadError != null) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                loadError!,
+                style: const TextStyle(color: AppColors.onSurfaceVariant),
+              ),
+            ),
+          ),
+        ] else if (isFeedEmpty) ...[
+          SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: _DiscoverEmptyState(
+                hasPreferences: selectedBrandNames.isNotEmpty,
+                onEditPreferences: onEditPreferences,
+                onRefresh: onRefresh,
+              ),
+            ),
+          ),
+        ] else ...[
+          SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: SectionHeader(
+                label: 'For you',
+                eyebrow: selectedBrandNames.isEmpty
+                    ? 'Set your preferences to tailor this mix'
+                    : 'Shaped by the fashion brands you picked',
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 14)),
+          if (shouldShowForYouWarning) ...[
+            SliverToBoxAdapter(
+              child: RepaintBoundary(
+                child: _ForYouEmptyWarning(
+                  onEditPreferences: onEditPreferences,
+                ),
+              ),
+            ),
+          ] else ...[
+            SliverToBoxAdapter(
+              child: RepaintBoundary(
+                child: ProductCarousel(
+                  products: forYou,
+                  onToggleSave: onToggleSave,
+                  onProductTap: onProductTap,
+                ),
+              ),
+            ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: SectionHeader(
+                label: 'Trending now',
+                eyebrow: 'What women are saving this week',
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 14)),
+          SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: ProductCarousel(
+                products: trending,
+                onToggleSave: onToggleSave,
+                onProductTap: onProductTap,
+              ),
+            ),
+          ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 110)),
+      ],
+    );
+  }
+}
+
+class _PreparedBrandGroup {
+  const _PreparedBrandGroup({required this.label, required this.brands});
+
+  final String label;
+  final List<_PreparedBrandOption> brands;
+}
+
+class _PreparedBrandOption {
+  const _PreparedBrandOption({
+    required this.label,
+    required this.normalizedLabel,
+  });
+
+  final String label;
+  final String normalizedLabel;
+}
+
+class _PreferencePreviewData {
+  const _PreferencePreviewData({
+    required this.brandCount,
+    required this.previewBrands,
+    required this.remainingBrands,
+  });
+
+  final int brandCount;
+  final List<String> previewBrands;
+  final int remainingBrands;
+
+  factory _PreferencePreviewData.fromBrands(Set<String> brands) {
+    final sortedBrands = brands.toList()..sort();
+    final previewBrands = sortedBrands.take(4).toList(growable: false);
+    return _PreferencePreviewData(
+      brandCount: sortedBrands.length,
+      previewBrands: previewBrands,
+      remainingBrands: sortedBrands.length - previewBrands.length,
     );
   }
 }

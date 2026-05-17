@@ -12,6 +12,20 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/ports"
 )
 
+func savedWishlistItemLateral(userParam string) string {
+	return fmt.Sprintf(`LEFT JOIN LATERAL (
+			SELECT wi.id::text AS item_id, wi.wishlist_id::text AS wl_id
+			FROM wishlist_items wi
+			JOIN wishlists wl ON wl.id = wi.wishlist_id
+			WHERE wi.product_url IS NOT NULL
+			  AND wi.product_url = p.product_url
+			  AND wl.owner_id = %s::uuid
+			  AND wl.is_archived = FALSE
+			ORDER BY wi.created_at DESC
+			LIMIT 1
+		) saved_wi ON TRUE`, userParam)
+}
+
 type Repository struct {
 	pool *pgxpool.Pool
 }
@@ -21,26 +35,33 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) ([]domain.DiscoverProduct, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT
-			p.id::text,
-			p.title,
-			p.brand,
-			p.category,
-			p.image_url,
-			p.product_url,
-			p.save_count,
-			p.created_at,
-			(dps.user_id IS NOT NULL) AS saved_by_user,
-			p.price_label,
-			p.gender,
-			p.product_type
-		FROM discover_products p
-		LEFT JOIN discover_product_saves dps
-			ON dps.product_id = p.id AND dps.user_id = $1::uuid
-		ORDER BY p.save_count DESC, p.created_at DESC
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+		SELECT * FROM (
+			SELECT
+				p.id::text,
+				p.title,
+				p.brand,
+				p.category,
+				p.image_url,
+				p.product_url,
+				p.save_count,
+				p.created_at,
+				(dps.user_id IS NOT NULL) AS saved_by_user,
+				p.price_label,
+				p.gender,
+				p.product_type,
+				saved_wi.item_id,
+				saved_wi.wl_id
+			FROM discover_products p
+			LEFT JOIN discover_product_saves dps
+				ON dps.product_id = p.id AND dps.user_id = $1::uuid
+			%s
+			ORDER BY p.save_count DESC, p.created_at DESC
+			LIMIT 30
+		) sub
+		ORDER BY RANDOM()
 		LIMIT $2
-	`, userID, limit)
+	`, savedWishlistItemLateral("$1")), userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get trending products: %w", err)
 	}
@@ -51,7 +72,7 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, brands []stri
 	if len(brands) == 0 {
 		return r.GetTrending(ctx, userID, limit)
 	}
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT
 			p.id::text,
 			p.title,
@@ -64,14 +85,17 @@ func (r *Repository) GetForYou(ctx context.Context, userID string, brands []stri
 			(dps.user_id IS NOT NULL) AS saved_by_user,
 			p.price_label,
 			p.gender,
-			p.product_type
+			p.product_type,
+			saved_wi.item_id,
+			saved_wi.wl_id
 		FROM discover_products p
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $1::uuid
+		%s
 		WHERE p.brand = ANY($2::text[])
 		ORDER BY RANDOM()
 		LIMIT $3
-	`, userID, brands, limit)
+	`, savedWishlistItemLateral("$1")), userID, brands, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get for-you products: %w", err)
 	}
@@ -118,7 +142,7 @@ func (r *Repository) GetStarterPacks(ctx context.Context, userID string) ([]doma
 }
 
 func (r *Repository) getPackItems(ctx context.Context, packID, userID string) ([]domain.DiscoverProduct, []string, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT
 			p.id::text,
 			p.title,
@@ -131,14 +155,17 @@ func (r *Repository) getPackItems(ctx context.Context, packID, userID string) ([
 			(dps.user_id IS NOT NULL) AS saved_by_user,
 			p.price_label,
 			p.gender,
-			p.product_type
+			p.product_type,
+			saved_wi.item_id,
+			saved_wi.wl_id
 		FROM starter_pack_items spi
 		JOIN discover_products p ON p.id = spi.product_id
 		LEFT JOIN discover_product_saves dps
 			ON dps.product_id = p.id AND dps.user_id = $2::uuid
+		%s
 		WHERE spi.pack_id = $1::uuid
 		ORDER BY spi.rank
-	`, packID, userID)
+	`, savedWishlistItemLateral("$2")), packID, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get pack items for pack %s: %w", packID, err)
 	}
@@ -370,6 +397,7 @@ func collectProducts(rows pgx.Rows) ([]domain.DiscoverProduct, error) {
 			&p.ImageURL, &p.ProductURL,
 			&p.SaveCount, &p.CreatedAt, &p.SavedByUser,
 			&p.PriceLabel, &p.Gender, &p.ProductType,
+			&p.SavedItemID, &p.SavedWishlistID,
 		); err != nil {
 			return nil, fmt.Errorf("scan discover product: %w", err)
 		}

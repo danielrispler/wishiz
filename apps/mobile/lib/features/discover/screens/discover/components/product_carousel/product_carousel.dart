@@ -23,14 +23,18 @@ class ProductCarousel extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
+        cacheExtent: 520,
         itemCount: products.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final p = products[i];
-          return TrendingItemCard(
-            product: p,
-            onTap: onProductTap == null ? null : () => onProductTap!(p),
-            onToggleSave: (isSaved) => onToggleSave(p, isSaved),
+          return RepaintBoundary(
+            key: ValueKey(p.id),
+            child: TrendingItemCard(
+              product: p,
+              onTap: onProductTap == null ? null : () => onProductTap!(p),
+              onToggleSave: (isSaved) => onToggleSave(p, isSaved),
+            ),
           );
         },
       ),

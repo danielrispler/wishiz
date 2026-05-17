@@ -105,58 +105,88 @@ class WishizNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cacheSize = _resolveCacheSize(context, constraints);
-        final fallback =
-            errorChild ??
-            _WishizImageFallback(backgroundColor: backgroundColor);
-        final requestKey = '$measurementLabel:${identityHashCode(this)}';
+    final requestKey =
+        '$measurementLabel:$imageUrl:${width ?? 0}:${height ?? 0}';
 
-        return ClipRRect(
-          borderRadius: borderRadius ?? BorderRadius.zero,
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
+    if (width != null && height != null) {
+      return _buildImage(
+        context,
+        requestKey: requestKey,
+        cacheSize: _resolveExplicitCacheSize(context),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) => _buildImage(
+        context,
+        requestKey: requestKey,
+        cacheSize: _resolveCacheSize(context, constraints),
+      ),
+    );
+  }
+
+  Widget _buildImage(
+    BuildContext context, {
+    required String requestKey,
+    required (int?, int?) cacheSize,
+  }) {
+    final fallback =
+        errorChild ?? _WishizImageFallback(backgroundColor: backgroundColor);
+
+    return ClipRRect(
+      borderRadius: borderRadius ?? BorderRadius.zero,
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: alignment,
+        filterQuality: filterQuality,
+        fadeInDuration: fadeInDuration,
+        memCacheWidth: cacheSize.$1,
+        memCacheHeight: cacheSize.$2,
+        placeholderFadeInDuration: Duration.zero,
+        progressIndicatorBuilder: (context, url, progress) {
+          _WishizImageMetricsTracker.onProgress(
+            requestKey: requestKey,
+            label: measurementLabel,
+            url: url,
+            progress: progress,
+          );
+
+          return placeholder ??
+              _WishizImagePlaceholder(backgroundColor: backgroundColor);
+        },
+        imageBuilder: (context, imageProvider) {
+          _WishizImageMetricsTracker.onComplete(
+            requestKey: requestKey,
+            label: measurementLabel,
+            url: imageUrl,
+          );
+
+          return Image(
+            image: imageProvider,
             width: width,
             height: height,
             fit: fit,
             alignment: alignment,
             filterQuality: filterQuality,
-            fadeInDuration: fadeInDuration,
-            memCacheWidth: cacheSize.$1,
-            memCacheHeight: cacheSize.$2,
-            placeholderFadeInDuration: Duration.zero,
-            progressIndicatorBuilder: (context, url, progress) {
-              _WishizImageMetricsTracker.onProgress(
-                requestKey: requestKey,
-                label: measurementLabel,
-                url: url,
-                progress: progress,
-              );
+          );
+        },
+        errorWidget: (context, url, error) => fallback,
+      ),
+    );
+  }
 
-              return placeholder ??
-                  _WishizImagePlaceholder(backgroundColor: backgroundColor);
-            },
-            imageBuilder: (context, imageProvider) {
-              _WishizImageMetricsTracker.onComplete(
-                requestKey: requestKey,
-                label: measurementLabel,
-                url: imageUrl,
-              );
+  (int?, int?) _resolveExplicitCacheSize(BuildContext context) {
+    if (kIsWeb) {
+      return (null, null);
+    }
 
-              return Image(
-                image: imageProvider,
-                width: width,
-                height: height,
-                fit: fit,
-                alignment: alignment,
-                filterQuality: filterQuality,
-              );
-            },
-            errorWidget: (context, url, error) => fallback,
-          ),
-        );
-      },
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    return (
+      _toPixelDimension(width, devicePixelRatio),
+      _toPixelDimension(height, devicePixelRatio),
     );
   }
 

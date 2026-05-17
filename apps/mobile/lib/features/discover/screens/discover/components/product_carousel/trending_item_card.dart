@@ -18,6 +18,11 @@ class TrendingItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final displayPrice = (product.priceLabel?.isNotEmpty ?? false)
+        ? product.priceLabel!
+        : 'View on site';
+    final hasPriceLabel = product.priceLabel?.isNotEmpty ?? false;
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -28,13 +33,12 @@ class TrendingItemCard extends StatelessWidget {
           children: [
             SizedBox(
               height: 196 + 14,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    bottom: 14,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
+              child: RepaintBoundary(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(
+                      bottom: 14,
                       child: WishizNetworkImage(
                         imageUrl: product.imageUrl,
                         width: 158,
@@ -53,21 +57,21 @@ class TrendingItemCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: _SaveCountChip(saves: product.saveCount),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 10,
-                    child: SaveButton(
-                      isSaved: product.isSavedByUser,
-                      onToggle: onToggleSave,
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: _SaveCountChip(saves: product.saveCount),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      bottom: 0,
+                      right: 10,
+                      child: SaveButton(
+                        isSaved: product.isSavedByUser,
+                        onToggle: onToggleSave,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -95,13 +99,13 @@ class TrendingItemCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              (product.priceLabel?.isNotEmpty ?? false) ? product.priceLabel! : 'View on site',
+              displayPrice,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: (product.priceLabel?.isNotEmpty ?? false)
+                color: hasPriceLabel
                     ? AppColors.onSurface
                     : AppColors.onSurfaceVariant,
                 letterSpacing: -0.1,

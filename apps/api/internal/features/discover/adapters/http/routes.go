@@ -229,17 +229,19 @@ func (h handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 // ---- Response mappers ----
 
 type productResponse struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Brand       string  `json:"brand"`
-	Category    string  `json:"category"`
-	ImageURL    string  `json:"imageUrl"`
-	ProductURL  *string `json:"productUrl"`
-	SaveCount   int     `json:"saveCount"`
-	SavedByUser bool    `json:"savedByUser"`
-	PriceLabel  *string `json:"priceLabel"`
-	Gender      *string `json:"gender"`
-	ProductType *string `json:"productType"`
+	ID              string  `json:"id"`
+	Title           string  `json:"title"`
+	Brand           string  `json:"brand"`
+	Category        string  `json:"category"`
+	ImageURL        string  `json:"imageUrl"`
+	ProductURL      *string `json:"productUrl"`
+	SaveCount       int     `json:"saveCount"`
+	SavedByUser     bool    `json:"savedByUser"`
+	PriceLabel      *string `json:"priceLabel"`
+	Gender          *string `json:"gender"`
+	ProductType     *string `json:"productType"`
+	SavedItemID     *string `json:"savedItemId,omitempty"`
+	SavedWishlistID *string `json:"savedWishlistId,omitempty"`
 }
 
 type starterPackResponse struct {
@@ -254,17 +256,19 @@ type starterPackResponse struct {
 
 func mapProduct(p domain.DiscoverProduct) productResponse {
 	return productResponse{
-		ID:          p.ID,
-		Title:       p.Title,
-		Brand:       p.Brand,
-		Category:    p.Category,
-		ImageURL:    p.ImageURL,
-		ProductURL:  p.ProductURL,
-		SaveCount:   p.SaveCount,
-		SavedByUser: p.SavedByUser,
-		PriceLabel:  p.PriceLabel,
-		Gender:      p.Gender,
-		ProductType: p.ProductType,
+		ID:              p.ID,
+		Title:           p.Title,
+		Brand:           p.Brand,
+		Category:        p.Category,
+		ImageURL:        p.ImageURL,
+		ProductURL:      p.ProductURL,
+		SaveCount:       p.SaveCount,
+		SavedByUser:     p.SavedByUser,
+		PriceLabel:      p.PriceLabel,
+		Gender:          p.Gender,
+		ProductType:     p.ProductType,
+		SavedItemID:     p.SavedItemID,
+		SavedWishlistID: p.SavedWishlistID,
 	}
 }
 

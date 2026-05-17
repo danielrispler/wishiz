@@ -486,6 +486,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           wishlistRepository: widget.repository,
                           discoverRepository: widget.discoverRepository,
                           currentUser: widget.currentUser,
+                          onNavigateToLists: () =>
+                              setState(() => _currentIndex = 0),
                         ),
                       ),
                     _ => SharedTabContent(

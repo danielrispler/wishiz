@@ -9,6 +9,7 @@ import 'package:wishiz/features/discover/models/product.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'components/product_carousel/product_carousel.dart';
+import 'components/product_detail_sheet.dart';
 import 'components/section_header.dart';
 
 class DiscoverScreen extends StatefulWidget {
@@ -18,12 +19,14 @@ class DiscoverScreen extends StatefulWidget {
     required this.currentUser,
     this.discoverRepository,
     this.wishlistRepository,
+    this.onNavigateToLists,
   });
 
   final AuthRepository authRepository;
   final WishlistRepository? wishlistRepository;
   final DiscoverRepository? discoverRepository;
   final AppUser currentUser;
+  final VoidCallback? onNavigateToLists;
 
   @override
   State<DiscoverScreen> createState() => _DiscoverScreenState();
@@ -35,6 +38,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   DiscoverFeed? _feed;
   bool _isLoading = true;
   String? _loadError;
+
+  /// Tracks which wishlist each saved product was added to (by product id).
+  final Map<String, Wishlist> _savedProductWishlists = {};
 
   @override
   void initState() {
@@ -90,29 +96,18 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   void _handleToggleSave(Product p, bool _) async {
     if (p.isSavedByUser) {
-      _optimisticToggle(p);
-      try {
-        if (widget.discoverRepository != null) {
-          await widget.discoverRepository!.toggleSave(p.id);
-        }
-      } catch (_) {
-        if (!mounted) return;
-        _optimisticToggle(p);
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Could not remove that save right now.'),
-            ),
-          );
-      }
-      return;
+      await _removeFromList(p);
+    } else {
+      await _addToList(p);
     }
+  }
 
+  /// Adds product to a user-chosen wishlist. Returns true on success.
+  Future<bool> _addToList(Product p) async {
     final wishlistRepository = widget.wishlistRepository;
     if (wishlistRepository == null) {
       _optimisticToggle(p);
-      return;
+      return true;
     }
 
     final wishlists = wishlistRepository
@@ -121,18 +116,20 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         .toList(growable: false);
 
     if (wishlists.isEmpty) {
+      if (!mounted) return false;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(content: Text('Create a wishlist first.')),
         );
-      return;
+      return false;
     }
 
     final wishlist = await _showWishlistPicker(wishlists);
-    if (!mounted || wishlist == null) return;
+    if (!mounted || wishlist == null) return false;
 
     _optimisticToggle(p);
+    setState(() => _savedProductWishlists[p.id] = wishlist);
 
     try {
       if (widget.discoverRepository != null) {
@@ -143,17 +140,62 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         title: p.title,
         imageUrl: p.imageUrl,
         productUrl: p.productUrl,
+        priceLabel: p.priceLabel,
       );
-      if (!mounted) return;
+      if (!mounted) return true;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(content: Text('Saved to "${wishlist.title}".')),
         );
+      return true;
+    } catch (_) {
+      if (!mounted) return false;
+      _optimisticToggle(p);
+      setState(() => _savedProductWishlists.remove(p.id));
+      return false;
+    }
+  }
+
+  /// Removes product from its saved list.
+  Future<void> _removeFromList(Product p) async {
+    _optimisticToggle(p);
+    setState(() => _savedProductWishlists.remove(p.id));
+    try {
+      if (widget.discoverRepository != null) {
+        await widget.discoverRepository!.toggleSave(p.id);
+      }
     } catch (_) {
       if (!mounted) return;
       _optimisticToggle(p);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Could not remove that save right now.'),
+          ),
+        );
     }
+  }
+
+  void _showProductDetail(Product p) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      isScrollControlled: true,
+      builder: (_) {
+        return ProductDetailSheet(
+          product: p,
+          savedToWishlist: _savedProductWishlists[p.id],
+          onAddToList: () => _addToList(p),
+          onRemove: () => _removeFromList(p),
+          onGoToList: widget.onNavigateToLists,
+        );
+      },
+    );
   }
 
   void _optimisticToggle(Product p) {
@@ -273,10 +315,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final trending = feed?.trending ?? [];
     final forYou = feed?.forYou ?? [];
     final isFeedEmpty =
-        !_isLoading &&
-        _loadError == null &&
-        trending.isEmpty &&
-        forYou.isEmpty;
+        !_isLoading && _loadError == null && trending.isEmpty && forYou.isEmpty;
     final shouldShowForYouWarning =
         !_isLoading &&
         _loadError == null &&
@@ -291,7 +330,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           RefreshIndicator(
             onRefresh: _loadFeed,
             child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               slivers: [
                 const SliverToBoxAdapter(child: _DisplayTitle()),
                 const SliverToBoxAdapter(child: SizedBox(height: 10)),
@@ -347,6 +388,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       child: ProductCarousel(
                         products: forYou,
                         onToggleSave: _handleToggleSave,
+                        onProductTap: _showProductDetail,
                       ),
                     ),
                   ],
@@ -362,6 +404,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     child: ProductCarousel(
                       products: trending,
                       onToggleSave: _handleToggleSave,
+                      onProductTap: _showProductDetail,
                     ),
                   ),
                 ],
@@ -639,33 +682,28 @@ class _PreferenceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brandCount = selectedBrandNames.length;
+    final sortedBrands = selectedBrandNames.toList()..sort();
+    final previewBrands = sortedBrands.take(4).toList(growable: false);
+    final remainingBrands = brandCount - previewBrands.length;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final useWideHeader = constraints.maxWidth >= 420;
-          final title = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'For you',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.onSurface,
-                  letterSpacing: -0.25,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'Fine-tune your mix.',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.onSurfaceVariant,
-                  height: 1.2,
-                ),
+          final useWideHeader = constraints.maxWidth >= 360;
+          final summary = brandCount == 0
+              ? 'Add brands to tailor this mix.'
+              : '$brandCount brand${brandCount == 1 ? '' : 's'} selected';
+          final title = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PreferencePill(
+                label: summary,
+                icon: brandCount == 0
+                    ? Icons.auto_awesome_rounded
+                    : Icons.favorite_border_rounded,
+                isPlaceholder: brandCount == 0,
+                compact: true,
               ),
             ],
           );
@@ -675,11 +713,12 @@ class _PreferenceRow extends StatelessWidget {
             style: FilledButton.styleFrom(
               foregroundColor: AppColors.primary,
               backgroundColor: AppColors.surfaceContainerLow,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              minimumSize: const Size(0, 40),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 36),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             icon: const Icon(Icons.tune_rounded, size: 16),
@@ -691,25 +730,18 @@ class _PreferenceRow extends StatelessWidget {
 
           return Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.92),
-                  AppColors.surfaceContainerLow.withValues(alpha: 0.96),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(22),
+              color: Colors.white.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: AppColors.surfaceVariant.withValues(alpha: 0.8),
+                color: AppColors.surfaceVariant.withValues(alpha: 0.85),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
+                  color: AppColors.primary.withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
@@ -718,38 +750,33 @@ class _PreferenceRow extends StatelessWidget {
               children: [
                 if (useWideHeader)
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: title),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       editButton,
                     ],
                   )
                 else ...[
                   title,
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Align(alignment: Alignment.centerLeft, child: editButton),
                 ],
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: brandCount == 0
-                      ? [
-                          const _PreferencePill(
-                            label: 'No preferences selected yet',
-                            icon: Icons.auto_awesome_rounded,
-                            isPlaceholder: true,
-                          ),
-                        ]
-                      : [
-                          _PreferencePill(
-                            label:
-                                '$brandCount brand${brandCount == 1 ? '' : 's'}',
-                            icon: Icons.favorite_border_rounded,
-                          ),
-                        ],
-                ),
+                if (brandCount > 0) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final brand in previewBrands)
+                        _PreferencePill(label: brand, compact: true),
+                      if (remainingBrands > 0)
+                        _PreferencePill(
+                          label: '+$remainingBrands',
+                          compact: true,
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           );
@@ -764,21 +791,26 @@ class _PreferencePill extends StatelessWidget {
     required this.label,
     this.icon,
     this.isPlaceholder = false,
+    this.compact = false,
   });
 
   final String label;
   final IconData? icon;
   final bool isPlaceholder;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 10,
+        vertical: compact ? 6 : 8,
+      ),
       decoration: BoxDecoration(
         color: isPlaceholder
             ? AppColors.surfaceContainerLow
             : AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
         border: Border.all(
           color: isPlaceholder ? AppColors.primary : AppColors.surfaceVariant,
         ),
@@ -787,13 +819,13 @@ class _PreferencePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 14, color: AppColors.primary),
+            Icon(icon, size: compact ? 13 : 14, color: AppColors.primary),
             const SizedBox(width: 5),
           ],
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: compact ? 11 : 12,
               fontWeight: FontWeight.w700,
               color: isPlaceholder ? AppColors.primary : AppColors.onSurface,
             ),

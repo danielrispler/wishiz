@@ -242,10 +242,23 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   Future<void> _shareWishlist(Wishlist wishlist, AppUser? currentUser) async {
-    await SharePlus.instance.share(ShareParams(
-      text: WishizShareText.buildWishlistShareText(wishlist: wishlist),
-      subject: wishlist.title,
-    ));
+    try {
+      final invite = await widget.repository.createInvite(
+        wishlistId: wishlist.id,
+        role: WishlistMemberRole.editor,
+      );
+      if (!mounted) return;
+      await SharePlus.instance.share(ShareParams(
+        text: WishizShareText.buildWishlistInviteShareText(
+          wishlist: wishlist,
+          inviteToken: invite.token!,
+        ),
+        subject: wishlist.title,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      _showFeedback(context, 'Could not create invite link: $e');
+    }
   }
 
   Future<void> _shareItem(Wishlist wishlist, WishlistItem item) async {

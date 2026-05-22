@@ -154,7 +154,7 @@ class WishlistInviteDto {
   factory WishlistInviteDto.fromJson(Map<String, dynamic> json) {
     return WishlistInviteDto(
       id: json['id'] as String,
-      email: json['email'] as String,
+      email: json['email'] as String?,
       role: WishlistMemberRole.fromApiValue(json['role'] as String),
       invitedByUserId: json['invitedByUserId'] as String?,
       acceptedAt: json['acceptedAt'] == null
@@ -168,7 +168,7 @@ class WishlistInviteDto {
   }
 
   final String id;
-  final String email;
+  final String? email;
   final WishlistMemberRole role;
   final String? invitedByUserId;
   final DateTime? acceptedAt;

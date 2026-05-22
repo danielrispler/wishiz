@@ -67,7 +67,7 @@ type PatchItemInput struct {
 }
 
 type CreateInviteInput struct {
-	Email     string
+	Email     *string
 	Role      string
 	ExpiresAt *time.Time
 }
@@ -576,9 +576,13 @@ func (s *Service) CreateInvite(ctx context.Context, wishlistID string, input *Cr
 		return domain.WishlistInvite{}, editorErr
 	}
 
-	email := normalizeEmail(input.Email)
-	if email == "" {
-		return domain.WishlistInvite{}, ValidationError("email", "email is required")
+	var emailPtr *string
+	if input.Email != nil {
+		normalized := normalizeEmail(*input.Email)
+		if normalized == "" {
+			return domain.WishlistInvite{}, ValidationError("email", "email is invalid")
+		}
+		emailPtr = &normalized
 	}
 	role, err := validateRole(input.Role)
 	if err != nil {
@@ -600,7 +604,7 @@ func (s *Service) CreateInvite(ctx context.Context, wishlistID string, input *Cr
 
 	invite, err := s.repo.CreateInvite(ctx, ports.CreateInviteParams{
 		WishlistID:      wishlistID,
-		Email:           email,
+		Email:           emailPtr,
 		Role:            role,
 		InvitedByUserID: s.userID(ctx),
 		TokenHash:       tokenHash(token),

@@ -128,13 +128,15 @@ class WishlistApiClient {
 
   Future<WishlistInviteDto> createInvite({
     required String wishlistId,
-    required String email,
+    String? email,
     required WishlistMemberRole role,
   }) async {
+    final body = <String, dynamic>{'role': role.apiValue};
+    if (email != null) body['email'] = email;
     final response = await _requestJson(
       'POST',
       '/wishlists/$wishlistId/invites',
-      body: {'email': email, 'role': role.apiValue},
+      body: body,
       expectedStatusCodes: const {HttpStatus.created},
     );
 

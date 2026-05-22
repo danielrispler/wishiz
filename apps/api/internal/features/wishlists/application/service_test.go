@@ -277,14 +277,14 @@ func TestServiceCreateInviteReturnsSingleUseToken(t *testing.T) {
 	service.nowFn = func() time.Time { return fixedTime }
 
 	invite, err := service.CreateInvite(userContext(ownerID, "owner@example.com"), wishlistID1, &CreateInviteInput{
-		Email: "  Viewer@Example.com ",
+		Email: cloneStringPtr("  Viewer@Example.com "),
 		Role:  domain.MemberRoleEditor,
 	})
 	if err != nil {
 		t.Fatalf("CreateInvite returned error: %v", err)
 	}
-	if invite.Email != "viewer@example.com" {
-		t.Fatalf("expected normalized email, got %q", invite.Email)
+	if invite.Email == nil || *invite.Email != "viewer@example.com" {
+		t.Fatalf("expected normalized email, got %v", invite.Email)
 	}
 	if invite.Role != domain.MemberRoleEditor {
 		t.Fatalf("expected editor role, got %q", invite.Role)
@@ -303,7 +303,7 @@ func TestServiceJoinAcceptsInviteAndAddsMember(t *testing.T) {
 	invite := domain.WishlistInvite{
 		ID:         inviteID1,
 		WishlistID: wishlistID1,
-		Email:      "viewer@example.com",
+		Email:      cloneStringPtr("viewer@example.com"),
 		Role:       domain.MemberRoleViewer,
 		ExpiresAt:  fixedTime.Add(time.Hour),
 		CreatedAt:  fixedTime,
@@ -416,7 +416,7 @@ func TestServiceCreateInviteAllowsEditor(t *testing.T) {
 	service.nowFn = func() time.Time { return fixedTime }
 
 	_, err := service.CreateInvite(userContext(editorID, "editor@example.com"), wishlistID1, &CreateInviteInput{
-		Email: "newperson@example.com",
+		Email: cloneStringPtr("newperson@example.com"),
 		Role:  domain.MemberRoleViewer,
 	})
 	if err != nil {
@@ -442,7 +442,7 @@ func TestServiceCreateInviteRejectsViewer(t *testing.T) {
 	service.nowFn = func() time.Time { return fixedTime }
 
 	_, err := service.CreateInvite(userContext(viewerID, "viewer@example.com"), wishlistID1, &CreateInviteInput{
-		Email: "newperson@example.com",
+		Email: cloneStringPtr("newperson@example.com"),
 		Role:  domain.MemberRoleViewer,
 	})
 	if err == nil {

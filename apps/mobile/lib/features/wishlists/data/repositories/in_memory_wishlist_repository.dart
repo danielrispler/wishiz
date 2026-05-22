@@ -135,7 +135,7 @@ class InMemoryWishlistRepository implements WishlistRepository {
   @override
   Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String email,
+    String? email,
     required WishlistMemberRole role,
   }) async {
     final now = DateTime.now();
@@ -150,10 +150,12 @@ class InMemoryWishlistRepository implements WishlistRepository {
     );
 
     final updated = _replaceWishlist(wishlistId, (wishlist) {
-      final normalizedEmail = email.toLowerCase();
-      final invites = wishlist.invites.where(
-        (existing) => existing.email.toLowerCase() != normalizedEmail,
-      );
+      final normalizedEmail = email?.toLowerCase();
+      final invites = normalizedEmail == null
+          ? wishlist.invites
+          : wishlist.invites.where(
+              (existing) => existing.email?.toLowerCase() != normalizedEmail,
+            );
       return wishlist.copyWith(invites: [...invites, invite], updatedAt: now);
     });
 

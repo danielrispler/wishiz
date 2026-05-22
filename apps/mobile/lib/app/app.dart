@@ -225,13 +225,14 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _consumePendingSharedText() async {
-    final sharedText = await widget.shareIntakeService
-        .consumePendingSharedText();
-    if (!mounted || sharedText == null) {
-      return;
+    while (true) {
+      final sharedText =
+          await widget.shareIntakeService.consumePendingSharedText();
+      if (!mounted || sharedText == null) {
+        return;
+      }
+      _storePendingSharedText(sharedText);
     }
-
-    _storePendingSharedText(sharedText);
   }
 
   void _storePendingSharedText(String sharedText) {

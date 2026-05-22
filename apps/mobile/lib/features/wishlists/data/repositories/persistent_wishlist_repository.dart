@@ -191,7 +191,7 @@ class PersistentWishlistRepository implements WishlistRepository {
   @override
   Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String email,
+    String? email,
     required WishlistMemberRole role,
   }) async {
     final invite = await _repository.createInvite(

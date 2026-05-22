@@ -11,20 +11,18 @@ class MainActivity : FlutterActivity() {
     private val methodChannelName = "wishiz/share_intake/methods"
     private val eventChannelName = "wishiz/share_intake/events"
     private var eventSink: EventChannel.EventSink? = null
-    private var latestSharedText: String? = null
+    private val pendingSharedTexts = ArrayDeque<String>()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        latestSharedText = extractSharedText(intent)
+        extractSharedText(intent)?.let { pendingSharedTexts.addLast(it) }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, methodChannelName)
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 when (call.method) {
                     "consumePendingSharedText", "getInitialSharedText" -> {
-                        val pendingSharedText = latestSharedText
-                        latestSharedText = null
-                        result.success(pendingSharedText)
+                        result.success(pendingSharedTexts.removeFirstOrNull())
                     }
                     else -> result.notImplemented()
                 }
@@ -51,9 +49,8 @@ class MainActivity : FlutterActivity() {
         if (!sharedText.isNullOrBlank()) {
             if (eventSink != null) {
                 eventSink?.success(sharedText)
-                latestSharedText = null
             } else {
-                latestSharedText = sharedText
+                pendingSharedTexts.addLast(sharedText)
             }
         }
     }

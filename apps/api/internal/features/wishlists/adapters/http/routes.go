@@ -75,7 +75,7 @@ type reorderItemsRequest struct {
 }
 
 type createInviteRequest struct {
-	Email     string     `json:"email"`
+	Email     *string    `json:"email"`
 	Role      string     `json:"role"`
 	ExpiresAt *time.Time `json:"expiresAt"`
 }
@@ -115,7 +115,7 @@ type memberResponse struct {
 
 type inviteResponse struct {
 	ID              string     `json:"id"`
-	Email           string     `json:"email"`
+	Email           *string    `json:"email"`
 	Role            string     `json:"role"`
 	InvitedByUserID *string    `json:"invitedByUserId"`
 	AcceptedAt      *time.Time `json:"acceptedAt"`

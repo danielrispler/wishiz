@@ -75,7 +75,7 @@ type UpdateItemParams struct {
 
 type CreateInviteParams struct {
 	WishlistID      string
-	Email           string
+	Email           *string
 	Role            string
 	InvitedByUserID string
 	TokenHash       string

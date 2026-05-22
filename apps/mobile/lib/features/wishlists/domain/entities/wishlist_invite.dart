@@ -3,7 +3,7 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 class WishlistInvite {
   const WishlistInvite({
     required this.id,
-    required this.email,
+    this.email,
     required this.role,
     this.invitedByUserId,
     this.acceptedAt,
@@ -14,7 +14,7 @@ class WishlistInvite {
   });
 
   final String id;
-  final String email;
+  final String? email;
   final WishlistMemberRole role;
   final String? invitedByUserId;
   final DateTime? acceptedAt;

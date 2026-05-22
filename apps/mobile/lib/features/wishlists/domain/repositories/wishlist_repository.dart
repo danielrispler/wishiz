@@ -44,7 +44,7 @@ abstract class WishlistRepository {
 
   Future<WishlistInvite> createInvite({
     required String wishlistId,
-    required String email,
+    String? email,
     required WishlistMemberRole role,
   });
 

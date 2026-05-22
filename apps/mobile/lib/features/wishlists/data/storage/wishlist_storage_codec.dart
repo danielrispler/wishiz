@@ -80,7 +80,7 @@ class WishlistStorageCodec {
   WishlistMember _memberFromJson(Map<String, dynamic> json) {
     return WishlistMember(
       userId: json['userId'] as String,
-      email: json['email'] as String,
+      email: json['email'] as String? ?? '',
       fullName: json['fullName'] as String? ?? '',
       role: WishlistMemberRole.fromApiValue(json['role'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
@@ -105,7 +105,7 @@ class WishlistStorageCodec {
   WishlistInvite _inviteFromJson(Map<String, dynamic> json) {
     return WishlistInvite(
       id: json['id'] as String,
-      email: json['email'] as String,
+      email: json['email'] as String?,
       role: WishlistMemberRole.fromApiValue(json['role'] as String),
       invitedByUserId: json['invitedByUserId'] as String?,
       acceptedAt: (json['acceptedAt'] as String?) == null

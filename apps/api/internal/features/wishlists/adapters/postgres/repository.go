@@ -447,7 +447,7 @@ func (r *Repository) CreateInvite(ctx context.Context, params ports.CreateInvite
 			expires_at
 		)
 		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6)
-		ON CONFLICT (wishlist_id, email) DO UPDATE
+		ON CONFLICT (wishlist_id, email) WHERE email IS NOT NULL DO UPDATE
 		SET
 			role = EXCLUDED.role,
 			invited_by_user_id = EXCLUDED.invited_by_user_id,
@@ -973,7 +973,7 @@ func scanInvite(row interface{ Scan(...any) error }) (domain.WishlistInvite, err
 	err := row.Scan(
 		&invite.ID,
 		&invite.WishlistID,
-		&invite.Email,
+		&invite.Email, // *string — nullable
 		&invite.Role,
 		&invite.InvitedByUserID,
 		&invite.AcceptedAt,

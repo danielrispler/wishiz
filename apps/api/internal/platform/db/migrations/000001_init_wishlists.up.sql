@@ -174,7 +174,7 @@ CREATE TRIGGER wishlist_members_set_updated_at
 CREATE TABLE IF NOT EXISTS wishlist_invites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE,
-    email CITEXT NOT NULL,
+    email CITEXT,
     role TEXT NOT NULL,
     invited_by_user_id UUID REFERENCES app_users(id) ON DELETE SET NULL,
     token_hash TEXT NOT NULL UNIQUE,
@@ -182,15 +182,19 @@ CREATE TABLE IF NOT EXISTS wishlist_invites (
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (wishlist_id, email),
     CONSTRAINT wishlist_invites_role_check CHECK (role IN ('viewer', 'editor'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS wishlist_invites_wishlist_id_email_uidx
+    ON wishlist_invites (wishlist_id, email)
+    WHERE email IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS wishlist_invites_wishlist_id_idx
     ON wishlist_invites (wishlist_id);
 
 CREATE INDEX IF NOT EXISTS wishlist_invites_email_idx
-    ON wishlist_invites (email);
+    ON wishlist_invites (email)
+    WHERE email IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS wishlist_invites_expires_at_idx
     ON wishlist_invites (expires_at);

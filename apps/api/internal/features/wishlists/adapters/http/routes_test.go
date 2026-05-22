@@ -217,13 +217,13 @@ func TestCreateInviteReturnsCreatedInvite(t *testing.T) {
 			if gotWishlistID != wishlistID {
 				t.Fatalf("expected wishlist id %s, got %s", wishlistID, gotWishlistID)
 			}
-			if input == nil || input.Email != "viewer@example.com" || input.Role != domain.MemberRoleEditor {
+			if input == nil || input.Email == nil || *input.Email != "viewer@example.com" || input.Role != domain.MemberRoleEditor {
 				t.Fatalf("unexpected invite input: %#v", input)
 			}
 			return domain.WishlistInvite{
 				ID:         inviteID,
 				WishlistID: wishlistID,
-				Email:      "viewer@example.com",
+				Email:      strPtr("viewer@example.com"),
 				Role:       domain.MemberRoleEditor,
 				ExpiresAt:  fixedTime.Add(24 * time.Hour),
 				CreatedAt:  fixedTime,
@@ -380,7 +380,7 @@ func sampleWishlist() domain.Wishlist {
 			{
 				ID:         inviteID,
 				WishlistID: wishlistID,
-				Email:      "pending@example.com",
+				Email:      strPtr("pending@example.com"),
 				Role:       domain.MemberRoleViewer,
 				ExpiresAt:  fixedTime.Add(24 * time.Hour),
 				CreatedAt:  fixedTime,
@@ -541,3 +541,5 @@ func (s *stubService) UpdateMemberRole(ctx context.Context, wishlistID string, u
 	}
 	return s.updateMemberRole(ctx, wishlistID, userID, input)
 }
+
+func strPtr(s string) *string { return &s }

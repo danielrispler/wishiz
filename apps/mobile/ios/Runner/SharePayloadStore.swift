@@ -102,7 +102,17 @@ final class WishizSharePayloadStore {
       return false
     }
 
-    let envelope = PendingShareEnvelope(version: 1, sharedText: normalized)
+    var existingTexts: [String] = []
+    if fileManager.fileExists(atPath: fileURL.path),
+      let data = try? Data(contentsOf: fileURL),
+      let existing = try? JSONDecoder().decode(PendingShareEnvelope.self, from: data),
+      existing.version == 1
+    {
+      existingTexts = existing.sharedTexts
+    }
+
+    existingTexts.append(normalized)
+    let envelope = PendingShareEnvelope(version: 1, sharedTexts: existingTexts)
 
     do {
       try fileManager.createDirectory(
@@ -119,23 +129,28 @@ final class WishizSharePayloadStore {
   }
 
   func consumePendingSharedText() -> String? {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      return nil
-    }
-
-    defer {
-      clearPendingSharedText()
-    }
-
-    guard let data = try? Data(contentsOf: fileURL),
+    guard fileManager.fileExists(atPath: fileURL.path),
+      let data = try? Data(contentsOf: fileURL),
       let envelope = try? JSONDecoder().decode(PendingShareEnvelope.self, from: data),
       envelope.version == 1,
-      let normalized = WishizSharePayloadNormalizer.normalize(rawSharedText: envelope.sharedText)
+      !envelope.sharedTexts.isEmpty
     else {
       return nil
     }
 
-    return normalized
+    let first = envelope.sharedTexts[0]
+    let remaining = Array(envelope.sharedTexts.dropFirst())
+
+    if remaining.isEmpty {
+      clearPendingSharedText()
+    } else {
+      let newEnvelope = PendingShareEnvelope(version: 1, sharedTexts: remaining)
+      if let newData = try? JSONEncoder().encode(newEnvelope) {
+        try? newData.write(to: fileURL, options: .atomic)
+      }
+    }
+
+    return WishizSharePayloadNormalizer.normalize(rawSharedText: first)
   }
 
   func clearPendingSharedText() {
@@ -145,5 +160,5 @@ final class WishizSharePayloadStore {
 
 private struct PendingShareEnvelope: Codable {
   let version: Int
-  let sharedText: String
+  let sharedTexts: [String]
 }

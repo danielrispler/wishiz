@@ -45,7 +45,7 @@ type WishlistMember struct {
 type WishlistInvite struct {
 	ID              string
 	WishlistID      string
-	Email           string
+	Email           *string
 	Role            string
 	InvitedByUserID *string
 	AcceptedAt      *time.Time

@@ -1,0 +1,7 @@
+{
+  "skillListingBudgetFraction": 0.02,
+  "skillOverrides": {
+    "grill-with-docs": "user-invocable-only",
+    "improve-codebase-architecture": "user-invocable-only"
+  }
+}

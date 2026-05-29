@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Maintenance Rule
 
-Treat this file as living documentation. If you change the repo in a way that makes `AGENTS.md` inaccurate or incomplete, update `AGENTS.md` in the same task so the instructions stay current.
+Treat this file as living documentation. If you change the repo in a way that makes `CLAUDE.md` inaccurate or incomplete, update `CLAUDE.md` in the same task so the instructions stay current.
 
 ## What This Is
 

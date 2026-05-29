@@ -2,19 +2,36 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 
 enum SortField { rank, price, dateAdded }
 
+const _defaultAscending = {
+  SortField.rank: true,
+  SortField.price: true,
+  SortField.dateAdded: false,
+};
+
 class SortCriterion {
   const SortCriterion(this.field, {this.ascending = true});
+
+  factory SortCriterion.defaultFor(SortField field) =>
+      SortCriterion(field, ascending: _defaultAscending[field]!);
 
   final SortField field;
   final bool ascending;
 
+  bool get isDefault => field == SortField.rank && ascending;
+
+  SortCriterion copyWith({bool? ascending}) =>
+      SortCriterion(field, ascending: ascending ?? this.ascending);
+
   SortCriterion toggleDirection() => SortCriterion(field, ascending: !ascending);
 
-  String get label => switch (field) {
-    SortField.rank => 'Rank',
-    SortField.price => 'Price',
-    SortField.dateAdded => 'Date',
-  };
+  String get label {
+    final name = switch (field) {
+      SortField.rank => 'Rank',
+      SortField.price => 'Price',
+      SortField.dateAdded => 'Date',
+    };
+    return '$name ${ascending ? '↑' : '↓'}';
+  }
 
   @override
   bool operator ==(Object other) =>

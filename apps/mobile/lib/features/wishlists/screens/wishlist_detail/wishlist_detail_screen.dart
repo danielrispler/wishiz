@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
@@ -61,7 +62,7 @@ class WishlistDetailScreen extends StatefulWidget {
 }
 
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
-  List<SortCriterion> _sortCriteria = WishlistItemControls.defaultSortCriteria;
+  SortCriterion _sortCriterion = SortCriterion.defaultFor(SortField.rank);
   late WishlistItemFilter _selectedFilter;
   List<WishlistItem>? _reorderOverride;
   Timer? _pollTimer;
@@ -72,6 +73,41 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     super.initState();
     _selectedFilter = widget.showPurchasedOnly ? WishlistItemFilter.purchased : WishlistItemFilter.active;
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
+    _loadSortPreference();
+  }
+
+  Future<void> _loadSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('wishlist_sort_${widget.wishlistId}');
+    if (raw == null) return;
+    final parsed = _parseSortPreference(raw);
+    if (parsed != null && mounted) setState(() => _sortCriterion = parsed);
+  }
+
+  SortCriterion? _parseSortPreference(String raw) {
+    final parts = raw.split(':');
+    if (parts.length != 2) return null;
+    final field = switch (parts[0]) {
+      'rank' => SortField.rank,
+      'price' => SortField.price,
+      'dateAdded' => SortField.dateAdded,
+      _ => null,
+    };
+    if (field == null) return null;
+    return SortCriterion(field, ascending: parts[1] == 'asc');
+  }
+
+  Future<void> _saveSortPreference(SortCriterion criterion) async {
+    final prefs = await SharedPreferences.getInstance();
+    final fieldStr = switch (criterion.field) {
+      SortField.rank => 'rank',
+      SortField.price => 'price',
+      SortField.dateAdded => 'dateAdded',
+    };
+    await prefs.setString(
+      'wishlist_sort_${widget.wishlistId}',
+      '$fieldStr:${criterion.ascending ? 'asc' : 'desc'}',
+    );
   }
 
   @override
@@ -103,7 +139,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem> items) {
-    return sortWishlistItems(items, _sortCriteria);
+    return sortWishlistItems(items, [_sortCriterion]);
   }
 
   void _reorderItems({
@@ -304,9 +340,8 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             final visibleItems = _applyFilters(sourceItems);
             final canReorder = canEdit &&
                 _selectedFilter != WishlistItemFilter.purchased &&
-                _sortCriteria.length == 1 &&
-                _sortCriteria.first.field == SortField.rank &&
-                _sortCriteria.first.ascending &&
+                _sortCriterion.field == SortField.rank &&
+                _sortCriterion.ascending &&
                 visibleItems.length > 1;
 
             return Scaffold(
@@ -377,12 +412,15 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     const SizedBox(height: AppConstants.spacing2),
                     WishlistItemControls(
                       selectedFilter: _selectedFilter,
-                      sortCriteria: _sortCriteria,
+                      sortCriterion: _sortCriterion,
                       canEdit: canEdit,
                       showRestore: _selectedFilter == WishlistItemFilter.purchased && wishlist.purchasedItems.isNotEmpty,
                       showAdd: _selectedFilter != WishlistItemFilter.purchased && canEdit,
                       onFilterChanged: (f) => setState(() => _selectedFilter = f),
-                      onSortCriteriaChanged: (c) => setState(() => _sortCriteria = c),
+                      onSortChanged: (c) {
+                        setState(() => _sortCriterion = c);
+                        _saveSortPreference(c);
+                      },
                       onAddItem: () => _openItemEditor(context, wishlistId: wishlist.id, currentUser: currentUser),
                       onRestoreAll: () => _restoreAllItems(wishlist),
                     ),

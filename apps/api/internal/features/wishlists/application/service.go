@@ -156,6 +156,13 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 		return domain.Wishlist{}, ValidationError("token", "invite has expired")
 	}
 
+	if invite.Email != nil {
+		user, ok := authctx.UserFromContext(ctx)
+		if !ok || !strings.EqualFold(user.Email, *invite.Email) {
+			return domain.Wishlist{}, WishlistNotFound()
+		}
+	}
+
 	role := invite.Role
 
 	uid := s.userID(ctx)

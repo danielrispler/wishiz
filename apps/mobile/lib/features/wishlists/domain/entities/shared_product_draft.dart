@@ -16,11 +16,10 @@ class SharedProductDraft {
   final String? sharedText;
 
   bool get hasCompleteRequiredFields =>
-      _hasValue(title) && _hasValue(priceLabel) && _hasValue(imageUrl);
+      _hasValue(title) && _hasValue(priceLabel);
 
   bool get isMissingTitle => !_hasValue(title);
   bool get isMissingPrice => !_hasValue(priceLabel);
-  bool get isMissingImage => !_hasValue(imageUrl);
 
   List<String> get missingFieldLabels {
     final fields = <String>[];
@@ -29,9 +28,6 @@ class SharedProductDraft {
     }
     if (isMissingPrice) {
       fields.add('price');
-    }
-    if (isMissingImage) {
-      fields.add('image');
     }
     return List<String>.unmodifiable(fields);
   }

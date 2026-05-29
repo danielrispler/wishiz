@@ -250,7 +250,18 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 	return job, nil
 }
 
-func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJobParams) (domain.Job, error) {
+func (r *Repository) Settle(ctx context.Context, id string, outcome ports.JobOutcome) (domain.Job, error) {
+	switch outcome.Status {
+	case domain.StatusCompleted:
+		return r.settleCompleted(ctx, id, outcome)
+	case domain.StatusNeedsReview, domain.StatusFailed:
+		return r.settleErrored(ctx, id, outcome)
+	default:
+		return domain.Job{}, fmt.Errorf("settle: unexpected status %q", outcome.Status)
+	}
+}
+
+func (r *Repository) settleCompleted(ctx context.Context, id string, outcome ports.JobOutcome) (domain.Job, error) {
 	return r.updateResult(ctx, `
 		UPDATE product_import_jobs
 		SET status = 'completed',
@@ -268,15 +279,47 @@ func (r *Repository) MarkCompleted(ctx context.Context, params ports.CompleteJob
 			locked_at = NULL
 		WHERE id = $1::uuid AND status = 'processing'
 		RETURNING `+jobColumns,
-		params.ID,
-		params.Title,
-		params.PriceLabel,
-		params.PriceConfidence,
-		params.PriceSource,
-		params.PriceWarnings,
-		params.ImageURL,
-		params.Completeness,
-		ptrOrEmpty(params.CreatedItemID),
+		id,
+		*outcome.Snapshot.Title,
+		*outcome.Snapshot.PriceLabel,
+		outcome.Snapshot.PriceConfidence,
+		outcome.Snapshot.PriceSource,
+		outcome.Snapshot.PriceWarnings,
+		*outcome.Snapshot.ImageURL,
+		outcome.Snapshot.Completeness,
+		ptrOrEmpty(outcome.CreatedItemID),
+	)
+}
+
+func (r *Repository) settleErrored(ctx context.Context, id string, outcome ports.JobOutcome) (domain.Job, error) {
+	return r.updateResult(ctx, `
+		UPDATE product_import_jobs
+		SET status = $12,
+			title = $2,
+			price_label = $3,
+			price_confidence = $4,
+			price_source = $5,
+			price_warnings = COALESCE($6::text[], ARRAY[]::text[]),
+			image_url = $7,
+			completeness = $8,
+			last_error = $9,
+			error_code = $10,
+			retryable = $11,
+			locked_at = NULL
+		WHERE id = $1::uuid AND status = 'processing'
+		RETURNING `+jobColumns,
+		id,
+		outcome.Snapshot.Title,
+		outcome.Snapshot.PriceLabel,
+		outcome.Snapshot.PriceConfidence,
+		outcome.Snapshot.PriceSource,
+		outcome.Snapshot.PriceWarnings,
+		outcome.Snapshot.ImageURL,
+		outcome.Snapshot.Completeness,
+		outcome.LastError,
+		outcome.ErrorCode,
+		outcome.Retryable,
+		outcome.Status,
 	)
 }
 
@@ -290,68 +333,6 @@ func (r *Repository) Assign(ctx context.Context, id string, wishlistID string, c
 		id,
 		wishlistID,
 		createdItemID,
-	)
-}
-
-func (r *Repository) MarkNeedsReview(ctx context.Context, params ports.NeedsReviewJobParams) (domain.Job, error) {
-	return r.updateResult(ctx, `
-		UPDATE product_import_jobs
-		SET status = 'needs_review',
-			title = $2,
-			price_label = $3,
-			price_confidence = $4,
-			price_source = $5,
-			price_warnings = COALESCE($6::text[], ARRAY[]::text[]),
-			image_url = $7,
-			completeness = $8,
-			last_error = $9,
-			error_code = $10,
-			retryable = $11,
-			locked_at = NULL
-		WHERE id = $1::uuid AND status = 'processing'
-		RETURNING `+jobColumns,
-		params.ID,
-		params.Title,
-		params.PriceLabel,
-		params.PriceConfidence,
-		params.PriceSource,
-		params.PriceWarnings,
-		params.ImageURL,
-		params.Completeness,
-		params.LastError,
-		params.ErrorCode,
-		params.Retryable,
-	)
-}
-
-func (r *Repository) MarkFailed(ctx context.Context, params ports.FailJobParams) (domain.Job, error) {
-	return r.updateResult(ctx, `
-		UPDATE product_import_jobs
-		SET status = 'failed',
-			title = $2,
-			price_label = $3,
-			price_confidence = $4,
-			price_source = $5,
-			price_warnings = COALESCE($6::text[], ARRAY[]::text[]),
-			image_url = $7,
-			completeness = $8,
-			last_error = $9,
-			error_code = $10,
-			retryable = $11,
-			locked_at = NULL
-		WHERE id = $1::uuid AND status = 'processing'
-		RETURNING `+jobColumns,
-		params.ID,
-		params.Title,
-		params.PriceLabel,
-		params.PriceConfidence,
-		params.PriceSource,
-		params.PriceWarnings,
-		params.ImageURL,
-		params.Completeness,
-		params.LastError,
-		params.ErrorCode,
-		params.Retryable,
 	)
 }
 

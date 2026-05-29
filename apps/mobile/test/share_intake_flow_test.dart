@@ -56,6 +56,37 @@ void main() {
       );
     });
 
+    testWidgets(
+      'imports two product URLs that are both pending in the native queue',
+      (tester) async {
+        final authRepository = FakeAuthRepository(currentUser: sampleUser);
+        final productImportRepository = FakeProductImportRepository();
+        final shareIntakeService = FakeShareIntakeService(
+          pendingResponses: [
+            'https://example.com/products/mug',
+            'https://example.com/products/chair',
+          ],
+        );
+
+        await tester.pumpWidget(
+          buildTestApp(
+            authRepository: authRepository,
+            sharedProductRepository: FakeSharedProductRepository(),
+            productImportRepository: productImportRepository,
+            shareIntakeService: shareIntakeService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Both URLs enqueued: first consumed at startup,
+        // second consumed after first is handled.
+        expect(productImportRepository.requestedSharedTexts, [
+          'https://example.com/products/mug',
+          'https://example.com/products/chair',
+        ]);
+      },
+    );
+
     testWidgets('imports a newly pending link after the app resumes', (
       tester,
     ) async {

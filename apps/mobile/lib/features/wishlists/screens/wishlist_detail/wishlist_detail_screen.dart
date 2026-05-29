@@ -23,6 +23,7 @@ import 'components/wishlist_header.dart';
 import 'components/wishlist_item_card.dart';
 import 'components/wishlist_item_controls.dart';
 import 'components/wishlist_share_dialog.dart';
+import 'wishlist_item_sort.dart';
 
 enum _UserCapability { owner, editor, viewer }
 
@@ -60,7 +61,7 @@ class WishlistDetailScreen extends StatefulWidget {
 }
 
 class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
-  String _selectedSort = WishlistItemControls.sortHighestRank;
+  List<SortCriterion> _sortCriteria = WishlistItemControls.defaultSortCriteria;
   late WishlistItemFilter _selectedFilter;
   List<WishlistItem>? _reorderOverride;
   Timer? _pollTimer;
@@ -102,15 +103,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem> items) {
-    final sorted = List<WishlistItem>.from(items);
-    sorted.sort((a, b) {
-      switch (_selectedSort) {
-        case WishlistItemControls.sortLowestRank: return b.rank.compareTo(a.rank);
-        case WishlistItemControls.sortNewestAdded: return b.createdAt.compareTo(a.createdAt);
-        default: return a.rank.compareTo(b.rank);
-      }
-    });
-    return sorted;
+    return sortWishlistItems(items, _sortCriteria);
   }
 
   void _reorderItems({
@@ -311,7 +304,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
             final visibleItems = _applyFilters(sourceItems);
             final canReorder = canEdit &&
                 _selectedFilter != WishlistItemFilter.purchased &&
-                _selectedSort == WishlistItemControls.sortHighestRank &&
+                _sortCriteria.length == 1 &&
+                _sortCriteria.first.field == SortField.rank &&
+                _sortCriteria.first.ascending &&
                 visibleItems.length > 1;
 
             return Scaffold(
@@ -382,12 +377,12 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                     const SizedBox(height: AppConstants.spacing2),
                     WishlistItemControls(
                       selectedFilter: _selectedFilter,
-                      selectedSort: _selectedSort,
+                      sortCriteria: _sortCriteria,
                       canEdit: canEdit,
                       showRestore: _selectedFilter == WishlistItemFilter.purchased && wishlist.purchasedItems.isNotEmpty,
                       showAdd: _selectedFilter != WishlistItemFilter.purchased && canEdit,
                       onFilterChanged: (f) => setState(() => _selectedFilter = f),
-                      onSortChanged: (s) => setState(() => _selectedSort = s),
+                      onSortCriteriaChanged: (c) => setState(() => _sortCriteria = c),
                       onAddItem: () => _openItemEditor(context, wishlistId: wishlist.id, currentUser: currentUser),
                       onRestoreAll: () => _restoreAllItems(wishlist),
                     ),

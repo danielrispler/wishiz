@@ -9,17 +9,17 @@ class ItemImageSection extends StatelessWidget {
   const ItemImageSection({
     super.key,
     required this.imageUrl,
-    required this.showValidationError,
     required this.isBusy,
     required this.onPickImage,
     required this.onClearImage,
+    required this.onPasteImageUrl,
   });
 
   final String imageUrl;
-  final bool showValidationError;
   final bool isBusy;
   final VoidCallback onPickImage;
   final VoidCallback onClearImage;
+  final VoidCallback onPasteImageUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -42,18 +42,12 @@ class ItemImageSection extends StatelessWidget {
           ),
           label: Text(hasImage ? 'Change Image' : 'Upload Image'),
         ),
-        if (showValidationError) ...[
-          const SizedBox(height: AppConstants.spacing2),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Please choose an image from your gallery before saving this shared item.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
-            ),
-          ),
-        ],
+        const SizedBox(height: AppConstants.spacing2),
+        OutlinedButton.icon(
+          onPressed: isBusy ? null : onPasteImageUrl,
+          icon: const Icon(Icons.link_rounded),
+          label: const Text('Paste Image URL'),
+        ),
       ],
     );
   }

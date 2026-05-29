@@ -1,7 +1,7 @@
 {
-  "skillListingBudgetFraction": 0.02,
+  "skillListingBudgetFraction": 0.05,
   "skillOverrides": {
-    "grill-with-docs": "user-invocable-only",
-    "improve-codebase-architecture": "user-invocable-only"
+    "improve-codebase-architecture": "user-invocable-only",
+    "dart-run-static-analysis": "user-invocable-only"
   }
 }

@@ -123,7 +123,7 @@ void main() {
       expect(draft?.priceLabel, isNull);
       expect(draft?.imageUrl, isNull);
       expect(draft?.hasCompleteRequiredFields, isFalse);
-      expect(draft?.missingFieldLabels, ['price', 'image']);
+      expect(draft?.missingFieldLabels, ['price']);
     });
 
     test('falls back to first page image and visible price text', () async {

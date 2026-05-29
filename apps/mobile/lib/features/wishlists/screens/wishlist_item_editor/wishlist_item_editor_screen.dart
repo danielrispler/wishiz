@@ -69,7 +69,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   late WishlistItemStatus _selectedStatus;
   late bool _isLinkPreview;
   XFile? _selectedItemImage;
-  bool _showImageValidationError = false;
   bool _isGeneratingFromLink = false;
   bool _isSaving = false;
 
@@ -125,12 +124,48 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
     if (image == null || !mounted) return;
     _selectedItemImage = image;
     _imageUrlController.text = image.path;
-    if (_showImageValidationError) setState(() => _showImageValidationError = false);
   }
 
   void _clearImage() {
     _imageUrlController.clear();
-    if (_showImageValidationError) setState(() => _showImageValidationError = false);
+  }
+
+  Future<void> _pasteImageUrl() async {
+    if (_isSaving || _isGeneratingFromLink) return;
+    final urlController = TextEditingController(text: _imageUrlController.text);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Paste image URL'),
+          content: TextField(
+            controller: urlController,
+            keyboardType: TextInputType.url,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'https://'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && mounted) {
+        final url = urlController.text.trim();
+        if (url.isNotEmpty) {
+          _selectedItemImage = null;
+          _imageUrlController.text = url;
+        }
+      }
+    } finally {
+      urlController.dispose();
+    }
   }
 
   void _applyLinkDefaults() {
@@ -151,14 +186,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   Future<void> _saveItem() async {
     if (_isSaving || _isGeneratingFromLink) return;
     final formValid = _formKey.currentState!.validate();
-    final missingImage = widget.isSharedImport && _imageUrlController.text.trim().isEmpty;
-    if (!formValid || missingImage) {
-      if (_showImageValidationError != missingImage) {
-        setState(() => _showImageValidationError = missingImage);
-      }
-      return;
-    }
-    if (_showImageValidationError) setState(() => _showImageValidationError = false);
+    if (!formValid) return;
 
     final title = _titleController.text.trim();
     final notes = _optionalValue(_notesController.text);
@@ -252,7 +280,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         _imageUrlController.text = draft.imageUrl ?? '';
         _productUrlController.text = draft.productUrl;
         _isLinkPreview = true;
-        _showImageValidationError = false;
       });
       if (!draft.hasCompleteRequiredFields) {
         final missingFields = draft.missingFieldLabels.join(', ');
@@ -323,12 +350,12 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
             notesController: _notesController,
             priceController: _priceController,
             imageUrl: _imageUrlController.text.trim(),
-            showImageValidationError: _showImageValidationError,
             isBusy: isBusy,
             autofocusTitle: !widget.isEditing,
             preferredCurrencySymbol: widget.preferredCurrencySymbol,
             onPickImage: _pickItemImage,
             onClearImage: _clearImage,
+            onPasteImageUrl: _pasteImageUrl,
             validateTitle: (value) {
               if (value == null || value.trim().isEmpty) return 'Please add an item title.';
               return null;

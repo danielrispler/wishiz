@@ -41,13 +41,13 @@ func TestServiceMarksNeedsReviewWhenScrapeReturnsTwoFields(t *testing.T) {
 	if !processed {
 		t.Fatalf("expected a job to be processed")
 	}
-	if repo.needsReview == nil {
-		t.Fatalf("expected job to be marked needs_review")
+	if repo.settled.Status != importdomain.StatusNeedsReview {
+		t.Fatalf("expected job to be marked needs_review, got %q", repo.settled.Status)
 	}
-	if repo.needsReview.Completeness != 2 || value(repo.needsReview.Title) != "Desk lamp" || value(repo.needsReview.ImageURL) == "" {
-		t.Fatalf("unexpected needs review snapshot: %+v", repo.needsReview)
+	if repo.settled.Snapshot.Completeness != 2 || value(repo.settled.Snapshot.Title) != "Desk lamp" || value(repo.settled.Snapshot.ImageURL) == "" {
+		t.Fatalf("unexpected needs review snapshot: %+v", repo.settled.Snapshot)
 	}
-	if !repo.needsReview.Retryable {
+	if !repo.settled.Retryable {
 		t.Fatalf("expected needs_review job to be retryable")
 	}
 }
@@ -83,11 +83,11 @@ func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {
 	if !processed {
 		t.Fatalf("expected a job to be processed")
 	}
-	if repo.completed == nil {
-		t.Fatalf("expected job to be completed")
+	if repo.settled.Status != importdomain.StatusCompleted {
+		t.Fatalf("expected job to be completed, got %q", repo.settled.Status)
 	}
-	if value(repo.completed.CreatedItemID) != "item-1" || repo.completed.PriceLabel != "USD 40.00" {
-		t.Fatalf("unexpected completed params: %+v", repo.completed)
+	if value(repo.settled.CreatedItemID) != "item-1" || value(repo.settled.Snapshot.PriceLabel) != "USD 40.00" {
+		t.Fatalf("unexpected completed outcome: %+v", repo.settled)
 	}
 	if wishlists.added == nil || wishlists.added.Title != "Desk lamp" {
 		t.Fatalf("expected wishlist item creation, got %+v", wishlists.added)
@@ -126,14 +126,117 @@ func TestServiceMarksNeedsReviewWhenPriceIsNotHighConfidence(t *testing.T) {
 	if !processed {
 		t.Fatalf("expected a job to be processed")
 	}
-	if repo.needsReview == nil {
-		t.Fatalf("expected job to be marked needs_review")
+	if repo.settled.Status != importdomain.StatusNeedsReview {
+		t.Fatalf("expected job to be marked needs_review, got %q", repo.settled.Status)
 	}
-	if repo.needsReview.PriceConfidence == nil || *repo.needsReview.PriceConfidence != scrapeapp.PriceConfidenceSuspicious {
-		t.Fatalf("expected suspicious confidence, got %+v", repo.needsReview)
+	if repo.settled.Snapshot.PriceConfidence == nil || *repo.settled.Snapshot.PriceConfidence != scrapeapp.PriceConfidenceSuspicious {
+		t.Fatalf("expected suspicious confidence, got %+v", repo.settled.Snapshot)
 	}
-	if repo.completed != nil || wishlists.added != nil {
-		t.Fatalf("expected no item creation, completed=%+v added=%+v", repo.completed, wishlists.added)
+	if wishlists.added != nil {
+		t.Fatalf("expected no item creation, added=%+v", wishlists.added)
+	}
+}
+
+func TestResolveOutcome(t *testing.T) {
+	t.Parallel()
+
+	str := func(s string) *string { return &s }
+
+	partialSnap := productSnapshot{
+		Title:        str("Lamp"),
+		ImageURL:     str("https://img"),
+		Completeness: 2,
+	}
+	thinSnap := productSnapshot{
+		Title:        str("Lamp"),
+		Completeness: 1,
+	}
+	completeUntrusted := productSnapshot{
+		Title:        str("Lamp"),
+		PriceLabel:   str("USD 10"),
+		ImageURL:     str("https://img"),
+		Completeness: 3,
+	}
+	completeTrusted := productSnapshot{
+		Title:           str("Lamp"),
+		PriceLabel:      str("USD 10"),
+		ImageURL:        str("https://img"),
+		Completeness:    3,
+		HasTrustedPrice: true,
+	}
+
+	cases := []struct {
+		name          string
+		snap          productSnapshot
+		scrapeErr     error
+		wantStatus    string
+		wantRetryable bool
+	}{
+		{
+			name:          "scrape error partial → needs_review retryable",
+			snap:          partialSnap,
+			scrapeErr:     scrapeapp.ScrapeFailed("boom"),
+			wantStatus:    importdomain.StatusNeedsReview,
+			wantRetryable: true,
+		},
+		{
+			name:          "scrape error insufficient → failed retryable",
+			snap:          thinSnap,
+			scrapeErr:     scrapeapp.ScrapeFailed("boom"),
+			wantStatus:    importdomain.StatusFailed,
+			wantRetryable: true,
+		},
+		{
+			name:          "bad request partial → needs_review not retryable",
+			snap:          partialSnap,
+			scrapeErr:     scrapeapp.BadRequest("blocked"),
+			wantStatus:    importdomain.StatusNeedsReview,
+			wantRetryable: false,
+		},
+		{
+			name:          "no error incomplete partial → needs_review retryable",
+			snap:          partialSnap,
+			wantStatus:    importdomain.StatusNeedsReview,
+			wantRetryable: true,
+		},
+		{
+			name:          "no error incomplete insufficient → failed retryable",
+			snap:          thinSnap,
+			wantStatus:    importdomain.StatusFailed,
+			wantRetryable: true,
+		},
+		{
+			name:          "complete untrusted price → needs_review retryable",
+			snap:          completeUntrusted,
+			wantStatus:    importdomain.StatusNeedsReview,
+			wantRetryable: true,
+		},
+		{
+			name:       "complete trusted price → completed",
+			snap:       completeTrusted,
+			wantStatus: importdomain.StatusCompleted,
+		},
+		{
+			name:       "completed CreatedItemID is nil",
+			snap:       completeTrusted,
+			wantStatus: importdomain.StatusCompleted,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			outcome := resolveOutcome(tc.snap, tc.scrapeErr)
+			if outcome.Status != tc.wantStatus {
+				t.Errorf("status: got %q, want %q", outcome.Status, tc.wantStatus)
+			}
+			if outcome.Status != importdomain.StatusCompleted && outcome.Retryable != tc.wantRetryable {
+				t.Errorf("retryable: got %v, want %v", outcome.Retryable, tc.wantRetryable)
+			}
+			if outcome.Status == importdomain.StatusCompleted && outcome.CreatedItemID != nil {
+				t.Errorf("CreatedItemID should be nil from resolveOutcome")
+			}
+		})
 	}
 }
 
@@ -154,9 +257,9 @@ func productImportJob() importdomain.Job {
 }
 
 type fakeRepo struct {
-	claimedJob  importdomain.Job
-	completed   *ports.CompleteJobParams
-	needsReview *ports.NeedsReviewJobParams
+	claimedJob importdomain.Job
+	settled    ports.JobOutcome
+	settledID  string
 }
 
 func (r *fakeRepo) CreateOrGet(context.Context, ports.CreateJobParams, time.Duration) (importdomain.Job, bool, error) {
@@ -187,17 +290,9 @@ func (r *fakeRepo) ClaimNext(context.Context, ports.ClaimParams) (importdomain.J
 	return r.claimedJob, nil
 }
 
-func (r *fakeRepo) MarkCompleted(_ context.Context, params ports.CompleteJobParams) (importdomain.Job, error) {
-	r.completed = &params
-	return r.claimedJob, nil
-}
-
-func (r *fakeRepo) MarkNeedsReview(_ context.Context, params ports.NeedsReviewJobParams) (importdomain.Job, error) {
-	r.needsReview = &params
-	return r.claimedJob, nil
-}
-
-func (r *fakeRepo) MarkFailed(context.Context, ports.FailJobParams) (importdomain.Job, error) {
+func (r *fakeRepo) Settle(_ context.Context, id string, outcome ports.JobOutcome) (importdomain.Job, error) {
+	r.settledID = id
+	r.settled = outcome
 	return r.claimedJob, nil
 }
 

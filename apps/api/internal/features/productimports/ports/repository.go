@@ -18,9 +18,7 @@ type Repository interface {
 	Acknowledge(ctx context.Context, id string, acknowledgedAt time.Time) (domain.Job, error)
 	ReleaseStuck(ctx context.Context, params ReleaseStuckParams) (int64, int64, error)
 	ClaimNext(ctx context.Context, params ClaimParams) (domain.Job, error)
-	MarkCompleted(ctx context.Context, params CompleteJobParams) (domain.Job, error)
-	MarkNeedsReview(ctx context.Context, params NeedsReviewJobParams) (domain.Job, error)
-	MarkFailed(ctx context.Context, params FailJobParams) (domain.Job, error)
+	Settle(ctx context.Context, id string, outcome JobOutcome) (domain.Job, error)
 	Assign(ctx context.Context, id string, wishlistID string, createdItemID string) (domain.Job, error)
 }
 
@@ -55,20 +53,7 @@ type ClaimParams struct {
 	Limit       int
 }
 
-type CompleteJobParams struct {
-	ID              string
-	Title           string
-	PriceLabel      string
-	PriceConfidence *string
-	PriceSource     *string
-	PriceWarnings   []string
-	ImageURL        string
-	Completeness    int
-	CreatedItemID   *string
-}
-
-type NeedsReviewJobParams struct {
-	ID              string
+type ProductSnapshot struct {
 	Title           *string
 	PriceLabel      *string
 	PriceConfidence *string
@@ -76,21 +61,13 @@ type NeedsReviewJobParams struct {
 	PriceWarnings   []string
 	ImageURL        *string
 	Completeness    int
-	LastError       string
-	ErrorCode       string
-	Retryable       bool
 }
 
-type FailJobParams struct {
-	ID              string
-	Title           *string
-	PriceLabel      *string
-	PriceConfidence *string
-	PriceSource     *string
-	PriceWarnings   []string
-	ImageURL        *string
-	Completeness    int
-	LastError       string
-	ErrorCode       string
-	Retryable       bool
+type JobOutcome struct {
+	Status        string
+	Snapshot      ProductSnapshot
+	LastError     string
+	ErrorCode     string
+	Retryable     bool
+	CreatedItemID *string
 }

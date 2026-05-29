@@ -225,14 +225,10 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _consumePendingSharedText() async {
-    while (true) {
-      final sharedText =
-          await widget.shareIntakeService.consumePendingSharedText();
-      if (!mounted || sharedText == null) {
-        return;
-      }
-      _storePendingSharedText(sharedText);
-    }
+    final sharedText =
+        await widget.shareIntakeService.consumePendingSharedText();
+    if (!mounted || sharedText == null) return;
+    _storePendingSharedText(sharedText);
   }
 
   void _storePendingSharedText(String sharedText) {
@@ -395,12 +391,9 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             });
           },
           onInitialSharedTextHandled: () {
-            if (_pendingSharedText == null) {
-              return;
-            }
-            setState(() {
-              _pendingSharedText = null;
-            });
+            if (_pendingSharedText == null) return;
+            setState(() => _pendingSharedText = null);
+            _consumePendingSharedText();
           },
         );
       },

@@ -107,11 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _isShared(Wishlist wishlist) {
-    final userId = widget.currentUser.id;
-    if (wishlist.ownerUserId == userId) {
-      return wishlist.members.isNotEmpty || wishlist.invites.isNotEmpty;
-    }
-    return wishlist.members.any((m) => m.userId == userId);
+    return wishlist.ownerUserId != widget.currentUser.id;
   }
 
   void _updateSharedTabPolling(int index) {

@@ -11,12 +11,12 @@ class ItemDetailsSection extends StatelessWidget {
     required this.notesController,
     required this.priceController,
     required this.imageUrl,
-    required this.showImageValidationError,
     required this.isBusy,
     required this.autofocusTitle,
     required this.preferredCurrencySymbol,
     required this.onPickImage,
     required this.onClearImage,
+    required this.onPasteImageUrl,
     required this.validateTitle,
     required this.validatePrice,
   });
@@ -25,12 +25,12 @@ class ItemDetailsSection extends StatelessWidget {
   final TextEditingController notesController;
   final TextEditingController priceController;
   final String imageUrl;
-  final bool showImageValidationError;
   final bool isBusy;
   final bool autofocusTitle;
   final String preferredCurrencySymbol;
   final VoidCallback onPickImage;
   final VoidCallback onClearImage;
+  final VoidCallback onPasteImageUrl;
   final String? Function(String?) validateTitle;
   final String? Function(String?) validatePrice;
 
@@ -77,10 +77,10 @@ class ItemDetailsSection extends StatelessWidget {
           const SizedBox(height: AppConstants.itemGap),
           ItemImageSection(
             imageUrl: imageUrl,
-            showValidationError: showImageValidationError,
             isBusy: isBusy,
             onPickImage: onPickImage,
             onClearImage: onClearImage,
+            onPasteImageUrl: onPasteImageUrl,
           ),
         ],
       ),

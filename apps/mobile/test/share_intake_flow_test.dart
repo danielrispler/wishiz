@@ -41,17 +41,12 @@ void main() {
       await tester.pump();
 
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
-      expect(productImportRepository.requestedSharedTexts, isEmpty);
-      expect(find.text('Choose a wishlist'), findsOneWidget);
-
-      await chooseFirstWishlist(tester);
-
+      // Import is auto-queued without a wishlist-selection dialog.
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/mug',
       ]);
-      expect(find.text('Shared item imports'), findsOneWidget);
       expect(
-        find.text('Processing shared item. It will be added soon.'),
+        find.text('Processing shared item. Check the queue to assign it.'),
         findsOneWidget,
       );
     });
@@ -115,15 +110,12 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(productImportRepository.requestedSharedTexts, isEmpty);
-      expect(find.text('Choose a wishlist'), findsOneWidget);
-
-      await chooseFirstWishlist(tester);
-
+      // Import auto-queued on resume, no dialog.
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/chair',
       ]);
 
+      // Second resume with nothing pending — no new imports.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
@@ -152,6 +144,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Not yet imported — no user logged in.
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
       expect(productImportRepository.requestedSharedTexts, isEmpty);
 
@@ -159,11 +152,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(productImportRepository.requestedSharedTexts, isEmpty);
-      expect(find.text('Choose a wishlist'), findsOneWidget);
-
-      await chooseFirstWishlist(tester);
-
+      // Import auto-queued after login, no dialog.
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/lamp',
       ]);
@@ -209,7 +198,8 @@ void main() {
           buildProductImportJob(
             id: 'completed-import',
             title: 'Imported mug',
-            status: 'completed',
+            status: 'needs_review',
+            retryable: false,
           ),
         ]);
 
@@ -369,7 +359,7 @@ void main() {
 
       expect(repository.joinCallCount, 0);
       expect(
-        find.text('That shared list is not available for this account.'),
+        find.text('This invite link is missing an invite token.'),
         findsOneWidget,
       );
     });
@@ -617,7 +607,7 @@ class FakeProductImportRepository implements ProductImportRepository {
 
 ProductImportJob buildProductImportJob({
   required String id,
-  String wishlistId = 'wishlist-1',
+  String? wishlistId = 'wishlist-1',
   String? clientRequestId,
   String normalizedUrl = 'https://example.com/products/mug',
   String domain = 'example.com',

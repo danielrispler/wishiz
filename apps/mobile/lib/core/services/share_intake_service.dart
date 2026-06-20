@@ -35,9 +35,22 @@ class ShareIntakeService {
       return const Stream<String>.empty();
     }
 
-    return _eventChannel.receiveBroadcastStream().map((event) {
-      return (event as String).trim();
-    }).where((value) => value.isNotEmpty);
+    return normalizeSharedTextEvents(_eventChannel.receiveBroadcastStream());
+  }
+
+  /// Turns the raw native event stream into clean, non-empty shared-text strings.
+  /// A non-String/null event is skipped (not cast — an unchecked cast would throw
+  /// and tear down the subscription for the rest of the session), and any stream
+  /// error is logged and swallowed so the subscription stays alive.
+  @visibleForTesting
+  static Stream<String> normalizeSharedTextEvents(Stream<dynamic> raw) {
+    return raw
+        .map((event) => event is String ? event.trim() : null)
+        .where((value) => value != null && value.isNotEmpty)
+        .cast<String>()
+        .handleError((Object error, StackTrace stackTrace) {
+      debugPrint('share intake stream error (subscription kept alive): $error');
+    });
   }
 
   bool get _supportsNativeShareIntake =>

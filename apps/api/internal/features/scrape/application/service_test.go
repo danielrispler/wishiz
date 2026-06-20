@@ -48,6 +48,39 @@ func TestServiceAutoCompletesFromStaticAndEarlyAbortsRender(t *testing.T) {
 	}
 }
 
+func TestServiceEarlyAbortReturnsGateResultNotRereconcile(t *testing.T) {
+	t.Parallel()
+
+	// The render is guaranteed to add a CONFLICTING authoritative price, but only
+	// after the cheap sources have already cleared the auto-complete gate. The
+	// returned product must be the gate's verdict (auto_complete, price 40), not a
+	// second reconciliation that folds in the late render candidate (price 99) and
+	// flips the price to a conflict. One reconcile per outcome path → deterministic.
+	const conflictRenderHTML = `<html><head>
+		<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp","image":"https://x/lamp.png",
+			"offers":{"@type":"Offer","price":"99","priceCurrency":"USD"}}</script></head><body></body></html>`
+
+	started := make(chan struct{})
+	static := gatedFetcher{
+		result:    FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"},
+		afterPeer: started,
+	}
+	render := lateConflictFetcher{
+		result:  FetchResult{HTML: conflictRenderHTML, FinalURL: "https://shop.example/p"},
+		started: started,
+	}
+
+	product, err := testService(t, static, render, nil, nil).
+		Scrape(context.Background(), "https://shop.example/p", "USD")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if product.Verdict != VerdictAutoComplete || product.PriceAmount != "40" {
+		t.Fatalf("expected gate auto_complete (price 40), got verdict=%q price=%q",
+			product.Verdict, product.PriceAmount)
+	}
+}
+
 func TestServiceWaitsForRenderWhenStaticInsufficient(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +94,21 @@ func TestServiceWaitsForRenderWhenStaticInsufficient(t *testing.T) {
 	}
 	if product.Verdict != VerdictAutoComplete || product.PriceAmount != "40" {
 		t.Fatalf("expected render to complete the product, got %+v", product)
+	}
+}
+
+func TestServiceReportsUnsupportedOnAntiBotBlock(t *testing.T) {
+	t.Parallel()
+
+	const blockHTML = `<html><head><title>Access Denied</title></head>` +
+		`<body>You don't have permission. Reference #18.abc</body></html>`
+	render := fakeFetcher{result: FetchResult{HTML: blockHTML, FinalURL: "https://shop.example/p"}}
+
+	_, err := testService(t, nil, render, nil, nil).
+		Scrape(context.Background(), "https://shop.example/p", "USD")
+	appErr, ok := AsError(err)
+	if !ok || appErr.Code != ErrorCodeUnsupported {
+		t.Fatalf("expected unsupported error, got %v", err)
 	}
 }
 
@@ -198,6 +246,36 @@ func (b blockingFetcher) Fetch(ctx context.Context, _ string) (FetchResult, erro
 	<-ctx.Done()
 	b.canceled.Store(true)
 	return FetchResult{}, ctx.Err()
+}
+
+// gatedFetcher returns its result only after afterPeer is closed, so the cheap
+// path cannot finish (and clear the gate) until the render peer is parked in Fetch.
+type gatedFetcher struct {
+	result    FetchResult
+	afterPeer chan struct{}
+}
+
+func (f gatedFetcher) Fetch(ctx context.Context, _ string) (FetchResult, error) {
+	select {
+	case <-f.afterPeer:
+	case <-ctx.Done():
+		return FetchResult{}, ctx.Err()
+	}
+	return f.result, nil
+}
+
+// lateConflictFetcher signals it is parked, blocks until the early-abort cancels
+// it, then still returns real (conflicting) data so the service add()s it after
+// the gate decision — deterministically exercising the double-reconcile hazard.
+type lateConflictFetcher struct {
+	result  FetchResult
+	started chan struct{}
+}
+
+func (f lateConflictFetcher) Fetch(ctx context.Context, _ string) (FetchResult, error) {
+	close(f.started)
+	<-ctx.Done()
+	return f.result, nil
 }
 
 type fakeProbe struct {

@@ -45,3 +45,10 @@ func nextProfile() browserProfile {
 	index := profileCounter.Add(1) - 1
 	return desktopProfiles[index%uint64(len(desktopProfiles))]
 }
+
+// RandomUserAgent returns a realistic Chrome UA from the rotation pool. It lets
+// other adapters (e.g. the Shopify probe) reuse this pool instead of sending a
+// self-identifying bot UA that UA-blocking stores 403.
+func RandomUserAgent() string {
+	return nextProfile().userAgent
+}

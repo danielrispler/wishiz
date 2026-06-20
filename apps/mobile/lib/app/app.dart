@@ -403,8 +403,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
           },
           onInitialSharedTextHandled: (handledText) {
             // Advance by value (not removeAt(0)) so a concurrent tail-append
-            // can never drop the wrong item.
-            setState(() => _pendingSharedTexts.remove(handledText));
+            // can never drop the wrong item. Mutate the buffer unconditionally
+            // so the head is never stranded, then guard only the rebuild with
+            // this State's OWN mounted: the child HomeScreen and this parent have
+            // independent lifecycles, so the child's mounted check is not enough
+            // — the enqueue can complete after the parent disposed.
+            _pendingSharedTexts.remove(handledText);
+            if (mounted) {
+              setState(() {});
+            }
             // Re-drain native only once the buffer empties — the next head is
             // already buffered, and a value-change retrigger imports it.
             if (_pendingSharedTexts.isEmpty) {

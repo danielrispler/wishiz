@@ -58,12 +58,59 @@ void main() {
 
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
+
+  testWidgets('unsupported-store job shows a clear not-supported message '
+      'and offers no Retry', (tester) async {
+    await pumpTile(
+      tester,
+      _job(
+        status: 'failed',
+        stage: null,
+        percent: 0,
+        errorCode: 'unsupported_site',
+        retryable: false,
+        lastError: 'this store blocks automatic import',
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.textContaining("doesn't support automatic import"),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Retry'), findsNothing);
+    expect(find.byIcon(Icons.block), findsOneWidget);
+    // Still lets the user add it by hand.
+    expect(find.byTooltip('Edit manually'), findsOneWidget);
+  });
+
+  testWidgets('ordinary failed job keeps the generic message and Retry', (
+    tester,
+  ) async {
+    await pumpTile(
+      tester,
+      _job(
+        status: 'failed',
+        stage: null,
+        percent: 0,
+        retryable: true,
+        lastError: 'network error',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining("doesn't support automatic import"), findsNothing);
+    expect(find.byTooltip('Retry'), findsOneWidget);
+  });
 }
 
 ProductImportJob _job({
   required String status,
   required String? stage,
   required int percent,
+  String? errorCode,
+  bool retryable = false,
+  String? lastError,
 }) {
   final now = DateTime(2026, 1, 1);
   return ProductImportJob(
@@ -74,7 +121,9 @@ ProductImportJob _job({
     targetCurrencyCode: 'USD',
     status: status,
     attemptCount: 1,
-    retryable: false,
+    lastError: lastError,
+    errorCode: errorCode,
+    retryable: retryable,
     completeness: 0,
     progressStage: stage,
     progressPercent: percent,

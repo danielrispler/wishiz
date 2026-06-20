@@ -26,7 +26,6 @@ type Config struct {
 	ScrapeMaxConcurrentRenders          int
 	ScrapeShopifyProbe                  bool
 	ScrapeInferDotComUSD                bool
-	ScrapeImageHeadCheck                bool
 	ScrapeMaxPrice                      float64
 	ExchangeRatesURL                    string
 	ExchangeRateRefreshInterval         time.Duration
@@ -59,7 +58,6 @@ func Load() (Config, error) {
 		ScrapeMaxConcurrentRenders: getEnvInt("SCRAPE_MAX_CONCURRENT_RENDERS", 3),
 		ScrapeShopifyProbe:         getEnvBool("SCRAPE_SHOPIFY_PROBE", true),
 		ScrapeInferDotComUSD:       getEnvBool("SCRAPE_INFER_DOTCOM_USD", false),
-		ScrapeImageHeadCheck:       getEnvBool("SCRAPE_IMAGE_HEAD_CHECK", false),
 		ScrapeMaxPrice:             getEnvFloat("SCRAPE_MAX_PRICE", 1e7),
 		ExchangeRatesURL: getEnv(
 			"EXCHANGE_RATES_URL",

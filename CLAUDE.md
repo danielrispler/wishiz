@@ -45,8 +45,8 @@ Hexagonal/Clean Architecture, feature-based modules under `internal/features/`:
 - `auth/` — signup, login, logout, 30-day session tokens
 - `discover/` — curated/trending product discovery backed by PostgreSQL
 - `wishlists/` — CRUD, shared access (viewer/editor roles), invite tokens
-- `productimports/` — async job queue (workers poll DB every 2s)
-- `scrape/` — ONE concurrent pipeline (≤30s): static HTTP fetch + Shopify probe + headless render launch together, early-aborting the render once cheap sources clear the verdict gate. Multi-extractor → field-level consensus (`application/extractors/` + `consensus.go`) → validation gate → calibrated `Verdict` (auto_complete/needs_review/failed). Adapters: `httpfetch` (static, utls+anti-bot), `headless` (render), `shopify` (probe)
+- `productimports/` — async job queue (workers poll DB every 2s). `needs_review` is a **terminal, non-retryable** outcome (human review), not a transient failure — `ClaimNext` only re-claims retryable rows, so a review job is never re-scraped. Only `failed` is retryable. The single `needsReviewOutcome` helper enforces this.
+- `scrape/` — ONE concurrent pipeline (≤30s): static HTTP fetch + Shopify probe + headless render launch together, early-aborting the render once cheap sources clear the verdict gate (the gate's reconciliation is the auto-complete result — no second reconcile). Multi-extractor → field-level consensus (`application/extractors/` + `consensus.go`) → validation gate → calibrated `Verdict` (auto_complete/needs_review/failed). Adapters: `httpfetch` (static, utls+anti-bot, follows meta-refresh/JS-location redirects), `headless` (render), `shopify` (probe). The set of `price_source` strings is owned by `extractors.AllSourceNames()`; the `price_source` CHECK in `000001_init_wishlists.up.sql` must mirror it exactly (a drift test reading the SQL enforces this). Currency policy is SAFE: a bare `$` is ambiguous and never auto-assigns USD — it falls to locale/TLD inference or `needs_review`.
 - `uploads/` — authenticated image upload endpoints backed by S3-compatible storage
 - `applinks/` — Android App Links + iOS Universal Links
 - `health/` — health check endpoint
@@ -105,7 +105,6 @@ Full schema: `docs/postgres_schema.md`.
 | `SCRAPE_MAX_CONCURRENT_RENDERS` | `3` | Render semaphore (below worker count to bound memory) |
 | `SCRAPE_SHOPIFY_PROBE` | `true` | Enable Shopify `/products/<handle>.json` probe |
 | `SCRAPE_INFER_DOTCOM_USD` | `false` | Infer USD for `.com` w/o currency (silent-wrong-price trap; off) |
-| `SCRAPE_IMAGE_HEAD_CHECK` | `false` | Optional HEAD check on the chosen image |
 | `SCRAPE_MAX_PRICE` | `1e7` | Upper sanity bound on a scraped price amount |
 | `EXCHANGE_RATES_URL` | `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml` | ECB rates feed |
 | `PRODUCT_IMPORT_WORKER_COUNT` | `5` | Concurrent scrapers |

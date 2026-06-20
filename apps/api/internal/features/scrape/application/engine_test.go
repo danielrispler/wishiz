@@ -213,6 +213,55 @@ func TestEngineConflictingTrustedPricesAreConflict(t *testing.T) {
 	}
 }
 
+func TestEngineJSONLDIgnoresRecommendationProducts(t *testing.T) {
+	t.Parallel()
+
+	// A page with a primary product plus a recommendation-carousel product (both
+	// Product JSON-LD with offers) must NOT create a false price conflict: only
+	// the primary product (matching the canonical URL) contributes candidates.
+	finalURL := "https://shop.example/products/lamp"
+	product := reconcile(t, finalURL, `<html><head>
+		<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp",
+			"url":"https://shop.example/products/lamp","image":"https://x/lamp.png",
+			"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script>
+		<script type="application/ld+json">{"@type":"Product","name":"Other Lamp",
+			"image":"https://x/other.png",
+			"offers":{"@type":"Offer","price":"999","priceCurrency":"USD"}}</script>
+		</head><body></body></html>`)
+
+	if product.Fields.Price == ConfidenceConflict {
+		t.Fatalf("recommendation product must not create a price conflict")
+	}
+	if product.PriceAmount != "40" {
+		t.Fatalf("expected the primary product price 40, got %q", product.PriceAmount)
+	}
+}
+
+func TestEngineSameAmountDifferentCurrencyIsConflict(t *testing.T) {
+	t.Parallel()
+
+	// Two authoritative price sources agree on the amount but disagree on the
+	// currency (100 USD vs 100 EUR). That is a real conflict — picking either is
+	// a silent-wrong-price — so it must drop to CONFLICT, not auto-complete.
+	engine := NewEngine(EngineConfig{})
+	finalURL := "https://store.example/products/tee"
+	candidates := []extractors.Candidate{
+		{Field: extractors.FieldName, Value: "Tee", Source: extractors.SourceShopify},
+		{Field: extractors.FieldImage, Value: "https://cdn/tee.jpg", Source: extractors.SourceShopify},
+		{Field: extractors.FieldPrice, Value: "100", Currency: "USD", Source: extractors.SourceJSONLD},
+		{Field: extractors.FieldPrice, Value: "100", Currency: "EUR", Source: extractors.SourceShopify},
+	}
+
+	product := engine.Reconcile(candidates, finalURL)
+	if product.Fields.Price != ConfidenceConflict {
+		t.Fatalf("same amount, conflicting currency must be CONFLICT, got %q (currency %q)",
+			product.Fields.Price, product.PriceCurrency)
+	}
+	if product.Verdict == VerdictAutoComplete {
+		t.Fatalf("currency conflict must not auto_complete")
+	}
+}
+
 func TestEngineDOMOnlyImageIsLowNotAutoComplete(t *testing.T) {
 	t.Parallel()
 

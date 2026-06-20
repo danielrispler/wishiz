@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
 )
 
 // DefaultMaxPrice is the upper sanity bound on a scraped price amount.
@@ -86,13 +88,7 @@ func ValidateImageURL(rawURL string) bool {
 	if err != nil || (parsed.Scheme != schemeHTTP && parsed.Scheme != schemeHTTPS) || parsed.Host == "" {
 		return false
 	}
-	lower := strings.ToLower(trimmed)
-	for _, marker := range []string{"logo", "icon", "sprite", "placeholder", "/favicon"} {
-		if strings.Contains(lower, marker) {
-			return false
-		}
-	}
-	return true
+	return !extractors.IsNonProductImageURL(trimmed)
 }
 
 // CleanLink strips tracking parameters from a URL, preserving the rest. Returns

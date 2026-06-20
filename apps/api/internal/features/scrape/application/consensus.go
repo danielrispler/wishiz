@@ -205,11 +205,12 @@ func hasTrustedDisagreement(groups []*candidateGroup) bool {
 	authoritative := map[string]struct{}{}
 	decent := map[string]struct{}{}
 	for _, group := range groups {
+		key := disagreementKey(group)
 		switch group.maxTier {
 		case tierAuthoritative:
-			authoritative[group.value] = struct{}{}
+			authoritative[key] = struct{}{}
 		case tierDecent:
-			decent[group.value] = struct{}{}
+			decent[key] = struct{}{}
 		case tierNone, tierDisplay, tierWeak:
 			// not trusted enough to count toward a conflict
 		}
@@ -221,6 +222,13 @@ func hasTrustedDisagreement(groups []*candidateGroup) bool {
 		return false
 	}
 	return len(decent) >= 2
+}
+
+// disagreementKey combines amount and currency so that two price groups with the
+// same amount but different currency (100 USD vs 100 EUR) count as a conflict.
+// Currency is empty for non-price fields, so this is a no-op for name/image/link.
+func disagreementKey(group *candidateGroup) string {
+	return group.value + "\x00" + group.currency
 }
 
 func uniqueStrings(values []string) []string {

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -146,4 +147,85 @@ func TestCollectSitemapURLsLimitsNestedFetchConcurrency(t *testing.T) {
 
 func serverURL(r *http.Request) string {
 	return "http://" + r.Host
+}
+
+// validDiscoverCategories mirrors the discover_products category CHECK constraint
+// in 000001_init_wishlists.up.sql. The worker may only emit these.
+var validDiscoverCategories = map[string]struct{}{
+	"fashion":     {},
+	"beauty":      {},
+	"home":        {},
+	"accessories": {},
+	"gifts":       {},
+	"travel":      {},
+}
+
+func TestDefaultSitemapBrandsAreValid(t *testing.T) {
+	t.Parallel()
+
+	brands := defaultSitemapBrands()
+	if len(brands) == 0 {
+		t.Fatal("expected at least one sitemap brand")
+	}
+
+	seenNames := make(map[string]struct{}, len(brands))
+	seenURLs := make(map[string]struct{}, len(brands))
+
+	for _, b := range brands {
+		if b.Name == "" {
+			t.Fatalf("brand with empty name: %+v", b)
+		}
+		if _, dup := seenNames[b.Name]; dup {
+			t.Fatalf("duplicate brand name %q", b.Name)
+		}
+		seenNames[b.Name] = struct{}{}
+
+		if _, dup := seenURLs[b.SitemapURL]; dup {
+			t.Fatalf("duplicate sitemap url %q (brand %q)", b.SitemapURL, b.Name)
+		}
+		seenURLs[b.SitemapURL] = struct{}{}
+
+		if _, ok := validDiscoverCategories[b.Category]; !ok {
+			t.Fatalf("brand %q has invalid category %q", b.Name, b.Category)
+		}
+
+		u, err := url.Parse(b.SitemapURL)
+		if err != nil {
+			t.Fatalf("brand %q sitemap url %q does not parse: %v", b.Name, b.SitemapURL, err)
+		}
+		if u.Scheme != "https" && u.Scheme != "http" {
+			t.Fatalf("brand %q sitemap url %q has non-http(s) scheme %q", b.Name, b.SitemapURL, u.Scheme)
+		}
+		if u.Hostname() == "" {
+			t.Fatalf("brand %q sitemap url %q has empty host", b.Name, b.SitemapURL)
+		}
+	}
+}
+
+func TestDefaultSitemapBrandsCategoryAssignment(t *testing.T) {
+	t.Parallel()
+
+	byName := make(map[string]sitemapBrand)
+	for _, b := range defaultSitemapBrands() {
+		byName[b.Name] = b
+	}
+
+	want := map[string]string{
+		"Diptyque":       "beauty",
+		"Le Labo":        "beauty",
+		"Aesop":          "beauty",
+		"West Elm":       "home",
+		"Crate & Barrel": "home",
+		"Pottery Barn":   "home",
+		"Zara":           "fashion",
+	}
+	for name, category := range want {
+		b, ok := byName[name]
+		if !ok {
+			t.Fatalf("expected brand %q in sitemap list", name)
+		}
+		if b.Category != category {
+			t.Fatalf("brand %q: expected category %q, got %q", name, category, b.Category)
+		}
+	}
 }

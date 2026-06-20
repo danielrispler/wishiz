@@ -5,6 +5,7 @@ package maintenance
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 )
@@ -64,14 +65,24 @@ func (w *Worker) Start(ctx context.Context) {
 
 func (w *Worker) sweep(ctx context.Context) {
 	if sessions, err := w.sessions.DeleteExpiredSessions(ctx); err != nil {
-		w.logger.Error("sweep expired sessions failed", "error", err)
+		w.logSweepError(ctx, "sweep expired sessions failed", err)
 	} else if sessions > 0 {
 		w.logger.Info("swept expired sessions", "deleted", sessions)
 	}
 
 	if invites, err := w.invites.DeleteExpiredInvites(ctx); err != nil {
-		w.logger.Error("sweep expired invites failed", "error", err)
+		w.logSweepError(ctx, "sweep expired invites failed", err)
 	} else if invites > 0 {
 		w.logger.Info("swept expired invites", "deleted", invites)
 	}
+}
+
+// logSweepError logs a sweep failure, downgrading to Debug when it is just the
+// context being canceled (graceful shutdown is expected, not a real failure).
+func (w *Worker) logSweepError(ctx context.Context, msg string, err error) {
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		w.logger.Debug(msg+" (shutting down)", "error", err)
+		return
+	}
+	w.logger.Error(msg, "error", err)
 }

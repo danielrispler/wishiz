@@ -47,8 +47,8 @@ func TestServiceMarksNeedsReviewWhenScrapeReturnsTwoFields(t *testing.T) {
 	if repo.settled.Snapshot.Completeness != 2 || value(repo.settled.Snapshot.Title) != "Desk lamp" || value(repo.settled.Snapshot.ImageURL) == "" {
 		t.Fatalf("unexpected needs review snapshot: %+v", repo.settled.Snapshot)
 	}
-	if !repo.settled.Retryable {
-		t.Fatalf("expected needs_review job to be retryable")
+	if repo.settled.Retryable {
+		t.Fatalf("needs_review is terminal human-review — must not be retryable")
 	}
 }
 
@@ -241,6 +241,24 @@ func TestServiceReportsProgressMonotonically(t *testing.T) {
 	}
 }
 
+func TestResolveOutcomeAntiBotBlockIsUnsupportedAndNotRetryable(t *testing.T) {
+	t.Parallel()
+
+	outcome := resolveOutcome(
+		productSnapshot{},
+		scrapeapp.Unsupported("this store blocks automatic import"),
+	)
+	if outcome.Status != importdomain.StatusFailed {
+		t.Fatalf("status: got %q, want %q", outcome.Status, importdomain.StatusFailed)
+	}
+	if outcome.Retryable {
+		t.Errorf("an unsupported site must not be retryable")
+	}
+	if outcome.ErrorCode != ErrorCodeUnsupported {
+		t.Errorf("errorCode: got %q, want %q", outcome.ErrorCode, ErrorCodeUnsupported)
+	}
+}
+
 func TestResolveOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -277,11 +295,13 @@ func TestResolveOutcome(t *testing.T) {
 		wantRetryable bool
 	}{
 		{
-			name:          "scrape error partial → needs_review retryable",
+			// needs_review is terminal human-review: never retryable, so ClaimNext
+			// (which re-claims only retryable rows) does not re-scrape it.
+			name:          "scrape error partial → needs_review terminal",
 			snap:          partialSnap,
 			scrapeErr:     scrapeapp.ScrapeFailed("boom"),
 			wantStatus:    importdomain.StatusNeedsReview,
-			wantRetryable: true,
+			wantRetryable: false,
 		},
 		{
 			name:          "scrape error insufficient → failed retryable",
@@ -298,10 +318,10 @@ func TestResolveOutcome(t *testing.T) {
 			wantRetryable: false,
 		},
 		{
-			name:          "no error incomplete partial → needs_review retryable",
+			name:          "no error incomplete partial → needs_review terminal",
 			snap:          partialSnap,
 			wantStatus:    importdomain.StatusNeedsReview,
-			wantRetryable: true,
+			wantRetryable: false,
 		},
 		{
 			name:          "no error incomplete insufficient → failed retryable",
@@ -310,10 +330,10 @@ func TestResolveOutcome(t *testing.T) {
 			wantRetryable: true,
 		},
 		{
-			name:          "complete untrusted price → needs_review retryable",
+			name:          "complete untrusted price → needs_review terminal",
 			snap:          completeUntrusted,
 			wantStatus:    importdomain.StatusNeedsReview,
-			wantRetryable: true,
+			wantRetryable: false,
 		},
 		{
 			name:       "complete trusted price → completed",

@@ -23,6 +23,10 @@ const (
 	ErrorCodeTransientScrape = "transient_scrape_error"
 	ErrorCodeIncomplete      = "incomplete_product"
 	ErrorCodeItemCreate      = "item_create_failed"
+	// ErrorCodeUnsupported = the store hard-blocks automated import (anti-bot).
+	// Terminal and NON-retryable: the UI tells the user to add it manually
+	// instead of letting them retry a scrape that can never succeed.
+	ErrorCodeUnsupported = "unsupported_site"
 
 	defaultDedupeWindow    = 10 * time.Minute
 	defaultRecentWindow    = 24 * time.Hour
@@ -271,31 +275,38 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 	outcome := resolveOutcome(snap, scrapeErr)
 
 	if outcome.Status == importdomain.StatusCompleted && job.WishlistID != nil {
-		itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
-		productURL := job.NormalizedURL
-		if snap.CanonicalURL != "" {
-			productURL = snap.CanonicalURL
-		}
-		item, createErr := s.wishlists.AddItem(itemCtx, *job.WishlistID, &wishlistapp.AddItemInput{
-			Title:             *snap.Title,
-			PriceLabel:        snap.PriceLabel,
-			PriceAmount:       snap.PriceAmount,
-			PriceCurrencyCode: snap.PriceCurrencyCode,
-			ImageURL:          snap.ImageURL,
-			ProductURL:        &productURL,
-			Priority:          wishlistdomain.ItemPriorityMedium,
-			Status:            wishlistdomain.ItemStatusSaved,
-		})
-		if createErr != nil {
-			outcome = ports.JobOutcome{
-				Status:    importdomain.StatusFailed,
-				Snapshot:  outcome.Snapshot,
-				LastError: createErr.Error(),
-				ErrorCode: ErrorCodeItemCreate,
-				Retryable: !isWishlistValidationError(createErr),
-			}
+		if snap.Title == nil {
+			// A completed verdict implies a HIGH (non-empty) name today, but guard
+			// the deref so a future invariant break degrades to human review rather
+			// than panicking the worker.
+			outcome = needsReviewOutcome(outcome.Snapshot, "product title missing")
 		} else {
-			outcome.CreatedItemID = &item.ID
+			itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
+			productURL := job.NormalizedURL
+			if snap.CanonicalURL != "" {
+				productURL = snap.CanonicalURL
+			}
+			item, createErr := s.wishlists.AddItem(itemCtx, *job.WishlistID, &wishlistapp.AddItemInput{
+				Title:             *snap.Title,
+				PriceLabel:        snap.PriceLabel,
+				PriceAmount:       snap.PriceAmount,
+				PriceCurrencyCode: snap.PriceCurrencyCode,
+				ImageURL:          snap.ImageURL,
+				ProductURL:        &productURL,
+				Priority:          wishlistdomain.ItemPriorityMedium,
+				Status:            wishlistdomain.ItemStatusSaved,
+			})
+			if createErr != nil {
+				outcome = ports.JobOutcome{
+					Status:    importdomain.StatusFailed,
+					Snapshot:  outcome.Snapshot,
+					LastError: createErr.Error(),
+					ErrorCode: ErrorCodeItemCreate,
+					Retryable: !isWishlistValidationError(createErr),
+				}
+			} else {
+				outcome.CreatedItemID = &item.ID
+			}
 		}
 	}
 
@@ -323,6 +334,21 @@ func (s *Service) progressReporter(ctx context.Context, jobID string) scrapeapp.
 	}
 }
 
+// needsReviewOutcome builds the terminal needs_review outcome. needs_review is a
+// human-review state, not a transient failure: it is never retryable. ClaimNext
+// re-claims only retryable rows, so a retryable needs_review would be re-scraped
+// every backoff window — burning a ~30s render and flipping the job out of
+// review until it hit max attempts. Centralizing it keeps that rule in one place.
+func needsReviewOutcome(ps ports.ProductSnapshot, lastError string) ports.JobOutcome {
+	return ports.JobOutcome{
+		Status:    importdomain.StatusNeedsReview,
+		Snapshot:  ps,
+		LastError: lastError,
+		ErrorCode: ErrorCodeIncomplete,
+		Retryable: false,
+	}
+}
+
 func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	ps := ports.ProductSnapshot{
 		Title:           snap.Title,
@@ -335,14 +361,19 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	}
 	if scrapeErr != nil {
 		retryable, code := classifyScrapeError(scrapeErr)
-		if snap.Verdict == scrapeapp.VerdictNeedsReview || shouldNeedsReview(snap) {
+		// A hard anti-bot block is terminal: never retry, never review — there is
+		// no data and never will be. Tell the user the store is unsupported.
+		if code == ErrorCodeUnsupported {
 			return ports.JobOutcome{
-				Status:    importdomain.StatusNeedsReview,
+				Status:    importdomain.StatusFailed,
 				Snapshot:  ps,
-				LastError: "product details need review",
-				ErrorCode: ErrorCodeIncomplete,
-				Retryable: code != string(scrapeapp.ErrorCodeBadRequest),
+				LastError: scrapeErr.Error(),
+				ErrorCode: code,
+				Retryable: false,
 			}
+		}
+		if snap.Verdict == scrapeapp.VerdictNeedsReview || shouldNeedsReview(snap) {
+			return needsReviewOutcome(ps, "product details need review")
 		}
 		return ports.JobOutcome{
 			Status:    importdomain.StatusFailed,
@@ -358,22 +389,10 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	case scrapeapp.VerdictAutoComplete:
 		return ports.JobOutcome{Status: importdomain.StatusCompleted, Snapshot: ps}
 	case scrapeapp.VerdictNeedsReview:
-		return ports.JobOutcome{
-			Status:    importdomain.StatusNeedsReview,
-			Snapshot:  ps,
-			LastError: reviewReason(snap),
-			ErrorCode: ErrorCodeIncomplete,
-			Retryable: true,
-		}
+		return needsReviewOutcome(ps, reviewReason(snap))
 	case scrapeapp.VerdictFailed:
 		if shouldNeedsReview(snap) {
-			return ports.JobOutcome{
-				Status:    importdomain.StatusNeedsReview,
-				Snapshot:  ps,
-				LastError: "product details need review",
-				ErrorCode: ErrorCodeIncomplete,
-				Retryable: true,
-			}
+			return needsReviewOutcome(ps, "product details need review")
 		}
 		return ports.JobOutcome{
 			Status:    importdomain.StatusFailed,
@@ -387,13 +406,7 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	// Defensive fallback for products that carry no verdict (legacy/partial).
 	if !isComplete(snap) {
 		if shouldNeedsReview(snap) {
-			return ports.JobOutcome{
-				Status:    importdomain.StatusNeedsReview,
-				Snapshot:  ps,
-				LastError: "product details need review",
-				ErrorCode: ErrorCodeIncomplete,
-				Retryable: true,
-			}
+			return needsReviewOutcome(ps, "product details need review")
 		}
 		return ports.JobOutcome{
 			Status:    importdomain.StatusFailed,
@@ -404,13 +417,7 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 		}
 	}
 	if !snap.HasTrustedPrice {
-		return ports.JobOutcome{
-			Status:    importdomain.StatusNeedsReview,
-			Snapshot:  ps,
-			LastError: "product price needs review",
-			ErrorCode: ErrorCodeIncomplete,
-			Retryable: true,
-		}
+		return needsReviewOutcome(ps, "product price needs review")
 	}
 	return ports.JobOutcome{Status: importdomain.StatusCompleted, Snapshot: ps}
 }
@@ -511,6 +518,8 @@ func classifyScrapeError(err error) (retryable bool, code string) {
 			return true, ErrorCodeTimeout
 		case scrapeapp.ErrorCodeBadRequest:
 			return false, string(appErr.Code)
+		case scrapeapp.ErrorCodeUnsupported:
+			return false, ErrorCodeUnsupported
 		default:
 			return true, string(appErr.Code)
 		}

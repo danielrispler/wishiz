@@ -82,6 +82,27 @@ func IsRedirectAllowed(ctx context.Context, resolver HostResolver, candidate str
 	return err
 }
 
+// IsBrowserSubresourceAllowed gates a request the headless browser is about to
+// make. Real pages routinely fetch non-http schemes (data:, blob:, about:,
+// chrome-extension:, ws/wss, filesystem:) that either cannot reach internal
+// hosts or cannot return their body into the rendered DOM we extract; those are
+// always allowed so a benign sub-resource never aborts the whole render. Only
+// http/https — the SSRF surface whose response can be injected into the page —
+// is run through the policy, so a fetch/redirect to a private address is still
+// blocked.
+func IsBrowserSubresourceAllowed(ctx context.Context, resolver HostResolver, candidate string) error {
+	parsed, _ := url.Parse(strings.TrimSpace(candidate))
+	if parsed == nil {
+		return nil // unparseable target — not an http(s) host we can or need to SSRF-check
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case schemeHTTP, schemeHTTPS:
+		return IsRedirectAllowed(ctx, resolver, candidate)
+	default:
+		return nil
+	}
+}
+
 func isDisallowedHost(host string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(host))
 	switch normalized {

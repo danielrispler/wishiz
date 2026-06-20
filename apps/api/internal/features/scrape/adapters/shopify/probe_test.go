@@ -45,9 +45,12 @@ func TestParseProductJSON(t *testing.T) {
 	}
 }
 
-func TestParseProductJSDotJSCents(t *testing.T) {
+func TestParseProductJSDotJSCentsNoCurrencySkipsPrice(t *testing.T) {
 	t.Parallel()
 
+	// .js cents with no presentment currency: we can know neither the decimal
+	// exponent (JPY=0, USD=2) nor the label, so emitting a scaled price is a
+	// silent-wrong-price risk. Skip the price; title/image are still emitted.
 	base, _ := url.Parse("https://store.example")
 	data := []byte(`{"title":"Cap","featured_image":"//cdn/cap.jpg","variants":[{"price":2500}]}`)
 
@@ -55,9 +58,27 @@ func TestParseProductJSDotJSCents(t *testing.T) {
 	if image := field(candidates, extractors.FieldImage); image != "https://cdn/cap.jpg" {
 		t.Fatalf("unexpected image: %q", image)
 	}
+	if name := field(candidates, extractors.FieldName); name != "Cap" {
+		t.Fatalf("unexpected name: %q", name)
+	}
+	if p, ok := price(candidates); ok {
+		t.Fatalf("expected no price from currency-less .js cents, got %+v", p)
+	}
+}
+
+func TestParseProductJSONPresentmentJPYUnscaled(t *testing.T) {
+	t.Parallel()
+
+	// presentment amount is already major-unit; a zero-decimal currency like JPY
+	// must NOT be divided by 100.
+	base, _ := url.Parse("https://store.example")
+	data := []byte(`{"product":{"title":"Mug","variants":[{"price":1500,
+		"presentment_prices":[{"price":{"amount":"1500","currency_code":"jpy"}}]}]}}`)
+
+	candidates := parseProductJSON(data, true, base)
 	p, ok := price(candidates)
-	if !ok || p.Value != "25.00" {
-		t.Fatalf("expected cents->major 25.00, got %+v", p)
+	if !ok || p.Value != "1500" || p.Currency != "JPY" {
+		t.Fatalf("expected unscaled 1500 JPY, got %+v (ok=%v)", p, ok)
 	}
 }
 

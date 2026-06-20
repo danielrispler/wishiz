@@ -62,6 +62,21 @@ type CachedExchangeConverter struct {
 
 	mu          sync.RWMutex
 	unitsPerEUR map[string]float64
+	// missCount tracks how many consecutive refreshes a previously-present
+	// currency has been absent from the feed, so a transient omission doesn't
+	// immediately drop a still-valid rate (see applyRates).
+	missCount map[string]int
+}
+
+// maxStaleRefreshes is how many consecutive feed omissions a currency tolerates
+// before its rate is dropped as genuinely delisted.
+const maxStaleRefreshes = 3
+
+// currencyMinorUnits overrides the default 2 decimals for currencies with a
+// different minor-unit exponent. Only zero-decimal currencies need listing.
+var currencyMinorUnits = map[string]int{
+	"JPY": 0,
+	"KRW": 0,
 }
 
 func NewCachedExchangeConverter(ratesURL string, refreshInterval time.Duration) *CachedExchangeConverter {
@@ -125,11 +140,38 @@ func (c *CachedExchangeConverter) Refresh() error {
 		return err
 	}
 
-	c.mu.Lock()
-	c.unitsPerEUR = rates
-	c.mu.Unlock()
-
+	c.applyRates(rates)
 	return nil
+}
+
+// applyRates merges a freshly-fetched rate set into the cache rather than
+// replacing it wholesale: a currency the feed transiently omits keeps its prior
+// rate for up to maxStaleRefreshes refreshes (so a single flaky feed doesn't make
+// a currency unconvertible for ~12h), after which it is dropped as delisted.
+func (c *CachedExchangeConverter) applyRates(rates map[string]float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.missCount == nil {
+		c.missCount = map[string]int{}
+	}
+	for code, rate := range rates {
+		c.unitsPerEUR[code] = rate
+		delete(c.missCount, code)
+	}
+	for code := range c.unitsPerEUR {
+		if code == "EUR" {
+			continue // base is always present
+		}
+		if _, present := rates[code]; present {
+			continue
+		}
+		c.missCount[code]++
+		if c.missCount[code] >= maxStaleRefreshes {
+			delete(c.unitsPerEUR, code)
+			delete(c.missCount, code)
+		}
+	}
 }
 
 func (c *CachedExchangeConverter) Convert(
@@ -150,7 +192,7 @@ func (c *CachedExchangeConverter) Convert(
 	}
 
 	if from == to {
-		return formatPriceAmount(value), to, nil
+		return formatPriceAmountFor(value, to), to, nil
 	}
 
 	c.mu.RLock()
@@ -164,12 +206,19 @@ func (c *CachedExchangeConverter) Convert(
 
 	eurAmount := value / fromRate
 	converted := eurAmount * toRate
-	return formatPriceAmount(converted), to, nil
+	return formatPriceAmountFor(converted, to), to, nil
 }
 
-func formatPriceAmount(amount float64) string {
-	rounded := math.Round(amount*100) / 100
-	return strconv.FormatFloat(rounded, 'f', 2, 64)
+// formatPriceAmountFor formats amount using code's minor-unit exponent (2 decimals
+// by default, 0 for zero-decimal currencies like JPY). An empty code uses 2.
+func formatPriceAmountFor(amount float64, code string) string {
+	decimals := 2
+	if d, ok := currencyMinorUnits[code]; ok {
+		decimals = d
+	}
+	factor := math.Pow(10, float64(decimals))
+	rounded := math.Round(amount*factor) / factor
+	return strconv.FormatFloat(rounded, 'f', decimals, 64)
 }
 
 type ecbEnvelope struct {

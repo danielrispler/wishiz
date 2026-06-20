@@ -54,7 +54,9 @@ func Merchant(document *goquery.Document, base *url.URL) []Candidate {
 func merchantSelectorsFor(host string) []string {
 	normalized := strings.ToLower(host)
 	for domain, selectors := range merchantPriceSelectors {
-		if strings.Contains(normalized, domain) {
+		// Match the exact host or a sub-domain of it, not any substring — a
+		// substring match would let fake-nike.com borrow nike.com's selectors.
+		if normalized == domain || strings.HasSuffix(normalized, "."+domain) {
 			return selectors
 		}
 	}

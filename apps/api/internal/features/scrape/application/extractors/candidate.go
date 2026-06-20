@@ -39,6 +39,28 @@ const (
 	SourceInferred   SourceName = "inferred"
 )
 
+// AllSourceNames is the single source of truth for the SourceName set written
+// to product_import_jobs.price_source. The price_source CHECK constraint in
+// 000001_init_wishlists.up.sql must allow exactly these values; a drift test
+// (sourcenames_test.go) reads the migration SQL and diffs it against this list,
+// so adding a SourceName here without widening the CHECK fails the build.
+func AllSourceNames() []SourceName {
+	return []SourceName{
+		SourceJSONLD,
+		SourceShopify,
+		SourceOpenGraph,
+		SourceMicrodata,
+		SourceJSState,
+		SourceMerchant,
+		SourceTitle,
+		SourceH1,
+		SourceGenericDOM,
+		SourceCanonical,
+		SourceFinalURL,
+		SourceInferred,
+	}
+}
+
 // Warning constants attached to candidates / surfaced as verdict reasons.
 const (
 	WarningNonPrimaryContext   = "non_primary_context"

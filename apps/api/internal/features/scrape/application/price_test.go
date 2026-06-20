@@ -24,12 +24,6 @@ func TestNormalizePrice(t *testing.T) {
 			expectedCurrency: "ILS",
 		},
 		{
-			name:             "usd symbol",
-			raw:              "$19.90",
-			expectedAmount:   "19.90",
-			expectedCurrency: "USD",
-		},
-		{
 			name:             "usd code",
 			raw:              "USD 19.90",
 			expectedAmount:   "19.90",
@@ -50,5 +44,16 @@ func TestNormalizePrice(t *testing.T) {
 				t.Fatalf("expected %s %s, got %s %s", tc.expectedAmount, tc.expectedCurrency, amount, currency)
 			}
 		})
+	}
+}
+
+// TestNormalizePriceDollarSymbolIsAmbiguous: a bare "$" cannot resolve to a
+// concrete currency (USD/CAD/AUD/…), so NormalizePrice reports ok=false rather
+// than guessing USD. The amount still parses for downstream inference.
+func TestNormalizePriceDollarSymbolIsAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	if _, _, ok := NormalizePrice("$19.90"); ok {
+		t.Fatal("expected $-only price to not resolve a currency (ambiguous)")
 	}
 }

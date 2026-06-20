@@ -37,6 +37,19 @@ func TestValidateImageURL(t *testing.T) {
 		"data:image/png;base64,AAAA":          false,
 		"/relative/path.jpg":                  false,
 		"":                                    false,
+
+		// A marker appearing only as a substring of the HOST or of a non-marker
+		// filename must NOT reject the image (segment-boundary, not Contains).
+		"https://silicon-power.com/products/charger.jpg": true,
+		"https://logitech.com/mouse.jpg":                 true,
+		"https://iconicbrand.com/p/widget.jpg":           true,
+		"https://cdn.example/products/silicon-case.jpg":  true,
+
+		// Real non-product assets still reject on a whole-segment match.
+		"https://cdn.example/logo.png":     false,
+		"https://cdn.example/favicon.ico":  false,
+		"https://cdn.example/icons/ic.png": true, // filename "ic.png" is not a marker
+		"https://cdn.example/icon-512.png": false,
 	}
 	for url, want := range cases {
 		if got := ValidateImageURL(url); got != want {

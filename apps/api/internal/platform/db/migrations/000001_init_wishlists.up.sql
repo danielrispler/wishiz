@@ -142,9 +142,13 @@ CREATE TABLE IF NOT EXISTS product_import_jobs (
     CONSTRAINT product_import_jobs_target_currency_code_check CHECK (target_currency_code ~ '^[A-Z]{3}$'),
     CONSTRAINT product_import_jobs_price_confidence_check
         CHECK (price_confidence IS NULL OR price_confidence IN ('high', 'medium', 'low', 'suspicious')),
+    -- Allowed values mirror extractors.AllSourceNames() exactly; the drift test
+    -- in extractors/sourcenames_test.go reads this list and fails the build if a
+    -- SourceName is added without widening the CHECK (or vice-versa).
     CONSTRAINT product_import_jobs_price_source_check
         CHECK (price_source IS NULL OR price_source IN (
-            'merchant_selector', 'json_ld', 'meta', 'selector', 'generic_dom'
+            'json_ld', 'shopify', 'open_graph', 'microdata', 'js_state', 'merchant',
+            'title', 'h1', 'generic_dom', 'canonical', 'final_url', 'inferred'
         )),
     CONSTRAINT product_import_jobs_client_request_unique UNIQUE (user_id, client_request_id)
 );

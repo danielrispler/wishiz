@@ -81,6 +81,43 @@ void main() {
       },
     );
 
+    testWidgets(
+      'unmounting the app mid-enqueue does not setState after dispose',
+      (tester) async {
+        final authRepository = FakeAuthRepository(currentUser: sampleUser);
+        final enqueueGate = Completer<void>();
+        final productImportRepository = GatedProductImportRepository(
+          gate: enqueueGate,
+        );
+        final shareIntakeService = FakeShareIntakeService(
+          pendingResponses: ['https://example.com/products/mug'],
+        );
+
+        await tester.pumpWidget(
+          buildTestApp(
+            authRepository: authRepository,
+            sharedProductRepository: FakeSharedProductRepository(),
+            productImportRepository: productImportRepository,
+            shareIntakeService: shareIntakeService,
+          ),
+        );
+        // Let the post-frame callback start the (now-blocked) enqueue.
+        await tester.pump();
+        await tester.pump();
+
+        // Tear the whole app down while the import is still in flight.
+        await tester.pumpWidget(const SizedBox());
+
+        // Completing now runs HomeScreen's finally → onInitialSharedTextHandled
+        // on the already-disposed _RootScreenState. The parent's setState must be
+        // guarded by its own mounted, so this must NOT throw.
+        enqueueGate.complete();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('imports a newly pending link after the app resumes', (
       tester,
     ) async {
@@ -631,6 +668,30 @@ class CountingWishlistRepository extends InMemoryWishlistRepository {
   }) async {
     joinCallCount += 1;
     return super.joinWishlist(id: id, token: token);
+  }
+}
+
+/// A product-import repository whose enqueue blocks until [gate] completes, so a
+/// test can unmount the app while an import is in flight.
+class GatedProductImportRepository extends FakeProductImportRepository {
+  GatedProductImportRepository({required this.gate});
+
+  final Completer<void> gate;
+
+  @override
+  Future<ProductImportJob> enqueue({
+    String? wishlistId,
+    required String sharedText,
+    required String clientRequestId,
+    required String targetCurrencyCode,
+  }) async {
+    await gate.future;
+    return super.enqueue(
+      wishlistId: wishlistId,
+      sharedText: sharedText,
+      clientRequestId: clientRequestId,
+      targetCurrencyCode: targetCurrencyCode,
+    );
   }
 }
 

@@ -13,18 +13,20 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"html"
 	"io"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/brotli"
-	utls "github.com/refraction-networking/utls"
 
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/httpx"
 )
 
 const (
@@ -32,7 +34,18 @@ const (
 	maxBodyBytes   = 8 << 20 // 8 MiB
 	maxAttempts    = 3
 	maxBackoff     = 4 * time.Second
+	// maxClientRedirects bounds how many meta-refresh / JS-location hops Fetch
+	// will follow (HTTP 3xx is handled separately by the transport).
+	maxClientRedirects = 3
 )
+
+// clientRedirectPatterns detect a same-document redirect the HTTP layer can't
+// see: a <meta http-equiv="refresh"> URL, or a top-level JS location assignment.
+var clientRedirectPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["'][^"']*?url\s*=\s*([^"'\s>]+)`),
+	regexp.MustCompile(`(?i)window\.location(?:\.href)?\s*=\s*["']([^"']+)["']`),
+	regexp.MustCompile(`(?i)location\.(?:href\s*=|replace\s*\(|assign\s*\()\s*["']([^"']+)["']`),
+}
 
 // Client is a static HTTP Fetcher.
 type Client struct {
@@ -45,7 +58,7 @@ func New(resolver scrapeapp.HostResolver) *Client {
 	return &Client{
 		client: &http.Client{
 			Jar:       jar,
-			Transport: newUTLSTransport(),
+			Transport: httpx.NewUTLSTransport(requestTimeout),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if err := scrapeapp.IsRedirectAllowed(req.Context(), resolver, req.URL.String()); err != nil {
 					return err
@@ -61,14 +74,41 @@ func New(resolver scrapeapp.HostResolver) *Client {
 }
 
 // Fetch retrieves the page and returns its raw HTML, final URL and headers,
-// retrying soft anti-bot responses (403/429/503) with backoff.
+// retrying soft anti-bot responses (403/429/503) with backoff and following
+// client-side (meta-refresh / JS-location) redirects that the HTTP layer can't
+// see, re-validating each hop through the SSRF guard.
 func (c *Client) Fetch(ctx context.Context, rawURL string) (scrapeapp.FetchResult, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
+	currentURL := rawURL
+	for hop := 0; ; hop++ {
+		result, err := c.fetchWithRetry(requestCtx, currentURL)
+		if err != nil {
+			return scrapeapp.FetchResult{}, err
+		}
+		if hop >= maxClientRedirects {
+			return result, nil
+		}
+		target := clientRedirectTarget(result.HTML, result.FinalURL)
+		if target == "" {
+			return result, nil
+		}
+		// Re-validate the client-side hop exactly like an HTTP redirect; if it
+		// isn't safe to follow, return what we already have rather than erroring.
+		if err := scrapeapp.IsRedirectAllowed(requestCtx, c.resolver, target); err != nil {
+			return result, nil
+		}
+		currentURL = target
+	}
+}
+
+// fetchWithRetry performs one logical fetch of rawURL, retrying soft anti-bot
+// responses (403/429/503) with backoff.
+func (c *Client) fetchWithRetry(ctx context.Context, rawURL string) (scrapeapp.FetchResult, error) {
 	var lastStatus int
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		result, status, retryAfter, err := c.attempt(requestCtx, rawURL)
+		result, status, retryAfter, err := c.attempt(ctx, rawURL)
 		if err != nil {
 			return scrapeapp.FetchResult{}, err
 		}
@@ -79,7 +119,7 @@ func (c *Client) Fetch(ctx context.Context, rawURL string) (scrapeapp.FetchResul
 		if !isRetryable(status) || attempt == maxAttempts-1 {
 			break
 		}
-		if err := sleep(requestCtx, backoff(attempt, retryAfter)); err != nil {
+		if err := sleep(ctx, backoff(attempt, retryAfter)); err != nil {
 			return scrapeapp.FetchResult{}, err
 		}
 	}
@@ -103,11 +143,7 @@ func (c *Client) attempt(ctx context.Context, rawURL string) (scrapeapp.FetchRes
 		return scrapeapp.FetchResult{}, response.StatusCode, retryAfter(response), nil
 	}
 
-	reader, err := decodedBody(response)
-	if err != nil {
-		return scrapeapp.FetchResult{}, 0, 0, err
-	}
-	body, err := io.ReadAll(io.LimitReader(reader, maxBodyBytes))
+	body, err := decodedBody(response)
 	if err != nil {
 		return scrapeapp.FetchResult{}, 0, 0, err
 	}
@@ -151,20 +187,75 @@ func originOf(u *url.URL) string {
 	return u.Scheme + "://" + u.Host + "/"
 }
 
-// decodedBody wraps the response body with the right decompressor. We set
-// Accept-Encoding manually (so we can request brotli), which disables the
-// transport's transparent gzip handling — we must decode ourselves.
-func decodedBody(response *http.Response) (io.Reader, error) {
-	switch response.Header.Get("Content-Encoding") {
+// decodedBody reads and decompresses the response body fully, then closes the
+// decompressor so its integrity check runs (gzip's Close validates the CRC). We
+// set Accept-Encoding manually so we can request brotli, which disables the
+// transport's transparent gzip handling — we must decode ourselves. The
+// Content-Encoding token is matched case-insensitively (e.g. "GZIP" is valid),
+// and a decompression failure surfaces as an error rather than partial bytes
+// being fed to the parser as plaintext.
+func decodedBody(response *http.Response) ([]byte, error) {
+	encoding := strings.ToLower(strings.TrimSpace(response.Header.Get("Content-Encoding")))
+
+	var reader io.Reader = response.Body
+	var closer io.Closer
+	switch encoding {
 	case "gzip":
-		return gzip.NewReader(response.Body)
+		gz, err := gzip.NewReader(response.Body)
+		if err != nil {
+			return nil, err
+		}
+		reader, closer = gz, gz
 	case "br":
-		return brotli.NewReader(response.Body), nil
+		reader = brotli.NewReader(response.Body)
 	case "deflate":
-		return flate.NewReader(response.Body), nil
-	default:
-		return response.Body, nil
+		fl := flate.NewReader(response.Body)
+		reader, closer = fl, fl
 	}
+
+	body, err := io.ReadAll(io.LimitReader(reader, maxBodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	if closer != nil {
+		if err := closer.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return body, nil
+}
+
+// clientRedirectTarget returns the absolute URL of a meta-refresh / JS-location
+// redirect found in htmlBody, resolved against finalURL, or "" if there is none
+// (or it points at the same page / a non-http(s) scheme).
+func clientRedirectTarget(htmlBody, finalURL string) string {
+	base, err := url.Parse(finalURL)
+	if err != nil {
+		return ""
+	}
+	for _, pattern := range clientRedirectPatterns {
+		match := pattern.FindStringSubmatch(htmlBody)
+		if match == nil {
+			continue
+		}
+		target := html.UnescapeString(strings.TrimSpace(match[1]))
+		if target == "" {
+			continue
+		}
+		resolved, err := url.Parse(target)
+		if err != nil {
+			continue
+		}
+		absolute := base.ResolveReference(resolved)
+		if absolute.Scheme != "http" && absolute.Scheme != "https" {
+			continue
+		}
+		if absolute.String() == base.String() {
+			continue
+		}
+		return absolute.String()
+	}
+	return ""
 }
 
 func isRetryable(status int) bool {
@@ -214,37 +305,6 @@ func sleep(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	case <-timer.C:
 		return nil
-	}
-}
-
-// newUTLSTransport dials TLS with a Chrome fingerprint (utls) to dodge naive
-// TLS-fingerprint blocks, pinned to HTTP/1.1 for goquery-friendly responses.
-func newUTLSTransport() *http.Transport {
-	return &http.Transport{
-		ForceAttemptHTTP2: false,
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := (&net.Dialer{Timeout: requestTimeout}).DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-			host, _, _ := net.SplitHostPort(addr)
-			uConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
-			if err := uConn.BuildHandshakeState(); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			for _, ext := range uConn.Extensions {
-				if alpn, ok := ext.(*utls.ALPNExtension); ok {
-					alpn.AlpnProtocols = []string{"http/1.1"}
-					break
-				}
-			}
-			if err := uConn.HandshakeContext(ctx); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			return uConn, nil
-		},
 	}
 }
 

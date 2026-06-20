@@ -11,10 +11,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/httpfetch"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
 )
@@ -83,7 +83,9 @@ func (p *Probe) fetchAndParse(ctx context.Context, rawURL string, fromJS bool, b
 		return nil
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; WishizBot/1.0)")
+	// Reuse the shared Chrome UA rotation pool; a self-identifying WishizBot UA
+	// gets 403'd by UA-blocking stores, forcing needs_review.
+	request.Header.Set("User-Agent", httpfetch.RandomUserAgent())
 
 	response, err := p.client.Do(request)
 	if err != nil {
@@ -208,9 +210,13 @@ func firstImage(parsed shopifyProduct, base *url.URL) string {
 	return ""
 }
 
-// variantPrice returns the first variant's amount and currency. .json prices are
-// major-unit strings; .js prices are integer cents. Presentment prices carry the
-// currency code when present.
+// variantPrice returns the first variant's amount and currency. presentment_prices
+// is the only path that carries a currency: its amount is already major-unit and
+// is returned unscaled (a zero-decimal currency like JPY must not be divided by
+// 100). The .json bare price is also major-unit, returned with an empty currency
+// for downstream inference. The .js bare price is integer minor units with no
+// currency — we can know neither the decimal exponent nor the label, so we skip
+// it rather than emit a price we can't both scale and label.
 func variantPrice(variants []shopifyVariant, fromJS bool) (amount string, currency string, ok bool) {
 	if len(variants) == 0 {
 		return "", "", false
@@ -228,13 +234,10 @@ func variantPrice(variants []shopifyVariant, fromJS bool) (amount string, curren
 		return "", "", false
 	}
 	if fromJS {
-		cents, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			return "", "", false
-		}
-		return strconv.FormatFloat(float64(cents)/100, 'f', 2, 64), currency, true
+		// Integer minor units, no currency: skip (see doc comment).
+		return "", "", false
 	}
-	return raw, currency, true
+	return raw, "", true
 }
 
 func absolute(base *url.URL, candidate string) string {

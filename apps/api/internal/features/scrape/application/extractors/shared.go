@@ -60,10 +60,51 @@ func firstSource(document *goquery.Document, selector string, attributes ...stri
 }
 
 func looksLikeNonProductImage(candidate string) bool {
-	lower := strings.ToLower(candidate)
-	return strings.Contains(lower, "logo") ||
-		strings.Contains(lower, "icon") ||
-		strings.Contains(lower, "placeholder")
+	return IsNonProductImageURL(candidate)
+}
+
+// nonProductImageMarkers are filename tokens that mark a non-product asset.
+var nonProductImageMarkers = map[string]bool{
+	"logo":        true,
+	"icon":        true,
+	"sprite":      true,
+	"placeholder": true,
+	"favicon":     true,
+}
+
+// IsNonProductImageURL reports whether rawURL looks like a logo/icon/sprite/
+// placeholder/favicon asset rather than a product image. It inspects the LAST
+// path segment (the filename) split on separator characters and matches whole
+// tokens, so a marker that appears only as a substring of the host or a
+// non-marker filename — silicon-power.com, logitech.com, products/silicon-case.jpg
+// — is not rejected. Single source of truth shared by the image extractor and
+// the application-layer ValidateImageURL.
+func IsNonProductImageURL(rawURL string) bool {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return false
+	}
+
+	path := trimmed
+	if parsed, err := url.Parse(trimmed); err == nil && parsed.Path != "" {
+		path = parsed.Path
+	}
+	if strings.Contains(strings.ToLower(path), "/favicon") {
+		return true
+	}
+
+	segment := path
+	if i := strings.LastIndexByte(segment, '/'); i >= 0 {
+		segment = segment[i+1:]
+	}
+	for _, token := range strings.FieldsFunc(strings.ToLower(segment), func(r rune) bool {
+		return r == '-' || r == '_' || r == '.'
+	}) {
+		if nonProductImageMarkers[token] {
+			return true
+		}
+	}
+	return false
 }
 
 // parseSourceValue pulls the first URL out of a src/srcset attribute value.

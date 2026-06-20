@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
@@ -115,9 +116,15 @@ func (s *Service) ScrapeWithProgress(
 	startedAt := time.Now()
 
 	var (
-		mu  sync.Mutex
-		all []extractors.Candidate
+		mu      sync.Mutex
+		all     []extractors.Candidate
+		blocked atomic.Bool
 	)
+	noteHTML := func(html string) {
+		if IsAntiBotBlock(html) {
+			blocked.Store(true)
+		}
+	}
 	add := func(candidates []extractors.Candidate) {
 		if len(candidates) == 0 {
 			return
@@ -147,6 +154,7 @@ func (s *Service) ScrapeWithProgress(
 				s.logger.Debug("static fetch failed", "url", pageURL, "error", fetchErr.Error())
 				return
 			}
+			noteHTML(result.HTML)
 			add(s.engine.Extract(result.HTML, finalURLOr(result.FinalURL, pageURL), result.Headers))
 		}()
 	}
@@ -183,26 +191,37 @@ func (s *Service) ScrapeWithProgress(
 				return
 			}
 			reporter.report(StagePageLoaded, percentPageLoaded)
+			noteHTML(result.HTML)
 			add(s.engine.Extract(result.HTML, finalURLOr(result.FinalURL, pageURL), result.Headers))
 		}()
 	}
 
-	// Early-abort: as soon as the cheap sources clear the verdict gate, cancel
-	// the render so it returns immediately instead of running the full budget.
+	// Early-abort: reconcile the cheap-source candidates ONCE. If they already
+	// clear the verdict gate, keep that captured result and cancel the render —
+	// reconciling a second time after the wait could fold in render candidates
+	// that landed between the gate snapshot and the wait, yielding a different
+	// verdict for the same page. If the gate didn't clear, wait for the render
+	// and reconcile once over the full candidate set. One reconcile per outcome.
 	cheapWG.Wait()
 	reporter.report(StageExtracting, percentExtracting)
-	if s.engine.Reconcile(snapshot(), pageURL).Verdict == VerdictAutoComplete {
+	product := s.engine.Reconcile(snapshot(), pageURL)
+	if product.Verdict == VerdictAutoComplete {
 		cancelRender()
+	} else {
+		renderWG.Wait()
+		product = s.engine.Reconcile(snapshot(), pageURL)
 	}
 	renderWG.Wait()
 
 	reporter.report(StageCrossChecking, percentCrossChecking)
-	product := s.engine.Reconcile(snapshot(), pageURL)
 	product = s.applyConversion(product, targetCurrency)
 
 	if !product.HasAnyData() {
 		if errors.Is(budgetCtx.Err(), context.DeadlineExceeded) {
 			return product, Timeout("scrape timed out")
+		}
+		if blocked.Load() {
+			return product, Unsupported("this store blocks automatic import")
 		}
 		return product, ScrapeFailed("could not extract product details")
 	}
@@ -236,6 +255,9 @@ func (s *Service) applyConversion(product Product, targetCurrency string) Produc
 	}
 	product.PriceAmount = amount
 	product.PriceCurrency = currency
+	// Recompute the verdict for symmetry with the failure branch: the price field
+	// changed, so the verdict must be derived from the post-conversion product.
+	product.Verdict, product.Reasons = ComputeVerdict(product)
 	return product
 }
 

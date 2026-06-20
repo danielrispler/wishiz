@@ -3,6 +3,7 @@ package headless
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -19,9 +20,17 @@ const defaultRenderTimeout = 26 * time.Second
 // before any page script runs. Soft hardening only.
 const stealthScript = `Object.defineProperty(navigator, 'webdriver', {get: () => undefined});`
 
-// settleDelay is a short wait after the body is visible to let client-side JS
-// populate prices/SPA content before we snapshot the DOM.
-const settleDelay = 1500 * time.Millisecond
+// Content-aware settling: after the body is visible we poll the DOM until a
+// structured product signal appears (JSON-LD/microdata Product or a price meta)
+// or the DOM stops changing, capped by settleMax. This restores the old
+// poll-until-ready behavior that the blind fixed sleep regressed — JS-heavy SPA
+// pages hydrate their price/JSON-LD after the body paints — without coupling the
+// renderer to the extraction engine (the single-extraction contract).
+const (
+	minSettle        = 800 * time.Millisecond
+	settlePoll       = 250 * time.Millisecond
+	defaultSettleMax = 6 * time.Second
+)
 
 // Scraper is the headless-render Fetcher: it navigates a real Chromium, lets the
 // page settle, and returns the rendered HTML + final URL for the Engine to
@@ -31,6 +40,7 @@ type Scraper struct {
 	cancel        context.CancelFunc
 	resolver      scrapeapp.HostResolver
 	renderTimeout time.Duration
+	settleMax     time.Duration
 }
 
 func NewScraper(chromiumPath string, resolver scrapeapp.HostResolver, renderTimeout time.Duration) *Scraper {
@@ -52,11 +62,17 @@ func NewScraper(chromiumPath string, resolver scrapeapp.HostResolver, renderTime
 
 	allocatorCtx, cancel := chromedp.NewExecAllocator(context.Background(), options...)
 
+	settleMax := defaultSettleMax
+	if settleMax > renderTimeout {
+		settleMax = renderTimeout
+	}
+
 	return &Scraper{
 		allocatorCtx:  allocatorCtx,
 		cancel:        cancel,
 		resolver:      resolver,
 		renderTimeout: renderTimeout,
+		settleMax:     settleMax,
 	}
 }
 
@@ -110,9 +126,9 @@ func (s *Scraper) Fetch(ctx context.Context, rawURL string) (scrapeapp.FetchResu
 		}),
 		chromedp.Navigate(rawURL),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
-		chromedp.Sleep(settleDelay),
-		chromedp.Location(&pageURL),
-		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return s.settle(ctx, &pageURL, &html)
+		}),
 	)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -126,8 +142,72 @@ func (s *Scraper) Fetch(ctx context.Context, rawURL string) (scrapeapp.FetchResu
 	return scrapeapp.FetchResult{FinalURL: pageURL, HTML: html}, nil
 }
 
+// settle polls the rendered DOM until a structured product signal appears or the
+// DOM stops growing, capped by settleMax. It always waits minSettle first so very
+// fast pages still give late JS a beat to run. The latest location + outerHTML
+// are written through to the caller on every poll, so whatever is present when we
+// stop is what gets extracted.
+func (s *Scraper) settle(ctx context.Context, pageURL *string, html *string) error {
+	if err := sleepCtx(ctx, minSettle); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(s.settleMax)
+	prevLen := -1
+	for {
+		if err := chromedp.Location(pageURL).Do(ctx); err != nil {
+			return err
+		}
+		if err := chromedp.OuterHTML("html", html, chromedp.ByQuery).Do(ctx); err != nil {
+			return err
+		}
+		if htmlHasProductSignal(*html) {
+			return nil
+		}
+		length := len(*html)
+		if length > 0 && length == prevLen {
+			return nil // DOM stabilized — nothing more is hydrating
+		}
+		prevLen = length
+		if time.Now().After(deadline) {
+			return nil
+		}
+		if err := sleepCtx(ctx, settlePoll); err != nil {
+			return err
+		}
+	}
+}
+
+// htmlHasProductSignal reports whether the rendered HTML already carries
+// structured product data — JSON-LD/microdata Product or an explicit price meta.
+// Generic OpenGraph title/image is deliberately NOT a signal: almost every shell
+// page has it, so it would stop settling before the real data hydrates.
+func htmlHasProductSignal(html string) bool {
+	lower := strings.ToLower(html)
+	if strings.Contains(lower, "application/ld+json") && strings.Contains(lower, `"product"`) {
+		return true
+	}
+	if strings.Contains(lower, "product:price:amount") || strings.Contains(lower, "og:price:amount") {
+		return true
+	}
+	if strings.Contains(lower, "schema.org/product") {
+		return true
+	}
+	return false
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (s *Scraper) validateRequestedURL(ctx context.Context, rawURL string) error {
-	return scrapeapp.IsRedirectAllowed(ctx, s.resolver, rawURL)
+	return scrapeapp.IsBrowserSubresourceAllowed(ctx, s.resolver, rawURL)
 }
 
 var _ scrapeapp.Fetcher = (*Scraper)(nil)

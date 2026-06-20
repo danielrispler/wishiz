@@ -227,15 +227,7 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 		WHERE id = (
 			SELECT id
 			FROM product_import_jobs
-			WHERE (
-					status = 'pending'
-					OR (
-						status IN ('failed', 'needs_review')
-						AND retryable = TRUE
-						AND attempt_count < $2
-						AND COALESCE(last_attempted_at, created_at) <= $1::timestamptz - make_interval(secs => 30 * (attempt_count + 1))
-					)
-				)
+			WHERE status = 'pending'
 				AND attempt_count < $2
 			ORDER BY created_at
 			FOR UPDATE SKIP LOCKED

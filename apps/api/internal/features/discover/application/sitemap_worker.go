@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,10 +15,9 @@ import (
 	"sync"
 	"time"
 
-	utls "github.com/refraction-networking/utls"
-
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/ports"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/httpx"
 )
 
 const (
@@ -32,60 +30,119 @@ const (
 	discoverFashionCategory       = "fashion"
 )
 
-var brandSitemaps = map[string]string{
+// brandSource describes a discovery source site: where to find its sitemap and
+// which discover category its products belong to.
+type brandSource struct {
+	SitemapURL string
+	Category   string // discover category; "" defaults to fashion
+}
+
+var brandSitemaps = map[string]brandSource{
 	// High Street
-	"Zara":             "https://www.zara.com/sitemap.xml",
-	"H&M":              "https://www2.hm.com/sitemap.xml",
-	"Mango":            "https://shop.mango.com/sitemap.xml",
-	"ASOS":             "https://www.asos.com/sitemap.xml",
-	"COS":              "https://www.cos.com/sitemap.xml",
-	"Massimo Dutti":    "https://www.massimodutti.com/sitemap.xml",
-	"Uniqlo":           "https://www.uniqlo.com/sitemap.xml",
-	"Pull&Bear":        "https://www.pullandbear.com/sitemap.xml",
-	"Stradivarius":     "https://www.stradivarius.com/sitemap.xml",
-	"Urban Outfitters": "https://www.urbanoutfitters.com/sitemap.xml",
-	"Old Navy":         "https://oldnavy.gap.com/sitemap.xml",
-	"Terminal X":       "https://www.terminalx.com/sitemap.xml",
+	"Zara":             {SitemapURL: "https://www.zara.com/sitemap.xml"},
+	"H&M":              {SitemapURL: "https://www2.hm.com/sitemap.xml"},
+	"Mango":            {SitemapURL: "https://shop.mango.com/sitemap.xml"},
+	"ASOS":             {SitemapURL: "https://www.asos.com/sitemap.xml"},
+	"COS":              {SitemapURL: "https://www.cos.com/sitemap.xml"},
+	"Massimo Dutti":    {SitemapURL: "https://www.massimodutti.com/sitemap.xml"},
+	"Uniqlo":           {SitemapURL: "https://www.uniqlo.com/sitemap.xml"},
+	"Pull&Bear":        {SitemapURL: "https://www.pullandbear.com/sitemap.xml"},
+	"Stradivarius":     {SitemapURL: "https://www.stradivarius.com/sitemap.xml"},
+	"Urban Outfitters": {SitemapURL: "https://www.urbanoutfitters.com/sitemap.xml"},
+	"Old Navy":         {SitemapURL: "https://oldnavy.gap.com/sitemap.xml"},
+	"Terminal X":       {SitemapURL: "https://www.terminalx.com/sitemap.xml"},
 
 	// Activewear
-	"Lululemon":             "https://shop.lululemon.com/sitemap.xml",
-	"Alo Yoga":              "https://www.aloyoga.com/sitemap.xml",
-	"Nike":                  "https://www.nike.com/sitemap.xml",
-	"Adidas":                "https://www.adidas.com/sitemap.xml",
-	"New Balance":           "https://www.newbalance.com/sitemap.xml",
-	"Asics":                 "https://www.asics.com/sitemap.xml",
-	"Under Armour":          "https://www.underarmour.com/sitemap.xml",
-	"Gymshark":              "https://www.gymshark.com/sitemap.xml",
-	"Set Active":            "https://setactive.co/sitemap.xml",
-	"Oysho":                 "https://www.oysho.com/sitemap.xml",
-	"Girlfriend Collective": "https://girlfriend.com/sitemap.xml",
-	"Bandit":                "https://banditrunning.com/sitemap.xml",
-	"CRZ Yoga":              "https://crzyoga.com/sitemap.xml",
+	"Lululemon":             {SitemapURL: "https://shop.lululemon.com/sitemap.xml"},
+	"Alo Yoga":              {SitemapURL: "https://www.aloyoga.com/sitemap.xml"},
+	"Nike":                  {SitemapURL: "https://www.nike.com/sitemap.xml"},
+	"Adidas":                {SitemapURL: "https://www.adidas.com/sitemap.xml"},
+	"New Balance":           {SitemapURL: "https://www.newbalance.com/sitemap.xml"},
+	"Asics":                 {SitemapURL: "https://www.asics.com/sitemap.xml"},
+	"Under Armour":          {SitemapURL: "https://www.underarmour.com/sitemap.xml"},
+	"Gymshark":              {SitemapURL: "https://www.gymshark.com/sitemap.xml"},
+	"Set Active":            {SitemapURL: "https://setactive.co/sitemap.xml"},
+	"Oysho":                 {SitemapURL: "https://www.oysho.com/sitemap.xml"},
+	"Girlfriend Collective": {SitemapURL: "https://girlfriend.com/sitemap.xml"},
+	"Bandit":                {SitemapURL: "https://banditrunning.com/sitemap.xml"},
+	"CRZ Yoga":              {SitemapURL: "https://crzyoga.com/sitemap.xml"},
 
 	// Premium
-	"Revolve":       "https://www.revolve.com/sitemap.xml",
-	"Reformation":   "https://www.thereformation.com/sitemap.xml",
-	"Aritzia":       "https://www.aritzia.com/sitemap.xml",
-	"Shopbop":       "https://www.shopbop.com/sitemap.xml",
-	"Anthropologie": "https://www.anthropologie.com/sitemap.xml",
-	"Nordstrom":     "https://www.nordstrom.com/sitemap.xml",
-	"Factory 54":    "https://www.factory54.co.il/sitemap.xml",
-	"Story":         "https://www.storyonline.co.il/sitemap.xml",
-	"De Rococo":     "https://derococo.com/sitemap.xml",
+	"Revolve":       {SitemapURL: "https://www.revolve.com/sitemap.xml"},
+	"Reformation":   {SitemapURL: "https://www.thereformation.com/sitemap.xml"},
+	"Aritzia":       {SitemapURL: "https://www.aritzia.com/sitemap.xml"},
+	"Shopbop":       {SitemapURL: "https://www.shopbop.com/sitemap.xml"},
+	"Anthropologie": {SitemapURL: "https://www.anthropologie.com/sitemap.xml"},
+	"Nordstrom":     {SitemapURL: "https://www.nordstrom.com/sitemap.xml"},
+	"Factory 54":    {SitemapURL: "https://www.factory54.co.il/sitemap.xml"},
+	"Story":         {SitemapURL: "https://www.storyonline.co.il/sitemap.xml"},
+	"De Rococo":     {SitemapURL: "https://derococo.com/sitemap.xml"},
 
 	// Intimates & Lounge
-	"Skims":             "https://skims.com/sitemap.xml",
-	"Victoria's Secret": "https://www.victoriassecret.com/sitemap.xml",
-	"Aerie":             "https://www.ae.com/sitemap.xml",
-	"Intimissimi":       "https://www.intimissimi.com/sitemap.xml",
+	"Skims":             {SitemapURL: "https://skims.com/sitemap.xml"},
+	"Victoria's Secret": {SitemapURL: "https://www.victoriassecret.com/sitemap.xml"},
+	"Aerie":             {SitemapURL: "https://www.ae.com/sitemap.xml"},
+	"Intimissimi":       {SitemapURL: "https://www.intimissimi.com/sitemap.xml"},
 
 	// Denim & Niche
-	"Levi's":         "https://www.levi.com/sitemap.xml",
-	"Pistola":        "https://pistoladenim.com/sitemap.xml",
-	"Eloquii":        "https://www.eloquii.com/sitemap.xml",
-	"Good American":  "https://www.goodamerican.com/sitemap.xml",
-	"nars":           "https://www.narscosmetics.co.il/sitemap.xml",
-	"brandymelville": "https://us.brandymelville.com/sitemap.xml",
+	"Levi's":         {SitemapURL: "https://www.levi.com/sitemap.xml"},
+	"Pistola":        {SitemapURL: "https://pistoladenim.com/sitemap.xml"},
+	"Eloquii":        {SitemapURL: "https://www.eloquii.com/sitemap.xml"},
+	"Good American":  {SitemapURL: "https://www.goodamerican.com/sitemap.xml"},
+	"nars":           {SitemapURL: "https://www.narscosmetics.co.il/sitemap.xml"},
+	"brandymelville": {SitemapURL: "https://us.brandymelville.com/sitemap.xml"},
+
+	// Contemporary & designer (sitemap verified 2026-06-20)
+	"Vuori":                {SitemapURL: "https://vuoriclothing.com/sitemap.xml"},
+	"Agolde":               {SitemapURL: "https://agolde.com/sitemap.xml"},
+	"Citizens of Humanity": {SitemapURL: "https://citizensofhumanity.com/sitemap.xml"},
+	"Zadig & Voltaire":     {SitemapURL: "https://www.zadig-et-voltaire.com/sitemap.xml"},
+	"Totême":               {SitemapURL: "https://toteme-studio.com/sitemap.xml"},
+	"Leset":                {SitemapURL: "https://leset.com/sitemap.xml"},
+	"Sézane":               {SitemapURL: "https://www.sezane.com/sitemap.xml"},
+	"Rouje":                {SitemapURL: "https://www.rouje.com/sitemap.xml"},
+	"Damson Madder":        {SitemapURL: "https://damsonmadder.com/sitemap.xml"},
+	"A.P.C.":               {SitemapURL: "https://www.apc-us.com/sitemap.xml"},
+	"A.L.C.":               {SitemapURL: "https://www.alcltd.com/sitemap.xml"},
+	"Anine Bing":           {SitemapURL: "https://www.aninebing.com/sitemap.xml"},
+	"Staud":                {SitemapURL: "https://staud.clothing/sitemap.xml"},
+	"Tory Burch":           {SitemapURL: "https://www.toryburch.com/sitemap.xml"},
+	"Miu Miu":              {SitemapURL: "https://www.miumiu.com/sitemap.xml"},
+	"Prada":                {SitemapURL: "https://www.prada.com/sitemap.xml"},
+	"Isabel Marant":        {SitemapURL: "https://www.isabelmarant.com/sitemap.xml"},
+	"Still Here":           {SitemapURL: "https://www.stillhere.nyc/sitemap.xml"},
+
+	// sitemap_index.xml (verified 200)
+	"Rag & Bone":      {SitemapURL: "https://www.rag-bone.com/sitemap_index.xml"},
+	"Vince":           {SitemapURL: "https://www.vince.com/sitemap_index.xml"},
+	"Theory":          {SitemapURL: "https://www.theory.com/sitemap_index.xml"},
+	"Maison Margiela": {SitemapURL: "https://www.maisonmargiela.com/sitemap_index.xml"},
+	"Ganni":           {SitemapURL: "https://www.ganni.com/sitemap_index.xml"},
+	"Maje":            {SitemapURL: "https://us.maje.com/sitemap_index.xml"},
+	"Sandro":          {SitemapURL: "https://us.sandro-paris.com/sitemap_index.xml"},
+
+	// Locale-specific sitemap index (verified 200)
+	"Golden Goose": {SitemapURL: "https://www.goldengoose.com/us/en/sitemap_index.xml"},
+	"Marni":        {SitemapURL: "https://www.marni.com/en-gb/sitemap_index.xml"},
+	"Loewe":        {SitemapURL: "https://www.loewe.com/usa/en/sitemap_index.xml"},
+	"Chloé":        {SitemapURL: "https://www.chloe.com/en-us/sitemap_index.xml"},
+
+	// Best-effort: bot-blocked to plain curl, may pass via the utls Chrome
+	// transport. Non-fatal if not — the worker logs a warning and skips.
+	"Polo Ralph Lauren": {SitemapURL: "https://www.ralphlauren.com/sitemap_index.xml"},
+	"The RealReal":      {SitemapURL: "https://www.therealreal.com/sitemaps/sitemap_index.xml"},
+	"Coach":             {SitemapURL: "https://www.coach.com/sitemap_index.xml"},
+	"Ba&sh":             {SitemapURL: "https://us.ba-sh.com/sitemap.xml"},
+
+	// Beauty
+	"Le Labo":  {SitemapURL: "https://www.lelabofragrances.com/sitemap.xml", Category: "beauty"},
+	"Aesop":    {SitemapURL: "https://www.aesop.com/sitemap_index.xml", Category: "beauty"},
+	"Diptyque": {SitemapURL: "https://www.diptyqueparis.com/media/sitemap_en_us.xml", Category: "beauty"},
+
+	// Home
+	"West Elm":       {SitemapURL: "https://www.westelm.com/sitemap.xml", Category: "home"},
+	"Crate & Barrel": {SitemapURL: "https://www.crateandbarrel.com/sitemap.xml", Category: "home"},
+	"Pottery Barn":   {SitemapURL: "https://www.potterybarn.com/sitemap.xml", Category: "home"},
 }
 
 type SitemapWorker struct {
@@ -101,6 +158,7 @@ type SitemapWorker struct {
 type sitemapBrand struct {
 	Name           string
 	SitemapURL     string
+	Category       string
 	AllowedDomains []string
 	ProductHints   []string
 }
@@ -147,7 +205,7 @@ func NewSitemapWorker(
 		scrapeService: scrapeService,
 		httpClient: &http.Client{
 			Timeout:   20 * time.Second,
-			Transport: newUTLSTransport(),
+			Transport: httpx.NewUTLSTransport(10 * time.Second),
 		},
 		refreshInterval: refreshInterval,
 		rng:             rand.New(rand.NewSource(time.Now().UnixNano())), //nolint:gosec // jitter only, not security-sensitive
@@ -260,7 +318,7 @@ func (w *SitemapWorker) refreshBrand(ctx context.Context, brand sitemapBrand) (i
 		_, err = w.repo.SeedProduct(ctx, ports.SeedProductInput{
 			Title:       strings.TrimSpace(product.Name),
 			Brand:       brand.Name,
-			Category:    discoverFashionCategory,
+			Category:    brand.Category,
 			ImageURL:    strings.TrimSpace(product.ImageURL),
 			ProductURL:  stringPtr(cleanURL),
 			PriceLabel:  priceLabel,
@@ -358,11 +416,16 @@ func defaultSitemapBrands() []sitemapBrand {
 	sort.Strings(names)
 
 	for _, name := range names {
-		sitemapURL := brandSitemaps[name]
-		domain := sitemapDomain(sitemapURL)
+		src := brandSitemaps[name]
+		category := src.Category
+		if category == "" {
+			category = discoverFashionCategory
+		}
+		domain := sitemapDomain(src.SitemapURL)
 		brands = append(brands, sitemapBrand{
 			Name:           name,
-			SitemapURL:     sitemapURL,
+			SitemapURL:     src.SitemapURL,
+			Category:       category,
 			AllowedDomains: []string{domain},
 			ProductHints: []string{
 				"/product/",
@@ -462,39 +525,6 @@ func stringPtr(value string) *string {
 	}
 	v := value
 	return &v
-}
-
-func newUTLSTransport() *http.Transport {
-	return &http.Transport{
-		ForceAttemptHTTP2: false,
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-			host, _, _ := net.SplitHostPort(addr)
-			uConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
-
-			if err := uConn.BuildHandshakeState(); err != nil {
-				conn.Close()
-				return nil, err
-			}
-
-			// Strip "h2" from ALPN to force HTTP/1.1 and prevent the framing mismatch
-			for _, ext := range uConn.Extensions {
-				if alpn, ok := ext.(*utls.ALPNExtension); ok {
-					alpn.AlpnProtocols = []string{"http/1.1"}
-					break
-				}
-			}
-
-			if err := uConn.HandshakeContext(ctx); err != nil {
-				conn.Close()
-				return nil, err
-			}
-			return uConn, nil
-		},
-	}
 }
 
 func sanitizeProductURL(raw string) (string, error) {

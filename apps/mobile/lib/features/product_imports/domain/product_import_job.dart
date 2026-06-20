@@ -57,4 +57,8 @@ class ProductImportJob {
   bool get isCompleted => status == 'completed';
   bool get needsReview => status == 'needs_review';
   bool get failed => status == 'failed';
+
+  /// The store hard-blocks automated import (anti-bot). Terminal and not
+  /// retryable — the user should add the item manually instead of retrying.
+  bool get unsupported => failed && errorCode == 'unsupported_site';
 }

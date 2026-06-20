@@ -116,18 +116,89 @@ func firstStringField(node map[string]any, keys ...string) string {
 	return ""
 }
 
-// balancedJSONAfter finds marker in s, then returns the first balanced {...}
-// object that follows it (string-aware so braces inside strings don't count).
+// balancedJSONAfter finds marker in s and returns the embedded product object.
+// It handles both direct assignment (window.__NUXT__={...}) and the IIFE wrapper
+// (window.__NUXT__=(function(){return {...}}())) that frameworks like Nuxt emit:
+// for the wrapper the first { after the marker is the function body, so it skips
+// to the object after the first top-level `return`. The scan is string-aware, so
+// a string literal containing `return {fake}` does not lock onto the fake.
 func balancedJSONAfter(s, marker string) string {
 	index := strings.Index(s, marker)
 	if index < 0 {
 		return ""
 	}
-	start := strings.IndexByte(s[index:], '{')
+	rest := strings.TrimLeft(s[index+len(marker):], " \t\r\n=")
+
+	// IIFE wrapper: advance past the function preamble to the returned object.
+	if strings.HasPrefix(rest, "(") || strings.HasPrefix(rest, "function") {
+		if r := indexAfterReturn(rest); r >= 0 {
+			rest = rest[r:]
+		}
+	}
+	return firstBalancedObject(rest)
+}
+
+// indexAfterReturn finds the first `return` keyword that is not inside a string
+// literal and returns the index of the `{` that follows it, or -1.
+func indexAfterReturn(s string) int {
+	inString := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			continue
+		}
+		if c == 'r' && isReturnKeywordAt(s, i) {
+			if brace := strings.IndexByte(s[i:], '{'); brace >= 0 {
+				return i + brace
+			}
+			return -1
+		}
+	}
+	return -1
+}
+
+// isReturnKeywordAt reports whether s has the whole word "return" at index i.
+func isReturnKeywordAt(s string, i int) bool {
+	const kw = "return"
+	if i+len(kw) > len(s) || s[i:i+len(kw)] != kw {
+		return false
+	}
+	if i > 0 && isWordByte(s[i-1]) {
+		return false
+	}
+	if j := i + len(kw); j < len(s) && isWordByte(s[j]) {
+		return false
+	}
+	return true
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' ||
+		(b >= '0' && b <= '9') ||
+		(b >= 'a' && b <= 'z') ||
+		(b >= 'A' && b <= 'Z')
+}
+
+// firstBalancedObject returns the first balanced {...} object in s, counting
+// braces only outside of string literals.
+func firstBalancedObject(s string) string {
+	start := strings.IndexByte(s, '{')
 	if start < 0 {
 		return ""
 	}
-	start += index
 
 	depth := 0
 	inString := false

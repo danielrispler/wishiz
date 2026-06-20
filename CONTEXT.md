@@ -10,6 +10,10 @@ A product URL shared into the app from another app (e.g. Safari, Chrome) via the
 ## Import Job
 An async job that scrapes a product URL and produces a `ProductImportJob` with extracted title, price, and image. Import Jobs are queued, polled, and may require user review (`needs_review` status) before the item is saved to a wishlist.
 
+The worker only picks up jobs that are waiting to be scraped (`pending`). An Import Job that has settled into `needs_review` or `failed` is **terminal** — the worker never re-scrapes it on its own. It re-enters the queue solely through an explicit user **Retry**, which returns it to `pending`. See [ADR-0001](docs/adr/0001-import-jobs-no-auto-retry.md).
+
+**Retry:** A user-initiated action on a settled (`needs_review`/`failed`) Import Job that re-queues it for scraping. The only path back into the queue once a job has settled. Distinct from crash recovery, which only re-queues jobs that never finished (the worker died mid-scrape).
+
 ---
 
 ## Shared Product Draft
@@ -45,3 +49,5 @@ An integer sort order field on a WishlistItem representing the user's priority o
 
 ## Job Outcome
 The terminal result of processing an Import Job. Carries a ProductSnapshot (extracted title, price, image, completeness) plus a terminal status (completed, needs_review, or failed). For error statuses, also carries a LastError message, ErrorCode, and Retryable flag. For completed status, may carry a CreatedItemID if a wishlist item was auto-created.
+
+"Terminal" means the job stays put until the user acts — completed jobs await assignment to a list, and needs_review/failed jobs await an explicit user Retry. The `Retryable` flag gates *whether the user is offered* a Retry; it never triggers automatic re-scraping.

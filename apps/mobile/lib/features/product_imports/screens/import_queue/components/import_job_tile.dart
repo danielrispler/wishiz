@@ -148,6 +148,9 @@ class _JobStatusIcon extends StatelessWidget {
     if (job.needsReview) {
       return const Icon(Icons.rate_review_outlined, size: 20);
     }
+    if (job.unsupported) {
+      return const Icon(Icons.block, size: 20);
+    }
     return const Icon(Icons.error_outline, size: 20);
   }
 }
@@ -230,6 +233,9 @@ String _jobSubtitle(ProductImportJob job) {
 }
 
 String _failedSubtitle(ProductImportJob job) {
+  if (job.unsupported) {
+    return "This store doesn't support automatic import. Add it manually.";
+  }
   final error = job.lastError?.trim();
   final prefix = error == null || error.isEmpty ? 'Import failed' : error;
   if (job.retryable && job.attemptCount <= 1) {

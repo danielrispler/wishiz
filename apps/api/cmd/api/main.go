@@ -85,12 +85,16 @@ func run() error {
 	})
 
 	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
-	if err := exchangeConverter.Refresh(); err != nil {
-		appLogger.Warn("initial exchange rate refresh failed", "error", err)
-	}
 	exchangeStop := make(chan struct{})
 	defer close(exchangeStop)
 	exchangeConverter.Start(exchangeStop)
+	// Fill the rate cache in the background so a slow ECB feed never blocks startup.
+	// Prices imported before the first refresh lands are simply not converted yet.
+	go func() {
+		if err := exchangeConverter.Refresh(); err != nil {
+			appLogger.Warn("initial exchange rate refresh failed", "error", err)
+		}
+	}()
 
 	scrapeService := scrapeapp.NewService(
 		appLogger, scrapeEngine, staticFetcher, headlessScraper, shopifyProbe, resolver, exchangeConverter,

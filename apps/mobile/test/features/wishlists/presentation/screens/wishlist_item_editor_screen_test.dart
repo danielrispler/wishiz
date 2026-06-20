@@ -27,8 +27,13 @@ void main() {
 
       expect(find.text('Review Item'), findsOneWidget);
       expect(find.text('Item details'), findsOneWidget);
-      expect(find.text('Verify And Save'), findsOneWidget);
       expect(find.text('Imported mug'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.text('Verify And Save'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Verify And Save'), findsOneWidget);
     });
 
     testWidgets('fills item details from a link on a phone-sized screen', (
@@ -63,8 +68,13 @@ void main() {
       ]);
       expect(sharedProductRepository.requestedTargetCurrencyCodes, ['USD']);
       expect(find.text('Review Item'), findsOneWidget);
+      expect(find.text('Generated lamp'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.text('Verify And Save'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Verify And Save'), findsOneWidget);
-      expect(find.text('Generated lamp'), findsOneWidget);
     });
   });
 }

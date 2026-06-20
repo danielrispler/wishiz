@@ -81,9 +81,14 @@ void main() {
       await tester.pumpWidget(_buildSubject(repository: repository));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(FilledButton, 'Restore All'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Restore all'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.widgetWithText(FilledButton, 'Restore all'), findsOneWidget);
 
-      await tester.tap(find.text('Restore All'));
+      await tester.tap(find.text('Restore all'));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -101,7 +106,7 @@ void main() {
       );
       expect(
         find.text(
-          'No purchased items yet. Swipe right on an active item to move it into Past Lists.',
+          'No purchased items yet. Swipe right on an active item to mark it as purchased.',
         ),
         findsOneWidget,
       );
@@ -109,9 +114,7 @@ void main() {
   });
 
   group('WishlistDetailScreen sharing', () {
-    testWidgets('invite dialog collects email and role without a name field', (
-      tester,
-    ) async {
+    testWidgets('share dialog creates an editor invite link', (tester) async {
       final repository = InMemoryWishlistRepository(
         ownerUserId: _sampleUser.id,
         initialWishlists: [_buildWishlist()],
@@ -124,22 +127,14 @@ void main() {
 
       await tester.tap(find.byTooltip('Share list'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Invite'));
-      await tester.pumpAndSettle();
 
+      expect(find.text('Shared people'), findsOneWidget);
       expect(find.text('Name'), findsNothing);
-      expect(find.text('Email'), findsOneWidget);
-      expect(find.text('Role'), findsOneWidget);
 
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Email'),
-        'maya@example.com',
-      );
-      await tester.tap(find.widgetWithText(TextButton, 'Invite'));
+      await tester.tap(find.widgetWithText(TextButton, 'Share list'));
       await tester.pumpAndSettle();
 
       final wishlist = repository.findById('wishlist-1');
-      expect(wishlist?.invites.single.email, 'maya@example.com');
       expect(wishlist?.invites.single.role, WishlistMemberRole.editor);
     });
   });

@@ -20,7 +20,12 @@ void main() {
       expect(find.text('List details'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'List title'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Short note'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Year'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Save Changes'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Save Changes'), findsOneWidget);
     });
   });

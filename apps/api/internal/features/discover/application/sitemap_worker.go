@@ -80,11 +80,11 @@ var brandSitemaps = map[string]string{
 	"Intimissimi":       "https://www.intimissimi.com/sitemap.xml",
 
 	// Denim & Niche
-	"Levi's":        "https://www.levi.com/sitemap.xml",
-	"Pistola":       "https://pistoladenim.com/sitemap.xml",
-	"Eloquii":       "https://www.eloquii.com/sitemap.xml",
-	"Good American": "https://www.goodamerican.com/sitemap.xml",
-	"nars":          "https://www.narscosmetics.co.il/sitemap.xml",
+	"Levi's":         "https://www.levi.com/sitemap.xml",
+	"Pistola":        "https://pistoladenim.com/sitemap.xml",
+	"Eloquii":        "https://www.eloquii.com/sitemap.xml",
+	"Good American":  "https://www.goodamerican.com/sitemap.xml",
+	"nars":           "https://www.narscosmetics.co.il/sitemap.xml",
 	"brandymelville": "https://us.brandymelville.com/sitemap.xml",
 }
 
@@ -150,7 +150,7 @@ func NewSitemapWorker(
 			Transport: newUTLSTransport(),
 		},
 		refreshInterval: refreshInterval,
-		rng:             rand.New(rand.NewSource(time.Now().UnixNano())), //nolint:gosec
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())), //nolint:gosec // jitter only, not security-sensitive
 		brands:          defaultSitemapBrands(),
 	}
 }
@@ -282,7 +282,7 @@ func (w *SitemapWorker) collectSitemapURLs(ctx context.Context, sitemapURL strin
 		return nil, fmt.Errorf("sitemap recursion limit exceeded for %s", sitemapURL)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sitemapURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sitemapURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("build sitemap request: %w", err)
 	}
@@ -468,7 +468,7 @@ func newUTLSTransport() *http.Transport {
 	return &http.Transport{
 		ForceAttemptHTTP2: false,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := net.DialTimeout(network, addr, 10*time.Second)
+			conn, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, addr)
 			if err != nil {
 				return nil, err
 			}
@@ -520,7 +520,7 @@ func extractProductMeta(productURL, title string) (gender, productType *string) 
 	femaleKW := []string{"/women/", "-women-", "womens", "/girl", "female"}
 	for _, kw := range maleKW {
 		if strings.Contains(combined, kw) {
-			g := "Men"
+			g := "men"
 			gender = &g
 			break
 		}
@@ -528,7 +528,7 @@ func extractProductMeta(productURL, title string) (gender, productType *string) 
 	if gender == nil {
 		for _, kw := range femaleKW {
 			if strings.Contains(combined, kw) {
-				g := "Women"
+				g := "women"
 				gender = &g
 				break
 			}

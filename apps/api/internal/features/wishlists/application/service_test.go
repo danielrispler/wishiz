@@ -892,22 +892,23 @@ func (r *fakeRepository) AcceptInvite(_ context.Context, params ports.AcceptInvi
 		return ports.ErrNotFound
 	}
 	for index, invite := range wishlist.Invites {
-		if invite.ID == params.InviteID {
-			acceptedAt := params.AcceptedAt
-			invite.AcceptedAt = &acceptedAt
-			wishlist.Invites[index] = invite
-			wishlist.Members = append(wishlist.Members, domain.WishlistMember{
-				WishlistID: params.WishlistID,
-				UserID:     params.UserID,
-				Email:      "viewer@example.com",
-				FullName:   "Viewer",
-				Role:       params.Role,
-				CreatedAt:  params.AcceptedAt,
-				UpdatedAt:  params.AcceptedAt,
-			})
-			r.wishlists[params.WishlistID] = wishlist
-			return nil
+		if invite.ID != params.InviteID {
+			continue
 		}
+		acceptedAt := params.AcceptedAt
+		invite.AcceptedAt = &acceptedAt
+		wishlist.Invites[index] = invite
+		wishlist.Members = append(wishlist.Members, domain.WishlistMember{
+			WishlistID: params.WishlistID,
+			UserID:     params.UserID,
+			Email:      "viewer@example.com",
+			FullName:   "Viewer",
+			Role:       params.Role,
+			CreatedAt:  params.AcceptedAt,
+			UpdatedAt:  params.AcceptedAt,
+		})
+		r.wishlists[params.WishlistID] = wishlist
+		return nil
 	}
 	return ports.ErrNotFound
 }

@@ -1,6 +1,9 @@
 package application
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type ErrorCode string
 
@@ -25,8 +28,7 @@ func AsError(err error) (*Error, bool) {
 		return nil, false
 	}
 	var appErr *Error
-	if e, ok := err.(*Error); ok {
-		appErr = e
+	if errors.As(err, &appErr) {
 		return appErr, true
 	}
 	return nil, false

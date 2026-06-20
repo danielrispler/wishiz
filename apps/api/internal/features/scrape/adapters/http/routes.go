@@ -25,7 +25,8 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
 	h := handler{
 		logger:  logger,
 		service: service,
-		timeout: 35 * time.Second,
+		// Above the 30s scrape budget so the handler never cuts the pipeline short.
+		timeout: 40 * time.Second,
 	}
 
 	mux.HandleFunc("GET /scrape", h.scrapeProduct)

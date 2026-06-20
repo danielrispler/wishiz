@@ -64,7 +64,7 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(store.consumePendingSharedText(), "https://wishiz.app/lists/wishlist-42")
   }
 
-  func testStoreOverwritesOlderPendingPayload() {
+  func testStoreQueuesPayloadsInFifoOrder() {
     let store = makeStore()
 
     XCTAssertTrue(store.storePendingSharedText("https://example.com/old-item"))
@@ -73,9 +73,50 @@ class RunnerTests: XCTestCase {
     )
 
     XCTAssertEqual(
-      store.consumePendingSharedText(),
-      "Fresh link\nhttps://example.com/new-item"
+      store.consumePendingSharedTexts(),
+      [
+        "https://example.com/old-item",
+        "Fresh link\nhttps://example.com/new-item",
+      ]
     )
+  }
+
+  func testConsumePendingSharedTextsDrainsAllAndClears() {
+    let store = makeStore()
+
+    XCTAssertTrue(store.storePendingSharedText("https://example.com/products/a"))
+    XCTAssertTrue(store.storePendingSharedText("https://example.com/products/b"))
+    XCTAssertTrue(store.storePendingSharedText("https://example.com/products/c"))
+
+    XCTAssertEqual(
+      store.consumePendingSharedTexts(),
+      [
+        "https://example.com/products/a",
+        "https://example.com/products/b",
+        "https://example.com/products/c",
+      ]
+    )
+    XCTAssertEqual(store.consumePendingSharedTexts(), [])
+  }
+
+  func testConsumePendingSharedTextsClearsCorruptedPayload() throws {
+    let containerURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+      at: containerURL,
+      withIntermediateDirectories: true,
+      attributes: nil
+    )
+    let payloadURL = containerURL.appendingPathComponent(
+      WishizSharePayloadConfiguration.pendingPayloadFilename
+    )
+    try Data("not-json".utf8).write(to: payloadURL, options: .atomic)
+
+    let store = WishizSharePayloadStore(containerURL: containerURL)
+    XCTAssertEqual(store.consumePendingSharedTexts(), [])
+    XCTAssertFalse(FileManager.default.fileExists(atPath: payloadURL.path))
   }
 
   func testStoreConsumesPayloadOnlyOnce() {

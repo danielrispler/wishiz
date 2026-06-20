@@ -71,11 +71,11 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 	)
 	job, err = scanJob(row)
 	if isUniqueViolation(err) {
-		job, getErr := getByClientRequestID(ctx, tx, params.UserID, params.ClientRequestID)
+		existing, getErr := getByClientRequestID(ctx, tx, params.UserID, params.ClientRequestID)
 		if getErr != nil {
 			return domain.Job{}, false, getErr
 		}
-		return job, true, tx.Commit(ctx)
+		return existing, true, tx.Commit(ctx)
 	}
 	if err != nil {
 		return domain.Job{}, false, fmt.Errorf("insert product import job: %w", err)
@@ -179,7 +179,9 @@ func (r *Repository) Acknowledge(ctx context.Context, id string, acknowledgedAt 
 	return job, nil
 }
 
-func (r *Repository) ReleaseStuck(ctx context.Context, params ports.ReleaseStuckParams) (int64, int64, error) {
+func (r *Repository) ReleaseStuck(
+	ctx context.Context, params ports.ReleaseStuckParams,
+) (releasedCount int64, failedCount int64, err error) {
 	released, err := r.pool.Exec(ctx, `
 		UPDATE product_import_jobs
 		SET status = 'pending',
@@ -219,7 +221,9 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 			locked_at = $1,
 			last_attempted_at = $1,
 			attempt_count = attempt_count + 1,
-			retryable = FALSE
+			retryable = FALSE,
+			progress_stage = 'validating',
+			progress_percent = 0
 		WHERE id = (
 			SELECT id
 			FROM product_import_jobs
@@ -248,6 +252,22 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 		return domain.Job{}, fmt.Errorf("claim product import job: %w", err)
 	}
 	return job, nil
+}
+
+// UpdateProgress records the live scrape progress for a processing job. It is a
+// single best-effort UPDATE guarded by status='processing' so a settled job is
+// never resurrected by a late progress write.
+func (r *Repository) UpdateProgress(ctx context.Context, id string, stage string, percent int) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE product_import_jobs
+		SET progress_stage = $2, progress_percent = $3
+		WHERE id = $1::uuid AND status = 'processing'`,
+		id, stage, percent,
+	)
+	if err != nil {
+		return fmt.Errorf("update product import progress: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) Settle(ctx context.Context, id string, outcome ports.JobOutcome) (domain.Job, error) {
@@ -432,6 +452,8 @@ func scanJob(row scanner) (domain.Job, error) {
 		&lockedAt,
 		&job.CreatedAt,
 		&job.UpdatedAt,
+		&job.ProgressStage,
+		&job.ProgressPercent,
 	)
 	if err != nil {
 		return domain.Job{}, err
@@ -503,4 +525,6 @@ const jobColumns = `
 	acknowledged_at,
 	locked_at,
 	created_at,
-	updated_at`
+	updated_at,
+	COALESCE(progress_stage, ''),
+	progress_percent`

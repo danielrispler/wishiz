@@ -162,6 +162,8 @@ class ProductImportJobDto {
     this.priceWarnings = const [],
     this.imageUrl,
     required this.completeness,
+    this.progressStage,
+    this.progressPercent = 0,
     this.createdItemId,
     this.acknowledgedAt,
     required this.createdAt,
@@ -191,6 +193,8 @@ class ProductImportJobDto {
           .toList(growable: false),
       imageUrl: json['imageUrl'] as String?,
       completeness: json['completeness'] as int? ?? 0,
+      progressStage: json['progressStage'] as String?,
+      progressPercent: json['progressPercent'] as int? ?? 0,
       createdItemId: json['createdItemId'] as String?,
       acknowledgedAt: _optionalDate(json['acknowledgedAt'] as String?),
       createdAt: DateTime.parse(json['createdAt'] as String),
@@ -217,6 +221,8 @@ class ProductImportJobDto {
   final List<String> priceWarnings;
   final String? imageUrl;
   final int completeness;
+  final String? progressStage;
+  final int progressPercent;
   final String? createdItemId;
   final DateTime? acknowledgedAt;
   final DateTime createdAt;
@@ -243,6 +249,8 @@ class ProductImportJobDto {
       priceWarnings: priceWarnings,
       imageUrl: imageUrl,
       completeness: completeness,
+      progressStage: progressStage,
+      progressPercent: progressPercent,
       createdItemId: createdItemId,
       acknowledgedAt: acknowledgedAt,
       createdAt: createdAt,

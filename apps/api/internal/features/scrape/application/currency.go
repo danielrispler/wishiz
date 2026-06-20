@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -13,17 +14,21 @@ import (
 	"time"
 )
 
+const defaultCurrencyCode = "USD"
+
+// supportedCurrencyCodes is the set of currencies we can convert between. It is
+// the ECB daily feed set (EUR base) — expanded beyond the original USD/EUR/GBP/
+// ILS so scraped prices in these currencies are convertible rather than failed.
 var supportedCurrencyCodes = map[string]struct{}{
-	"USD": {},
-	"EUR": {},
-	"GBP": {},
-	"ILS": {},
+	"USD": {}, "EUR": {}, "GBP": {}, "ILS": {},
+	"CAD": {}, "AUD": {}, "JPY": {}, "CHF": {},
+	"SEK": {}, "NOK": {}, "DKK": {}, "PLN": {}, "CZK": {},
 }
 
 func NormalizeCurrencyCode(code string) (string, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(code))
 	if normalized == "" {
-		normalized = "USD"
+		normalized = defaultCurrencyCode
 	}
 	if _, ok := supportedCurrencyCodes[normalized]; !ok {
 		return "", BadRequest("target currency is not supported")
@@ -33,7 +38,9 @@ func NormalizeCurrencyCode(code string) (string, error) {
 
 type IdentityPriceConverter struct{}
 
-func (IdentityPriceConverter) Convert(amount string, fromCurrency string, toCurrency string) (string, string, error) {
+func (IdentityPriceConverter) Convert(
+	amount string, fromCurrency string, toCurrency string,
+) (converted string, code string, err error) {
 	from, err := NormalizeCurrencyCode(fromCurrency)
 	if err != nil {
 		return "", "", err
@@ -94,7 +101,11 @@ func (c *CachedExchangeConverter) Start(stop <-chan struct{}) {
 }
 
 func (c *CachedExchangeConverter) Refresh() error {
-	response, err := c.client.Get(c.ratesURL)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, c.ratesURL, http.NoBody)
+	if err != nil {
+		return err
+	}
+	response, err := c.client.Do(request)
 	if err != nil {
 		return err
 	}
@@ -121,7 +132,9 @@ func (c *CachedExchangeConverter) Refresh() error {
 	return nil
 }
 
-func (c *CachedExchangeConverter) Convert(amount string, fromCurrency string, toCurrency string) (string, string, error) {
+func (c *CachedExchangeConverter) Convert(
+	amount string, fromCurrency string, toCurrency string,
+) (amountOut string, codeOut string, err error) {
 	from, err := NormalizeCurrencyCode(fromCurrency)
 	if err != nil {
 		return "", "", err
@@ -190,10 +203,13 @@ func parseECBRates(payload []byte) (map[string]float64, error) {
 		rates[currency] = rate
 	}
 
-	for currency := range supportedCurrencyCodes {
-		if _, ok := rates[currency]; !ok {
-			return nil, fmt.Errorf("exchange rate missing for %s", currency)
-		}
+	// EUR is the base and always present. Do NOT require every supported code to
+	// be in the feed: the moment supportedCurrencyCodes gains a code the ECB
+	// omits, a strict check would fail every refresh and let rates go stale. Any
+	// currency missing from the feed is simply not convertible (handled at
+	// conversion time), which is safe.
+	if _, ok := rates["EUR"]; !ok {
+		return nil, errors.New("exchange rate feed missing EUR base")
 	}
 
 	return rates, nil

@@ -3,7 +3,7 @@
 GOLANGCI_LINT_BIN := $(shell go env GOPATH)/bin/golangci-lint
 
 $(GOLANGCI_LINT_BIN):
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 
 test:
 	go test ./...

@@ -56,16 +56,18 @@ type WishlistInvite struct {
 }
 
 type WishlistItem struct {
-	ID          string
-	Title       string
-	Rank        int
-	Notes       *string
-	PriceLabel  *string
-	Priority    string
-	Status      string
-	ImageURL    *string
-	ProductURL  *string
-	PurchasedAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                string
+	Title             string
+	Rank              int
+	Notes             *string
+	PriceLabel        *string
+	PriceAmount       *string
+	PriceCurrencyCode *string
+	Priority          string
+	Status            string
+	ImageURL          *string
+	ProductURL        *string
+	PurchasedAt       *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }

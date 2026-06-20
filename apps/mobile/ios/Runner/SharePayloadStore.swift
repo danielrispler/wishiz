@@ -153,6 +153,22 @@ final class WishizSharePayloadStore {
     return WishizSharePayloadNormalizer.normalize(rawSharedText: first)
   }
 
+  func consumePendingSharedTexts() -> [String] {
+    defer { clearPendingSharedText() }
+
+    guard fileManager.fileExists(atPath: fileURL.path),
+      let data = try? Data(contentsOf: fileURL),
+      let envelope = try? JSONDecoder().decode(PendingShareEnvelope.self, from: data),
+      envelope.version == 1
+    else {
+      return []
+    }
+
+    return envelope.sharedTexts.compactMap {
+      WishizSharePayloadNormalizer.normalize(rawSharedText: $0)
+    }
+  }
+
   func clearPendingSharedText() {
     try? fileManager.removeItem(at: fileURL)
   }

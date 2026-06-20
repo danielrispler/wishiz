@@ -13,8 +13,8 @@ final class ShareIntakeChannelBridge {
     let channel = FlutterMethodChannel(name: methodChannelName, binaryMessenger: messenger)
     channel.setMethodCallHandler { [storeProvider] (call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
-      case "consumePendingSharedText", "getInitialSharedText":
-        result(storeProvider()?.consumePendingSharedText())
+      case "consumePendingSharedTexts":
+        result(storeProvider()?.consumePendingSharedTexts() ?? [])
       default:
         result(FlutterMethodNotImplemented)
       }

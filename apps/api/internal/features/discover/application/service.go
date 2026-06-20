@@ -5,11 +5,12 @@ import (
 	"errors"
 	"strings"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/discover/ports"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 type DiscoverFeed struct {
@@ -50,7 +51,9 @@ func (s *Service) GetFeed(ctx context.Context, userID string, brands []string, g
 	}, nil
 }
 
-func (s *Service) ToggleSave(ctx context.Context, userID, productID string) (bool, int, error) {
+func (s *Service) ToggleSave(
+	ctx context.Context, userID, productID string,
+) (saved bool, saveCount int, err error) {
 	if strings.TrimSpace(userID) == "" {
 		return false, 0, ValidationError("userID", "userID is required")
 	}

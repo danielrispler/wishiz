@@ -18,6 +18,7 @@ type Repository interface {
 	Acknowledge(ctx context.Context, id string, acknowledgedAt time.Time) (domain.Job, error)
 	ReleaseStuck(ctx context.Context, params ReleaseStuckParams) (int64, int64, error)
 	ClaimNext(ctx context.Context, params ClaimParams) (domain.Job, error)
+	UpdateProgress(ctx context.Context, id string, stage string, percent int) error
 	Settle(ctx context.Context, id string, outcome JobOutcome) (domain.Job, error)
 	Assign(ctx context.Context, id string, wishlistID string, createdItemID string) (domain.Job, error)
 }

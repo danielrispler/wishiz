@@ -54,7 +54,7 @@ class HomeScreen extends StatefulWidget {
   final String? initialInviteToken;
   final String? initialSharedText;
   final VoidCallback? onInitialWishlistHandled;
-  final VoidCallback? onInitialSharedTextHandled;
+  final ValueChanged<String>? onInitialSharedTextHandled;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -209,7 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _handledInitialSharedText = sharedText;
       _isImportingSharedProduct = true;
     });
-    widget.onInitialSharedTextHandled?.call();
 
     try {
       await widget.productImportRepository.enqueue(
@@ -225,6 +224,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return true;
     } finally {
       if (mounted) setState(() => _isImportingSharedProduct = false);
+      // Advance the buffer head only after the in-flight-import guard clears,
+      // so the next queued item isn't skipped by _isImportingSharedProduct.
+      widget.onInitialSharedTextHandled?.call(sharedText);
     }
   }
 

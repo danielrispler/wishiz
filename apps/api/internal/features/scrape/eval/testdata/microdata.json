@@ -1,0 +1,8 @@
+{
+  "url": "https://shop.example/p/cedar",
+  "name": "Cedar Chair",
+  "amount": "120.00",
+  "currency": "USD",
+  "image": "https://cdn.example/cedar.png",
+  "verdict": "needs_review"
+}

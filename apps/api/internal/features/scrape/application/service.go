@@ -5,207 +5,243 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
+
+	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
 )
 
 const (
-	sourceFast           = "fast"
-	sourceHeadless       = "headless"
-	defaultScrapeTimeout = 15 * time.Second
+	defaultBudget        = 30 * time.Second
+	defaultMaxRenders    = 3
+	defaultStaticTimeout = 10 * time.Second
 )
 
-type Service struct {
-	logger    *slog.Logger
-	fast      Scraper
-	headless  Scraper
-	resolver  HostResolver
-	converter PriceConverter
+// CandidateSource is a network source that contributes candidates directly
+// (e.g. the Shopify product-JSON probe). It runs concurrently with the fetchers.
+type CandidateSource interface {
+	Candidates(ctx context.Context, pageURL string) ([]extractors.Candidate, error)
 }
 
-func NewService(logger *slog.Logger, fast Scraper, headless Scraper, resolver HostResolver, converter PriceConverter) *Service {
+// ServiceConfig tunes the orchestrator.
+type ServiceConfig struct {
+	Budget               time.Duration // total wall-clock budget (default 30s)
+	MaxConcurrentRenders int           // render semaphore size (default 3)
+}
+
+// Service runs ONE best-effort pipeline per scrape: static HTTP fetch + Shopify
+// probe + headless render all launch concurrently; the expensive render is
+// early-aborted once the cheap sources already clear the verdict gate. It owns
+// the Engine and extracts once over each source's HTML.
+type Service struct {
+	logger    *slog.Logger
+	engine    *Engine
+	static    Fetcher
+	render    Fetcher
+	probe     CandidateSource
+	resolver  HostResolver
+	converter PriceConverter
+	budget    time.Duration
+	renderSem chan struct{}
+}
+
+func NewService(
+	logger *slog.Logger,
+	engine *Engine,
+	static Fetcher,
+	render Fetcher,
+	probe CandidateSource,
+	resolver HostResolver,
+	converter PriceConverter,
+	cfg ServiceConfig,
+) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if engine == nil {
+		engine = NewEngine(EngineConfig{})
+	}
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
 	if converter == nil {
 		converter = IdentityPriceConverter{}
 	}
-
+	if cfg.Budget <= 0 {
+		cfg.Budget = defaultBudget
+	}
+	if cfg.MaxConcurrentRenders <= 0 {
+		cfg.MaxConcurrentRenders = defaultMaxRenders
+	}
 	return &Service{
 		logger:    logger,
-		fast:      fast,
-		headless:  headless,
+		engine:    engine,
+		static:    static,
+		render:    render,
+		probe:     probe,
 		resolver:  resolver,
 		converter: converter,
+		budget:    cfg.Budget,
+		renderSem: make(chan struct{}, cfg.MaxConcurrentRenders),
 	}
 }
 
+// Scrape satisfies the productimports Scraper port (no progress reporting).
 func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (Product, error) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, defaultScrapeTimeout)
-	defer cancel()
+	return s.ScrapeWithProgress(ctx, rawURL, targetCurrencyCode, nil)
+}
 
+// ScrapeWithProgress runs the pipeline and emits progress to reporter (nil ok).
+func (s *Service) ScrapeWithProgress(
+	ctx context.Context,
+	rawURL string,
+	targetCurrencyCode string,
+	reporter ProgressReporter,
+) (Product, error) {
 	targetCurrency, err := NormalizeCurrencyCode(targetCurrencyCode)
 	if err != nil {
 		return Product{}, err
 	}
-
-	validatedURL, err := NormalizeProductURL(scrapeCtx, s.resolver, rawURL)
+	validatedURL, err := NormalizeProductURL(ctx, s.resolver, rawURL)
 	if err != nil {
 		return Product{}, err
 	}
+	reporter.report(StageValidating, percentValidating)
 
+	budgetCtx, cancel := context.WithTimeout(ctx, s.budget)
+	defer cancel()
+
+	pageURL := validatedURL.String()
 	startedAt := time.Now()
 
-	fastResult, fastErr := s.fast.Scrape(scrapeCtx, validatedURL.String())
-	if fastErr == nil {
-		fastResult = fastResult.WithSource(sourceFast)
-		if fastResult.IsComplete() {
-			converted, convertErr := s.convertProductPrice(fastResult, targetCurrency)
-			if convertErr == nil {
-				fastResult = converted
-				if converted.HasHighConfidencePrice() {
-					s.logger.Info(
-						"scrape completed",
-						"url", validatedURL.String(),
-						"source", sourceFast,
-						"duration_ms", time.Since(startedAt).Milliseconds(),
-					)
-					return converted, nil
-				}
-			} else {
-				fastErr = convertErr
-			}
-		}
-	}
-
-	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
-		s.logger.Warn(
-			"scrape timed out",
-			"url", validatedURL.String(),
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-			"fast_error", errorMessage(fastErr),
-		)
-		return fastResult, Timeout("scrape timed out")
-	}
-
-	headlessResult, headlessErr := s.headless.Scrape(scrapeCtx, validatedURL.String())
-	if headlessErr == nil {
-		headlessResult = headlessResult.WithSource(sourceHeadless)
-		if headlessResult.IsComplete() {
-			converted, convertErr := s.convertProductPrice(headlessResult, targetCurrency)
-			if convertErr == nil {
-				headlessResult = converted
-				if converted.HasHighConfidencePrice() {
-					s.logger.Info(
-						"scrape completed",
-						"url", validatedURL.String(),
-						"source", sourceHeadless,
-						"duration_ms", time.Since(startedAt).Milliseconds(),
-					)
-					return converted, nil
-				}
-			} else {
-				headlessErr = convertErr
-			}
-		}
-	}
-
-	bestEffort := chooseBestProduct(fastResult, headlessResult)
-	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
-		s.logger.Warn(
-			"scrape timed out",
-			"url", validatedURL.String(),
-			"source", bestEffort.Source,
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-			"fast_error", errorMessage(fastErr),
-			"headless_error", errorMessage(headlessErr),
-		)
-		return bestEffort, Timeout("scrape timed out")
-	}
-
-	if bestEffort.IsComplete() {
-		s.logger.Info(
-			"scrape completed with price review metadata",
-			"url", validatedURL.String(),
-			"source", bestEffort.Source,
-			"price_confidence", bestEffort.PriceConfidence,
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-		)
-		return bestEffort, nil
-	}
-	if bestEffort.HasAnyData() {
-		s.logger.Warn(
-			"scrape failed with partial data",
-			"url", validatedURL.String(),
-			"source", bestEffort.Source,
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-			"fast_error", errorMessage(fastErr),
-			"headless_error", errorMessage(headlessErr),
-		)
-		return bestEffort, ScrapeFailed("could not extract complete product details")
-	}
-
-	if errors.Is(scrapeCtx.Err(), context.DeadlineExceeded) {
-		return Product{}, Timeout("scrape timed out")
-	}
-
-	s.logger.Warn(
-		"scrape failed",
-		"url", validatedURL.String(),
-		"duration_ms", time.Since(startedAt).Milliseconds(),
-		"fast_error", errorMessage(fastErr),
-		"headless_error", errorMessage(headlessErr),
+	var (
+		mu  sync.Mutex
+		all []extractors.Candidate
 	)
-
-	return Product{}, ScrapeFailed("could not extract complete product details")
-}
-
-func (s *Service) convertProductPrice(product Product, targetCurrencyCode string) (Product, error) {
-	amount, currency, err := s.converter.Convert(product.PriceAmount, product.PriceCurrency, targetCurrencyCode)
-	if err != nil {
-		return Product{}, err
+	add := func(candidates []extractors.Candidate) {
+		if len(candidates) == 0 {
+			return
+		}
+		mu.Lock()
+		all = append(all, candidates...)
+		mu.Unlock()
 	}
-	product.PriceAmount = amount
-	product.PriceCurrency = currency
+	snapshot := func() []extractors.Candidate {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]extractors.Candidate(nil), all...)
+	}
+
+	renderCtx, cancelRender := context.WithCancel(budgetCtx)
+	defer cancelRender()
+
+	var cheapWG, renderWG sync.WaitGroup
+
+	// Cheap source: static HTTP fetch → extract.
+	if s.static != nil {
+		cheapWG.Add(1)
+		go func() {
+			defer cheapWG.Done()
+			result, fetchErr := s.static.Fetch(budgetCtx, pageURL)
+			if fetchErr != nil {
+				s.logger.Debug("static fetch failed", "url", pageURL, "error", fetchErr.Error())
+				return
+			}
+			add(s.engine.Extract(result.HTML, finalURLOr(result.FinalURL, pageURL), result.Headers))
+		}()
+	}
+
+	// Cheap source: Shopify product-JSON probe.
+	if s.probe != nil {
+		cheapWG.Add(1)
+		go func() {
+			defer cheapWG.Done()
+			candidates, probeErr := s.probe.Candidates(budgetCtx, pageURL)
+			if probeErr != nil {
+				s.logger.Debug("shopify probe failed", "url", pageURL, "error", probeErr.Error())
+				return
+			}
+			add(candidates)
+		}()
+	}
+
+	// Strongest source: headless render (cancellable via early-abort).
+	if s.render != nil {
+		renderWG.Add(1)
+		go func() {
+			defer renderWG.Done()
+			select {
+			case s.renderSem <- struct{}{}:
+				defer func() { <-s.renderSem }()
+			case <-renderCtx.Done():
+				return
+			}
+			reporter.report(StageRendering, percentRendering)
+			result, renderErr := s.render.Fetch(renderCtx, pageURL)
+			if renderErr != nil {
+				s.logger.Debug("headless render failed", "url", pageURL, "error", renderErr.Error())
+				return
+			}
+			reporter.report(StagePageLoaded, percentPageLoaded)
+			add(s.engine.Extract(result.HTML, finalURLOr(result.FinalURL, pageURL), result.Headers))
+		}()
+	}
+
+	// Early-abort: as soon as the cheap sources clear the verdict gate, cancel
+	// the render so it returns immediately instead of running the full budget.
+	cheapWG.Wait()
+	reporter.report(StageExtracting, percentExtracting)
+	if s.engine.Reconcile(snapshot(), pageURL).Verdict == VerdictAutoComplete {
+		cancelRender()
+	}
+	renderWG.Wait()
+
+	reporter.report(StageCrossChecking, percentCrossChecking)
+	product := s.engine.Reconcile(snapshot(), pageURL)
+	product = s.applyConversion(product, targetCurrency)
+
+	if !product.HasAnyData() {
+		if errors.Is(budgetCtx.Err(), context.DeadlineExceeded) {
+			return product, Timeout("scrape timed out")
+		}
+		return product, ScrapeFailed("could not extract product details")
+	}
+
+	reporter.report(StageDone, percentDone)
+	s.logger.Info(
+		"scrape completed",
+		"url", pageURL,
+		"verdict", string(product.Verdict),
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+	)
 	return product, nil
 }
 
-func errorMessage(err error) string {
-	if err == nil {
-		return ""
+// applyConversion converts the price to the target currency. On failure it keeps
+// the original amount+currency, flags it, and downgrades the price below
+// auto-complete (never fails the whole product over a missing exchange rate).
+func (s *Service) applyConversion(product Product, targetCurrency string) Product {
+	if product.PriceAmount == "" || product.PriceCurrency == "" {
+		return product
 	}
-	return err.Error()
+	amount, currency, err := s.converter.Convert(product.PriceAmount, product.PriceCurrency, targetCurrency)
+	if err != nil {
+		product.PriceWarnings = uniqueStrings(append(product.PriceWarnings, extractors.WarningCurrencyUnconverted))
+		if product.Fields.Price == ConfidenceHigh {
+			product.Fields.Price = ConfidenceMedium
+			product.PriceConfidence = legacyPriceConfidence(product.Fields.Price)
+		}
+		product.Verdict, product.Reasons = ComputeVerdict(product)
+		return product
+	}
+	product.PriceAmount = amount
+	product.PriceCurrency = currency
+	return product
 }
 
-func chooseBestProduct(products ...Product) Product {
-	best := Product{}
-	bestScore := -1
-
-	for _, product := range products {
-		score := product.FilledFieldCount()*10 + priceConfidenceScore(product.PriceConfidence)
-		if score > bestScore {
-			best = product
-			bestScore = score
-			continue
-		}
-		if score == bestScore && product.Source == sourceHeadless && best.Source != sourceHeadless {
-			best = product
-		}
+func finalURLOr(finalURL, fallback string) string {
+	if finalURL == "" {
+		return fallback
 	}
-
-	return best
-}
-
-func priceConfidenceScore(confidence string) int {
-	switch confidence {
-	case PriceConfidenceHigh:
-		return 4
-	case PriceConfidenceMedium:
-		return 3
-	case PriceConfidenceLow:
-		return 2
-	case PriceConfidenceSuspicious:
-		return 1
-	default:
-		return 0
-	}
+	return finalURL
 }

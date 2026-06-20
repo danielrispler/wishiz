@@ -37,12 +37,15 @@ class ImportJobTile extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 2),
-              Text(
-                _jobSubtitle(job),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              if (job.isActive)
+                _ImportProgress(job: job)
+              else
+                Text(
+                  _jobSubtitle(job),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
             ],
           ),
         ),
@@ -147,6 +150,56 @@ class _JobStatusIcon extends StatelessWidget {
     }
     return const Icon(Icons.error_outline, size: 20);
   }
+}
+
+class _ImportProgress extends StatelessWidget {
+  const _ImportProgress({required this.job});
+
+  final ProductImportJob job;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = job.progressPercent.clamp(0, 100);
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _stageLabel(job),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          // percent == 0 → indeterminate (just claimed). Otherwise animate
+          // smoothly between polled values so the bar glides rather than jumps.
+          child: percent == 0
+              ? const LinearProgressIndicator(minHeight: 4)
+              : TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: percent / 100),
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOut,
+                  builder: (context, value, _) =>
+                      LinearProgressIndicator(value: value, minHeight: 4),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+String _stageLabel(ProductImportJob job) {
+  return switch (job.progressStage) {
+    'validating' => 'Validating link…',
+    'rendering' => 'Loading page…',
+    'page_loaded' => 'Reading page…',
+    'extracting' => 'Extracting details…',
+    'cross_checking' => 'Cross-checking…',
+    'done' => 'Finishing…',
+    _ => job.status == 'pending' ? 'Waiting to process…' : 'Processing details…',
+  };
 }
 
 String _jobTitle(ProductImportJob job) {

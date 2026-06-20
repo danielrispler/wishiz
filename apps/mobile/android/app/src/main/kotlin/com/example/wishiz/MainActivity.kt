@@ -21,8 +21,10 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, methodChannelName)
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 when (call.method) {
-                    "consumePendingSharedText", "getInitialSharedText" -> {
-                        result.success(pendingSharedTexts.removeFirstOrNull())
+                    "consumePendingSharedTexts" -> {
+                        val drained = ArrayList(pendingSharedTexts)
+                        pendingSharedTexts.clear()
+                        result.success(drained)
                     }
                     else -> result.notImplemented()
                 }

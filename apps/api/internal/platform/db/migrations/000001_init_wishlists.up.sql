@@ -1,10 +1,9 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version TEXT PRIMARY KEY,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- NOTE: the schema_migrations ledger is created by the migration runner
+-- (internal/platform/db/migrations.go) before any migration file is applied,
+-- so it intentionally does not live here.
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -81,6 +80,8 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
     rank INTEGER NOT NULL,
     notes TEXT,
     price_label TEXT,
+    price_amount NUMERIC(12,2),
+    price_currency_code TEXT,
     priority TEXT NOT NULL DEFAULT 'medium',
     status TEXT NOT NULL DEFAULT 'saved',
     image_url TEXT,
@@ -91,6 +92,8 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
     CONSTRAINT wishlist_items_rank_positive CHECK (rank > 0),
     CONSTRAINT wishlist_items_priority_check CHECK (priority IN ('low', 'medium', 'high')),
     CONSTRAINT wishlist_items_status_check CHECK (status IN ('saved', 'considering', 'purchased')),
+    CONSTRAINT wishlist_items_price_currency_code_check
+        CHECK (price_currency_code IS NULL OR price_currency_code ~ '^[A-Z]{3}$'),
     CONSTRAINT wishlist_items_wishlist_rank_unique UNIQUE (wishlist_id, rank) DEFERRABLE INITIALLY IMMEDIATE
 );
 
@@ -114,7 +117,7 @@ CREATE TABLE IF NOT EXISTS product_import_jobs (
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_attempted_at TIMESTAMPTZ,
     last_error TEXT,
-    error_code TEXT,
+    error_code TEXT, -- intentionally free-form: error vocabulary grows over time
     retryable BOOLEAN NOT NULL DEFAULT FALSE,
     title TEXT,
     price_label TEXT,
@@ -123,6 +126,8 @@ CREATE TABLE IF NOT EXISTS product_import_jobs (
     price_warnings TEXT[] NOT NULL DEFAULT '{}',
     image_url TEXT,
     completeness INTEGER NOT NULL DEFAULT 0,
+    progress_stage TEXT, -- intentionally free-form: scrape pipeline stage labels evolve
+    progress_percent INTEGER NOT NULL DEFAULT 0,
     created_item_id UUID REFERENCES wishlist_items(id) ON DELETE SET NULL,
     acknowledged_at TIMESTAMPTZ,
     locked_at TIMESTAMPTZ,
@@ -133,20 +138,39 @@ CREATE TABLE IF NOT EXISTS product_import_jobs (
     ),
     CONSTRAINT product_import_jobs_attempt_count_check CHECK (attempt_count >= 0),
     CONSTRAINT product_import_jobs_completeness_check CHECK (completeness BETWEEN 0 AND 3),
+    CONSTRAINT product_import_jobs_progress_percent_check CHECK (progress_percent BETWEEN 0 AND 100),
     CONSTRAINT product_import_jobs_target_currency_code_check CHECK (target_currency_code ~ '^[A-Z]{3}$'),
+    CONSTRAINT product_import_jobs_price_confidence_check
+        CHECK (price_confidence IS NULL OR price_confidence IN ('high', 'medium', 'low', 'suspicious')),
+    CONSTRAINT product_import_jobs_price_source_check
+        CHECK (price_source IS NULL OR price_source IN (
+            'merchant_selector', 'json_ld', 'meta', 'selector', 'generic_dom'
+        )),
     CONSTRAINT product_import_jobs_client_request_unique UNIQUE (user_id, client_request_id)
 );
 
 CREATE INDEX IF NOT EXISTS product_import_jobs_user_status_updated_idx
     ON product_import_jobs (user_id, status, updated_at DESC);
 
+-- Backs List(): WHERE user_id = $1 ... ORDER BY created_at DESC.
+CREATE INDEX IF NOT EXISTS product_import_jobs_user_created_idx
+    ON product_import_jobs (user_id, created_at DESC);
+
+-- Backs ClaimNext(): claims status='pending' plus retryable 'failed'/'needs_review',
+-- ordered by created_at. Key + predicate mirror that query (no 'processing': those
+-- rows are in-flight and never claimed).
 CREATE INDEX IF NOT EXISTS product_import_jobs_claim_idx
-    ON product_import_jobs (status, updated_at)
-    WHERE status IN ('pending', 'processing');
+    ON product_import_jobs (status, created_at)
+    WHERE status IN ('pending', 'failed', 'needs_review');
 
 CREATE INDEX IF NOT EXISTS product_import_jobs_dedupe_idx
     ON product_import_jobs (user_id, wishlist_id, normalized_url, created_at DESC)
     WHERE wishlist_id IS NOT NULL;
+
+-- Supports ON DELETE SET NULL back-reference when a wishlist_item is deleted.
+CREATE INDEX IF NOT EXISTS product_import_jobs_created_item_id_idx
+    ON product_import_jobs (created_item_id)
+    WHERE created_item_id IS NOT NULL;
 
 CREATE TRIGGER product_import_jobs_set_updated_at
     BEFORE UPDATE ON product_import_jobs
@@ -211,7 +235,7 @@ CREATE TABLE IF NOT EXISTS discover_products (
     category TEXT NOT NULL,
     image_url TEXT NOT NULL,
     product_url TEXT NOT NULL,
-    save_count   INTEGER NOT NULL DEFAULT 0,
+    save_count   INTEGER NOT NULL DEFAULT 0, -- denormalized; reconcile via COUNT(*) on discover_product_saves if it drifts
     price_label  TEXT,
     gender       TEXT,
     product_type TEXT,
@@ -219,7 +243,11 @@ CREATE TABLE IF NOT EXISTS discover_products (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT discover_products_category_check CHECK (
         category IN ('fashion','beauty','home','accessories','gifts','travel')
-    )
+    ),
+    -- Product target-audience gender (distinct from app_users.gender 'man'/'woman',
+    -- which is the user's own gender). Ingestion normalizes to lowercase.
+    CONSTRAINT discover_products_gender_check
+        CHECK (gender IS NULL OR gender IN ('men', 'women'))
 );
 
 CREATE INDEX IF NOT EXISTS discover_products_category_idx ON discover_products (category);

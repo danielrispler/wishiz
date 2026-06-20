@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -88,9 +87,7 @@ void main() {
       final authRepository = FakeAuthRepository(currentUser: sampleUser);
       final sharedProductRepository = FakeSharedProductRepository();
       final productImportRepository = FakeProductImportRepository();
-      final shareIntakeService = FakeShareIntakeService(
-        pendingResponses: [null, 'https://example.com/products/chair'],
-      );
+      final shareIntakeService = FakeShareIntakeService();
 
       await tester.pumpWidget(
         buildTestApp(
@@ -105,17 +102,17 @@ void main() {
       expect(sharedProductRepository.requestedSharedTexts, isEmpty);
       expect(productImportRepository.requestedSharedTexts, isEmpty);
 
+      // A share arrives while the app is backgrounded, then it resumes.
+      shareIntakeService.enqueuePending(['https://example.com/products/chair']);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       // Import auto-queued on resume, no dialog.
       expect(productImportRepository.requestedSharedTexts, [
         'https://example.com/products/chair',
       ]);
 
-      // Second resume with nothing pending — no new imports.
+      // Extra resume with nothing pending — no duplicate import.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
@@ -123,6 +120,159 @@ void main() {
         'https://example.com/products/chair',
       ]);
     });
+
+    testWidgets(
+      'drains the whole native queue exactly once despite a resume during '
+      'cold-start mount',
+      (tester) async {
+        final authRepository = FakeAuthRepository(currentUser: sampleUser);
+        final productImportRepository = FakeProductImportRepository();
+        final shareIntakeService = FakeShareIntakeService(
+          pendingResponses: [
+            'https://example.com/products/mug',
+            'https://example.com/products/chair',
+          ],
+        );
+        final gate = Completer<void>();
+        final repository = InMemoryWishlistRepository(
+          ownerUserId: sampleUser.id,
+        );
+
+        await tester.pumpWidget(
+          buildTestApp(
+            authRepository: authRepository,
+            sharedProductRepository: FakeSharedProductRepository(),
+            productImportRepository: productImportRepository,
+            shareIntakeService: shareIntakeService,
+            wishlistRepositoryLoader: (_) async {
+              await gate.future;
+              return repository;
+            },
+          ),
+        );
+
+        // HomeScreen has not mounted yet (loader still pending). Fire a resume
+        // so the initState consume and the resumed consume race.
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+
+        gate.complete();
+        await tester.pumpAndSettle();
+
+        // Both items land, each exactly once — the second (racing) drain saw
+        // an already-emptied native queue.
+        expect(productImportRepository.requestedSharedTexts, [
+          'https://example.com/products/mug',
+          'https://example.com/products/chair',
+        ]);
+        expect(shareIntakeService.consumeCallCount, greaterThanOrEqualTo(2));
+      },
+    );
+
+    testWidgets('imports a duplicate URL in a single batch only once', (
+      tester,
+    ) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final productImportRepository = FakeProductImportRepository();
+      final shareIntakeService = FakeShareIntakeService(
+        pendingResponses: [
+          'https://example.com/products/mug',
+          'https://example.com/products/mug',
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: FakeSharedProductRepository(),
+          productImportRepository: productImportRepository,
+          shareIntakeService: shareIntakeService,
+        ),
+      );
+      // Must return — duplicate heads must not deadlock the re-trigger.
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.requestedSharedTexts, [
+        'https://example.com/products/mug',
+      ]);
+    });
+
+    testWidgets('re-imports the same URL shared again after the buffer drains', (
+      tester,
+    ) async {
+      final authRepository = FakeAuthRepository(currentUser: sampleUser);
+      final productImportRepository = FakeProductImportRepository();
+      final shareIntakeService = FakeShareIntakeService(
+        pendingResponses: ['https://example.com/products/mug'],
+      );
+
+      await tester.pumpWidget(
+        buildTestApp(
+          authRepository: authRepository,
+          sharedProductRepository: FakeSharedProductRepository(),
+          productImportRepository: productImportRepository,
+          shareIntakeService: shareIntakeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.requestedSharedTexts, [
+        'https://example.com/products/mug',
+      ]);
+
+      // Same URL shared again as a genuinely new event after the buffer empties
+      // — de-dupe is batch-scoped, not a permanent global set.
+      shareIntakeService.enqueuePending(['https://example.com/products/mug']);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(productImportRepository.requestedSharedTexts, [
+        'https://example.com/products/mug',
+        'https://example.com/products/mug',
+      ]);
+    });
+
+    testWidgets(
+      'imports every product in a mixed batch, then opens the first queued '
+      'wishlist link',
+      (tester) async {
+        final authRepository = FakeAuthRepository(currentUser: sampleUser);
+        final sharedProductRepository = FakeSharedProductRepository();
+        final productImportRepository = FakeProductImportRepository();
+        final shareIntakeService = FakeShareIntakeService(
+          pendingResponses: [
+            'https://wishiz.app/lists/wishlist-1',
+            'https://example.com/products/mug',
+            'https://example.com/products/chair',
+            'https://wishiz.app/lists/wishlist-2',
+          ],
+        );
+
+        await tester.pumpWidget(
+          buildTestApp(
+            authRepository: authRepository,
+            sharedProductRepository: sharedProductRepository,
+            productImportRepository: productImportRepository,
+            shareIntakeService: shareIntakeService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Both products import in FIFO order; the list link is not imported.
+        expect(productImportRepository.requestedSharedTexts, [
+          'https://example.com/products/mug',
+          'https://example.com/products/chair',
+        ]);
+        expect(sharedProductRepository.requestedSharedTexts, isEmpty);
+
+        // First-wins: wishlist-2 is ignored, wishlist-1 detail opens once the
+        // product buffer drains.
+        expect(find.text('List Details'), findsOneWidget);
+        expect(find.text('Birthdays'), findsOneWidget);
+      },
+    );
 
     testWidgets('preserves a pending shared link until the user logs in', (
       tester,
@@ -485,19 +635,25 @@ class CountingWishlistRepository extends InMemoryWishlistRepository {
 }
 
 class FakeShareIntakeService extends ShareIntakeService {
-  FakeShareIntakeService({List<String?> pendingResponses = const []})
-    : _pendingResponses = Queue<String?>.from(pendingResponses);
+  FakeShareIntakeService({List<String> pendingResponses = const []})
+    : _pending = List<String>.from(pendingResponses);
 
-  final Queue<String?> _pendingResponses;
+  final List<String> _pending;
   final StreamController<String> _controller =
       StreamController<String>.broadcast();
 
+  int consumeCallCount = 0;
+
+  /// Re-arm the native queue with a fresh batch (a new share event arriving
+  /// after a previous batch was already drained).
+  void enqueuePending(List<String> texts) => _pending.addAll(texts);
+
   @override
-  Future<String?> consumePendingSharedText() async {
-    if (_pendingResponses.isEmpty) {
-      return null;
-    }
-    return _pendingResponses.removeFirst();
+  Future<List<String>> consumePendingSharedTexts() async {
+    consumeCallCount += 1;
+    final drained = List<String>.from(_pending);
+    _pending.clear();
+    return drained;
   }
 
   @override

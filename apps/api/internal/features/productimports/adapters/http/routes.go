@@ -62,6 +62,8 @@ type jobResponse struct {
 	PriceWarnings      []string   `json:"priceWarnings"`
 	ImageURL           *string    `json:"imageUrl"`
 	Completeness       int        `json:"completeness"`
+	ProgressStage      string     `json:"progressStage"`
+	ProgressPercent    int        `json:"progressPercent"`
 	CreatedItemID      *string    `json:"createdItemId"`
 	AcknowledgedAt     *time.Time `json:"acknowledgedAt"`
 	CreatedAt          time.Time  `json:"createdAt"`
@@ -228,6 +230,8 @@ func mapJob(job domain.Job) jobResponse {
 		PriceWarnings:      job.PriceWarnings,
 		ImageURL:           job.ImageURL,
 		Completeness:       job.Completeness,
+		ProgressStage:      job.ProgressStage,
+		ProgressPercent:    job.ProgressPercent,
 		CreatedItemID:      job.CreatedItemID,
 		AcknowledgedAt:     job.AcknowledgedAt,
 		CreatedAt:          job.CreatedAt,

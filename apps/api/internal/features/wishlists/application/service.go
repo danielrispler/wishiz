@@ -47,13 +47,15 @@ type PatchWishlistInput struct {
 }
 
 type AddItemInput struct {
-	Title      string
-	Notes      *string
-	PriceLabel *string
-	Priority   string
-	Status     string
-	ImageURL   *string
-	ProductURL *string
+	Title             string
+	Notes             *string
+	PriceLabel        *string
+	PriceAmount       *string
+	PriceCurrencyCode *string
+	Priority          string
+	Status            string
+	ImageURL          *string
+	ProductURL        *string
 }
 
 type PatchItemInput struct {
@@ -218,8 +220,8 @@ func (s *Service) Create(ctx context.Context, input *CreateWishlistInput) (domai
 	if err != nil {
 		return domain.Wishlist{}, err
 	}
-	if err := validateYear(input.Year); err != nil {
-		return domain.Wishlist{}, err
+	if yearErr := validateYear(input.Year); yearErr != nil {
+		return domain.Wishlist{}, yearErr
 	}
 	coverImageURL, err := validateRemoteImageURL("coverImageUrl", input.CoverImageURL)
 	if err != nil {
@@ -387,15 +389,17 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 	}
 
 	item, err := s.repo.AddItem(ctx, ports.AddItemParams{
-		WishlistID:  wishlistID,
-		Title:       title,
-		Notes:       normalizeOptionalString(input.Notes),
-		PriceLabel:  normalizeOptionalString(input.PriceLabel),
-		Priority:    priority,
-		Status:      status,
-		ImageURL:    imageURL,
-		ProductURL:  normalizeOptionalString(input.ProductURL),
-		PurchasedAt: purchasedAtForStatus(status, s.nowFn()),
+		WishlistID:        wishlistID,
+		Title:             title,
+		Notes:             normalizeOptionalString(input.Notes),
+		PriceLabel:        normalizeOptionalString(input.PriceLabel),
+		PriceAmount:       normalizeOptionalString(input.PriceAmount),
+		PriceCurrencyCode: normalizeOptionalString(input.PriceCurrencyCode),
+		Priority:          priority,
+		Status:            status,
+		ImageURL:          imageURL,
+		ProductURL:        normalizeOptionalString(input.ProductURL),
+		PurchasedAt:       purchasedAtForStatus(status, s.nowFn()),
 	})
 	if errors.Is(err, ports.ErrNotFound) {
 		return domain.WishlistItem{}, WishlistNotFound()
@@ -443,47 +447,8 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 		PurchasedAt: cloneTime(current.PurchasedAt),
 	}
 
-	if input.Title.Set {
-		params.Title, err = requireTitle(input.Title.Value)
-		if err != nil {
-			return domain.WishlistItem{}, err
-		}
-	}
-	if input.Notes.Set {
-		params.Notes = normalizeOptionalString(input.Notes.Value)
-	}
-	if input.PriceLabel.Set {
-		params.PriceLabel = normalizeOptionalString(input.PriceLabel.Value)
-	}
-	if input.Priority.Set {
-		params.Priority, err = validatePriority(input.Priority.Value)
-		if err != nil {
-			return domain.WishlistItem{}, err
-		}
-	}
-	if input.Status.Set {
-		params.Status, err = validateStatus(input.Status.Value)
-		if err != nil {
-			return domain.WishlistItem{}, err
-		}
-	}
-	if input.ImageURL.Set {
-		params.ImageURL, err = validateRemoteImageURL("imageUrl", input.ImageURL.Value)
-		if err != nil {
-			return domain.WishlistItem{}, err
-		}
-	}
-	if input.ProductURL.Set {
-		params.ProductURL = normalizeOptionalString(input.ProductURL.Value)
-	}
-
-	params.PurchasedAt = cloneTime(current.PurchasedAt)
-	if params.Status == domain.ItemStatusPurchased {
-		if current.Status != domain.ItemStatusPurchased {
-			params.PurchasedAt = purchasedAtForStatus(params.Status, s.nowFn())
-		}
-	} else {
-		params.PurchasedAt = nil
+	if patchErr := s.applyItemPatch(&params, input, current); patchErr != nil {
+		return domain.WishlistItem{}, patchErr
 	}
 
 	item, err := s.repo.UpdateItem(ctx, params)
@@ -495,6 +460,51 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 	}
 
 	return item, nil
+}
+
+func (s *Service) applyItemPatch(
+	params *ports.UpdateItemParams, input *PatchItemInput, current domain.WishlistItem,
+) error {
+	var err error
+	if input.Title.Set {
+		if params.Title, err = requireTitle(input.Title.Value); err != nil {
+			return err
+		}
+	}
+	if input.Notes.Set {
+		params.Notes = normalizeOptionalString(input.Notes.Value)
+	}
+	if input.PriceLabel.Set {
+		params.PriceLabel = normalizeOptionalString(input.PriceLabel.Value)
+	}
+	if input.Priority.Set {
+		if params.Priority, err = validatePriority(input.Priority.Value); err != nil {
+			return err
+		}
+	}
+	if input.Status.Set {
+		if params.Status, err = validateStatus(input.Status.Value); err != nil {
+			return err
+		}
+	}
+	if input.ImageURL.Set {
+		if params.ImageURL, err = validateRemoteImageURL("imageUrl", input.ImageURL.Value); err != nil {
+			return err
+		}
+	}
+	if input.ProductURL.Set {
+		params.ProductURL = normalizeOptionalString(input.ProductURL.Value)
+	}
+
+	params.PurchasedAt = cloneTime(current.PurchasedAt)
+	switch {
+	case params.Status != domain.ItemStatusPurchased:
+		params.PurchasedAt = nil
+	case current.Status != domain.ItemStatusPurchased:
+		params.PurchasedAt = purchasedAtForStatus(params.Status, s.nowFn())
+	}
+
+	return nil
 }
 
 func (s *Service) DeleteItem(ctx context.Context, wishlistID, itemID string) error {
@@ -687,19 +697,19 @@ func (s *Service) UpdateMemberRole(ctx context.Context, wishlistID string, userI
 		return err
 	}
 
-	if err := s.checkOwner(ctx, current); err != nil {
-		return err
+	if ownerErr := s.checkOwner(ctx, current); ownerErr != nil {
+		return ownerErr
 	}
 
 	if s.userID(ctx) == userID {
 		return ValidationError("userId", "cannot change your own role")
 	}
 
-	if err := s.repo.UpdateMemberRole(ctx, wishlistID, userID, role); errors.Is(err, ports.ErrNotFound) {
+	err = s.repo.UpdateMemberRole(ctx, wishlistID, userID, role)
+	if errors.Is(err, ports.ErrNotFound) {
 		return WishlistNotFound()
-	} else {
-		return err
 	}
+	return err
 }
 
 func ensureWishlists(wishlists []domain.Wishlist) []domain.Wishlist {
@@ -761,7 +771,7 @@ func normalizeOptionalString(value *string) *string {
 func validateRemoteImageURL(field string, value *string) (*string, error) {
 	normalized := normalizeOptionalString(value)
 	if normalized == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // absent optional URL: nil value with nil error is the valid "not set" result
 	}
 
 	parsed, err := url.Parse(*normalized)

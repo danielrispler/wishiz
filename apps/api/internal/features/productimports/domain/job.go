@@ -31,6 +31,8 @@ type Job struct {
 	PriceWarnings      []string
 	ImageURL           *string
 	Completeness       int
+	ProgressStage      string
+	ProgressPercent    int
 	CreatedItemID      *string
 	AcknowledgedAt     *time.Time
 	LockedAt           *time.Time

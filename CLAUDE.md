@@ -46,7 +46,7 @@ Hexagonal/Clean Architecture, feature-based modules under `internal/features/`:
 - `discover/` — curated/trending product discovery backed by PostgreSQL
 - `wishlists/` — CRUD, shared access (viewer/editor roles), invite tokens
 - `productimports/` — async job queue (workers poll DB every 2s)
-- `scrape/` — dual-mode: fast (goquery) or headless (chromedp) with 15s timeout
+- `scrape/` — ONE concurrent pipeline (≤30s): static HTTP fetch + Shopify probe + headless render launch together, early-aborting the render once cheap sources clear the verdict gate. Multi-extractor → field-level consensus (`application/extractors/` + `consensus.go`) → validation gate → calibrated `Verdict` (auto_complete/needs_review/failed). Adapters: `httpfetch` (static, utls+anti-bot), `headless` (render), `shopify` (probe)
 - `uploads/` — authenticated image upload endpoints backed by S3-compatible storage
 - `applinks/` — Android App Links + iOS Universal Links
 - `health/` — health check endpoint
@@ -55,7 +55,9 @@ Each feature follows: `domain/` → `ports/` → `application/` → `adapters/`
 
 Cross-cutting concerns in `internal/platform/`: config, HTTP server, DB connection, logger, authctx context helpers, storage.
 
-**Startup sequence** (`cmd/api/main.go`): config → logger → base routes (`applinks`, `health`) → scraper + exchange-rate setup → optional DB connection → optional migrations → conditional registration of auth/wishlists/productimports/discover/uploads → HTTP server on `HTTP_ADDR` (default `:8080`) → graceful shutdown (10s).
+**Startup sequence** (`cmd/api/main.go`): config → logger → base routes (`applinks`, `health`) → scraper + exchange-rate setup → optional DB connection → optional migrations → conditional registration of auth/wishlists/productimports/discover/uploads → background workers (product-import, discover sitemap, maintenance sweep) → HTTP server on `HTTP_ADDR` (default `:8080`) → graceful shutdown (10s).
+
+The **maintenance worker** (`internal/platform/maintenance`) is a ticker (default `CLEANUP_INTERVAL` = 1h) that deletes expired `app_sessions` and expired/unaccepted `wishlist_invites` — rows nothing else removes once they lapse.
 
 ## Mobile Architecture
 
@@ -75,7 +77,9 @@ Feature-based under `lib/`:
 
 PostgreSQL 16. Migrations in `internal/platform/db/migrations/`. Extensions: pgcrypto, citext.
 
-Core tables: `app_users`, `app_sessions`, `wishlists`, `wishlist_items`, `wishlist_members`, `wishlist_invites`. All have TIMESTAMPTZ timestamps with auto `updated_at` trigger.
+Pre-launch (0 users) the convention is to **edit the existing migration SQL in place** rather than add new migration files. Because migrations are versioned and `000001` uses `CREATE TABLE IF NOT EXISTS`, an in-place column add will **not** re-run on a DB that already has the table — **drop & recreate the local dev DB** after such a change (e.g. `docker compose down -v && docker compose up --build`). `product_import_jobs` carries `progress_stage`/`progress_percent` for the live import progress bar.
+
+Core tables: `app_users`, `app_sessions`, `wishlists`, `wishlist_items`, `wishlist_members`, `wishlist_invites`. All have TIMESTAMPTZ timestamps with auto `updated_at` trigger. `wishlist_items` keeps both the display `price_label` and structured `price_amount`/`price_currency_code` (written at import time from the scraper, preserved on item edits).
 
 Full schema: `docs/postgres_schema.md`.
 
@@ -96,10 +100,18 @@ Full schema: `docs/postgres_schema.md`.
 | `STORAGE_S3_USE_PATH_STYLE` | `true` | Path-style S3 URLs |
 | `STORAGE_PUBLIC_BASE_URL` | `""` | Public asset base URL |
 | `CHROMIUM_PATH` | `""` | Optional path for headless scraping |
+| `SCRAPE_BUDGET` | `30s` | Total wall-clock budget per scrape |
+| `SCRAPE_RENDER_TIMEOUT` | `26s` | Headless render sub-timeout (< budget) |
+| `SCRAPE_MAX_CONCURRENT_RENDERS` | `3` | Render semaphore (below worker count to bound memory) |
+| `SCRAPE_SHOPIFY_PROBE` | `true` | Enable Shopify `/products/<handle>.json` probe |
+| `SCRAPE_INFER_DOTCOM_USD` | `false` | Infer USD for `.com` w/o currency (silent-wrong-price trap; off) |
+| `SCRAPE_IMAGE_HEAD_CHECK` | `false` | Optional HEAD check on the chosen image |
+| `SCRAPE_MAX_PRICE` | `1e7` | Upper sanity bound on a scraped price amount |
 | `EXCHANGE_RATES_URL` | `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml` | ECB rates feed |
 | `PRODUCT_IMPORT_WORKER_COUNT` | `5` | Concurrent scrapers |
 | `PRODUCT_IMPORT_POLL_INTERVAL` | `2s` | Queue poll rate |
 | `EXCHANGE_RATE_REFRESH_INTERVAL` | `12h` | ECB source |
+| `CLEANUP_INTERVAL` | `1h` | Maintenance sweep rate for expired sessions/invites |
 | `SHARE_BASE_URL` | `https://wishiz.app` | Deep link base |
 | `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT` | built-in default | Android App Links fingerprint |
 | `INTERNAL_API_KEY` | — | Used by internal discover ingestion routes |

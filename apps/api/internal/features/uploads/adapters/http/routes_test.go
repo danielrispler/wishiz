@@ -224,7 +224,7 @@ func performStorageRequest(
 		nil,
 	)
 
-	request := httptest.NewRequest(http.MethodGet, "/storage/wishlists/object.png", nil)
+	request := httptest.NewRequest(http.MethodGet, "/storage/wishlists/object.png", http.NoBody)
 	for key, values := range headers {
 		for _, value := range values {
 			request.Header.Add(key, value)

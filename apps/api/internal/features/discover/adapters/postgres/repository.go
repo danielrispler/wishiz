@@ -68,6 +68,9 @@ func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) 
 	return collectProducts(rows)
 }
 
+// GetForYou shuffles the filtered set with ORDER BY RANDOM(). That is a full
+// scan + sort with no usable index; acceptable at curated-catalog scale. If the
+// catalog grows large, switch to TABLESAMPLE or a precomputed shuffle.
 func (r *Repository) GetForYou(ctx context.Context, userID string, brands []string, gender *string, limit int) ([]domain.DiscoverProduct, error) {
 	genderFilters := genderDiscoverFilters(gender)
 	if len(brands) == 0 && len(genderFilters) == 0 {
@@ -224,12 +227,14 @@ func (r *Repository) getPackItems(ctx context.Context, packID, userID string) ([
 	return items, previews, nil
 }
 
-func (r *Repository) ToggleSave(ctx context.Context, userID, productID string) (bool, int, error) {
+func (r *Repository) ToggleSave(
+	ctx context.Context, userID, productID string,
+) (saved bool, saveCount int, err error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, 0, fmt.Errorf("begin toggle save tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op once the tx has committed
 
 	var exists bool
 	err = tx.QueryRow(ctx, `
@@ -253,7 +258,7 @@ func (r *Repository) ToggleSave(ctx context.Context, userID, productID string) (
 		return false, 0, fmt.Errorf("insert save: %w", err)
 	}
 
-	saved := tag.RowsAffected() > 0
+	saved = tag.RowsAffected() > 0
 	delta := 1
 	if !saved {
 		_, err = tx.Exec(ctx, `
@@ -288,7 +293,7 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 	if err != nil {
 		return 0, fmt.Errorf("begin grab pack tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op once the tx has committed
 
 	var packExists bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM starter_packs WHERE id = $1::uuid)`, packID).Scan(&packExists)
@@ -339,13 +344,13 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 	var items []packItem
 	for rows.Next() {
 		var it packItem
-		if err := rows.Scan(&it.title, &it.imageURL, &it.productURL); err != nil {
-			return 0, fmt.Errorf("scan pack item: %w", err)
+		if scanErr := rows.Scan(&it.title, &it.imageURL, &it.productURL); scanErr != nil {
+			return 0, fmt.Errorf("scan pack item: %w", scanErr)
 		}
 		items = append(items, it)
 	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iterate pack items: %w", err)
+	if iterErr := rows.Err(); iterErr != nil {
+		return 0, fmt.Errorf("iterate pack items: %w", iterErr)
 	}
 
 	for i, it := range items {
@@ -397,7 +402,7 @@ func (r *Repository) CreateStarterPack(ctx context.Context, title, subtitle, cov
 	if err != nil {
 		return domain.StarterPack{}, fmt.Errorf("begin create pack tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op once the tx has committed
 
 	var pack domain.StarterPack
 	err = tx.QueryRow(ctx, `

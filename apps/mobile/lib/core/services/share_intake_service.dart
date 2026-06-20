@@ -12,15 +12,22 @@ class ShareIntakeService {
   static const EventChannel _eventChannel =
       EventChannel('wishiz/share_intake/events');
 
-  Future<String?> consumePendingSharedText() async {
+  Future<List<String>> consumePendingSharedTexts() async {
     if (!_supportsNativeShareIntake) {
-      return null;
+      return const [];
     }
 
-    final value =
-        await _methodChannel.invokeMethod<String>('consumePendingSharedText');
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
+    final values = await _methodChannel.invokeListMethod<String>(
+      'consumePendingSharedTexts',
+    );
+    if (values == null) {
+      return const [];
+    }
+
+    return values
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 
   Stream<String> watchSharedText() {

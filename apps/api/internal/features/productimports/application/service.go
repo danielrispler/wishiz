@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	importdomain "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/domain"
@@ -38,6 +38,12 @@ type WishlistService interface {
 
 type Scraper interface {
 	Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error)
+	ScrapeWithProgress(
+		ctx context.Context,
+		rawURL string,
+		targetCurrencyCode string,
+		reporter scrapeapp.ProgressReporter,
+	) (scrapeapp.Product, error)
 }
 
 type Service struct {
@@ -257,20 +263,28 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) error {
-	product, scrapeErr := s.scraper.Scrape(ctx, job.NormalizedURL, job.TargetCurrencyCode)
+	product, scrapeErr := s.scraper.ScrapeWithProgress(
+		ctx, job.NormalizedURL, job.TargetCurrencyCode, s.progressReporter(ctx, job.ID),
+	)
 	snap := snapshotFromProduct(product)
 
 	outcome := resolveOutcome(snap, scrapeErr)
 
 	if outcome.Status == importdomain.StatusCompleted && job.WishlistID != nil {
 		itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
+		productURL := job.NormalizedURL
+		if snap.CanonicalURL != "" {
+			productURL = snap.CanonicalURL
+		}
 		item, createErr := s.wishlists.AddItem(itemCtx, *job.WishlistID, &wishlistapp.AddItemInput{
-			Title:      *snap.Title,
-			PriceLabel: snap.PriceLabel,
-			ImageURL:   snap.ImageURL,
-			ProductURL: &job.NormalizedURL,
-			Priority:   wishlistdomain.ItemPriorityMedium,
-			Status:     wishlistdomain.ItemStatusSaved,
+			Title:             *snap.Title,
+			PriceLabel:        snap.PriceLabel,
+			PriceAmount:       snap.PriceAmount,
+			PriceCurrencyCode: snap.PriceCurrencyCode,
+			ImageURL:          snap.ImageURL,
+			ProductURL:        &productURL,
+			Priority:          wishlistdomain.ItemPriorityMedium,
+			Status:            wishlistdomain.ItemStatusSaved,
 		})
 		if createErr != nil {
 			outcome = ports.JobOutcome{
@@ -289,6 +303,26 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 	return err
 }
 
+// progressReporter returns a monotonic, throttled reporter that persists scrape
+// progress. The scrape orchestrator may call it from several goroutines, so it
+// is mutex-guarded and only writes when the percent advances.
+func (s *Service) progressReporter(ctx context.Context, jobID string) scrapeapp.ProgressReporter {
+	var mu sync.Mutex
+	lastPercent := -1
+	return func(stage string, percent int) {
+		mu.Lock()
+		if percent <= lastPercent {
+			mu.Unlock()
+			return
+		}
+		lastPercent = percent
+		mu.Unlock()
+		if err := s.repo.UpdateProgress(ctx, jobID, stage, percent); err != nil {
+			s.logger.Debug("update import progress failed", "job_id", jobID, "error", err.Error())
+		}
+	}
+}
+
 func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	ps := ports.ProductSnapshot{
 		Title:           snap.Title,
@@ -301,7 +335,7 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	}
 	if scrapeErr != nil {
 		retryable, code := classifyScrapeError(scrapeErr)
-		if shouldNeedsReview(snap) {
+		if snap.Verdict == scrapeapp.VerdictNeedsReview || shouldNeedsReview(snap) {
 			return ports.JobOutcome{
 				Status:    importdomain.StatusNeedsReview,
 				Snapshot:  ps,
@@ -318,6 +352,39 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 			Retryable: retryable,
 		}
 	}
+
+	// Primary path: the engine's verdict drives the status.
+	switch snap.Verdict {
+	case scrapeapp.VerdictAutoComplete:
+		return ports.JobOutcome{Status: importdomain.StatusCompleted, Snapshot: ps}
+	case scrapeapp.VerdictNeedsReview:
+		return ports.JobOutcome{
+			Status:    importdomain.StatusNeedsReview,
+			Snapshot:  ps,
+			LastError: reviewReason(snap),
+			ErrorCode: ErrorCodeIncomplete,
+			Retryable: true,
+		}
+	case scrapeapp.VerdictFailed:
+		if shouldNeedsReview(snap) {
+			return ports.JobOutcome{
+				Status:    importdomain.StatusNeedsReview,
+				Snapshot:  ps,
+				LastError: "product details need review",
+				ErrorCode: ErrorCodeIncomplete,
+				Retryable: true,
+			}
+		}
+		return ports.JobOutcome{
+			Status:    importdomain.StatusFailed,
+			Snapshot:  ps,
+			LastError: "could not extract enough product details",
+			ErrorCode: ErrorCodeIncomplete,
+			Retryable: true,
+		}
+	}
+
+	// Defensive fallback for products that carry no verdict (legacy/partial).
 	if !isComplete(snap) {
 		if shouldNeedsReview(snap) {
 			return ports.JobOutcome{
@@ -348,6 +415,13 @@ func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	return ports.JobOutcome{Status: importdomain.StatusCompleted, Snapshot: ps}
 }
 
+func reviewReason(snap productSnapshot) string {
+	if len(snap.PriceWarnings) > 0 {
+		return "product details need review: " + strings.Join(snap.PriceWarnings, ", ")
+	}
+	return "product details need review"
+}
+
 func (s *Service) requireUserJob(ctx context.Context, id string) (importdomain.Job, error) {
 	user, ok := authctx.UserFromContext(ctx)
 	if !ok || user.ID == "" {
@@ -367,19 +441,28 @@ func (s *Service) requireUserJob(ctx context.Context, id string) (importdomain.J
 }
 
 type productSnapshot struct {
-	Title           *string
-	PriceLabel      *string
-	PriceConfidence *string
-	PriceSource     *string
-	PriceWarnings   []string
-	ImageURL        *string
-	Completeness    int
-	HasTrustedPrice bool
+	Title             *string
+	PriceLabel        *string
+	PriceAmount       *string
+	PriceCurrencyCode *string
+	PriceConfidence   *string
+	PriceSource       *string
+	PriceWarnings     []string
+	ImageURL          *string
+	Completeness      int
+	HasTrustedPrice   bool
+	// Verdict is the engine's calibrated outcome — the primary driver of the
+	// job status. Empty for legacy/partial products (falls back to the ladder).
+	Verdict scrapeapp.Verdict
+	// CanonicalURL is the cleaned product link; preferred for the created item.
+	CanonicalURL string
 }
 
 func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 	title := optional(product.Name)
 	priceLabel := optional(strings.TrimSpace(strings.TrimSpace(product.PriceCurrency) + " " + strings.TrimSpace(product.PriceAmount)))
+	priceAmount := optionalAmount(product.PriceAmount)
+	priceCurrencyCode := optionalCurrencyCode(product.PriceCurrency)
 	priceConfidence := optional(product.PriceConfidence)
 	priceSource := optional(product.PriceSource)
 	priceWarnings := append([]string(nil), product.PriceWarnings...)
@@ -395,14 +478,18 @@ func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 		completeness++
 	}
 	return productSnapshot{
-		Title:           title,
-		PriceLabel:      priceLabel,
-		PriceConfidence: priceConfidence,
-		PriceSource:     priceSource,
-		PriceWarnings:   priceWarnings,
-		ImageURL:        imageURL,
-		Completeness:    completeness,
-		HasTrustedPrice: priceLabel != nil && product.HasHighConfidencePrice(),
+		Title:             title,
+		PriceLabel:        priceLabel,
+		PriceAmount:       priceAmount,
+		PriceCurrencyCode: priceCurrencyCode,
+		PriceConfidence:   priceConfidence,
+		PriceSource:       priceSource,
+		PriceWarnings:     priceWarnings,
+		ImageURL:          imageURL,
+		Completeness:      completeness,
+		HasTrustedPrice:   priceLabel != nil && product.HasHighConfidencePrice(),
+		Verdict:           product.Verdict,
+		CanonicalURL:      strings.TrimSpace(product.CanonicalURL),
 	}
 }
 
@@ -414,7 +501,7 @@ func shouldNeedsReview(snapshot productSnapshot) bool {
 	return snapshot.Completeness >= 2
 }
 
-func classifyScrapeError(err error) (bool, string) {
+func classifyScrapeError(err error) (retryable bool, code string) {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true, ErrorCodeTimeout
 	}
@@ -480,12 +567,29 @@ func optional(value string) *string {
 	return &trimmed
 }
 
-func domainFromURL(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
+var (
+	priceAmountPattern  = regexp.MustCompile(`^\d+(\.\d+)?$`)
+	currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
+)
+
+// optionalAmount returns a clean decimal string suitable for the NUMERIC
+// price_amount column, or nil when the value is absent or non-numeric.
+func optionalAmount(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if !priceAmountPattern.MatchString(trimmed) {
+		return nil
 	}
-	return parsed.Hostname()
+	return &trimmed
 }
 
-var urlPattern = regexp.MustCompile(`https?://[^\s]+`)
+// optionalCurrencyCode normalizes to an uppercase ISO-4217 code matching the
+// price_currency_code CHECK, or nil when absent or malformed.
+func optionalCurrencyCode(value string) *string {
+	code := strings.ToUpper(strings.TrimSpace(value))
+	if !currencyCodePattern.MatchString(code) {
+		return nil
+	}
+	return &code
+}
+
+var urlPattern = regexp.MustCompile(`https?://\S+`)

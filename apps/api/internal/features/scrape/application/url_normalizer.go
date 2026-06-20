@@ -59,7 +59,7 @@ func googleDestinationURL(source *url.URL) string {
 				continue
 			}
 			parsed, err := url.Parse(candidate)
-			if err == nil && parsed.IsAbs() && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
+			if err == nil && parsed.IsAbs() && parsed.Host != "" && (parsed.Scheme == schemeHTTP || parsed.Scheme == schemeHTTPS) {
 				return parsed.String()
 			}
 		}

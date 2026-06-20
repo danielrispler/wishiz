@@ -49,7 +49,7 @@ class WishlistItemControls extends StatelessWidget {
                     showSelectedIcon: false,
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected)) return colorScheme.primary.withOpacity(0.14);
+                        if (states.contains(WidgetState.selected)) return colorScheme.primary.withValues(alpha: 0.14);
                         return colorScheme.surfaceContainerLow;
                       }),
                       foregroundColor: WidgetStateProperty.resolveWith((states) {
@@ -59,7 +59,7 @@ class WishlistItemControls extends StatelessWidget {
                       side: WidgetStateProperty.resolveWith(
                         (states) => BorderSide(
                           color: states.contains(WidgetState.selected)
-                              ? colorScheme.primary.withOpacity(0.35)
+                              ? colorScheme.primary.withValues(alpha: 0.35)
                               : colorScheme.outlineVariant,
                         ),
                       ),
@@ -136,7 +136,7 @@ class _SortButton extends StatelessWidget {
         side: BorderSide(
           color: isDefault
               ? colorScheme.outlineVariant
-              : colorScheme.primary.withOpacity(0.5),
+              : colorScheme.primary.withValues(alpha: 0.5),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         visualDensity: VisualDensity.compact,

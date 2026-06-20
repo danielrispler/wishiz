@@ -1,0 +1,8 @@
+{
+  "url": "https://store.example/products/aurora-lamp",
+  "name": "Aurora Lamp",
+  "amount": "89.00",
+  "currency": "USD",
+  "image": "https://cdn.example/aurora.png",
+  "verdict": "auto_complete"
+}

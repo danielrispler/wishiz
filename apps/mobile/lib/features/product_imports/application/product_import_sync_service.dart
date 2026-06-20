@@ -19,7 +19,9 @@ class ProductImportSyncService {
        _onJobCompleted = onJobCompleted,
        _createTimer = createTimer ?? Timer.new;
 
-  static const Duration productImportPollInterval = Duration(seconds: 5);
+  // Polling only runs while there are active jobs, so a tight 2s cadence keeps
+  // the live progress bar smooth without polling an idle queue.
+  static const Duration productImportPollInterval = Duration(seconds: 2);
 
   final ProductImportRepository _repository;
   final Duration pollInterval;

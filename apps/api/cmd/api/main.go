@@ -23,9 +23,10 @@ import (
 	productimporthttp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/http"
 	productimportpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/postgres"
 	productimportapp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/application"
-	scrapefastpath "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/fastpath"
 	scrapeheadless "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/headless"
 	scrapehttp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/http"
+	scrapehttpfetch "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/httpfetch"
+	scrapeshopify "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/shopify"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 	uploadshttp "github.com/danielrispler/wishiz/apps/api/internal/features/uploads/adapters/http"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
@@ -35,6 +36,7 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 	httpx "github.com/danielrispler/wishiz/apps/api/internal/platform/http"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/logger"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/maintenance"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/storage"
 )
 
@@ -68,9 +70,19 @@ func run() error {
 	healthhttp.RegisterRoutes(mux)
 
 	resolver := net.DefaultResolver
-	fastScraper := scrapefastpath.NewScraper(resolver)
-	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath, resolver)
+	staticFetcher := scrapehttpfetch.New(resolver)
+	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath, resolver, cfg.ScrapeRenderTimeout)
 	defer headlessScraper.Close()
+
+	var shopifyProbe scrapeapp.CandidateSource
+	if cfg.ScrapeShopifyProbe {
+		shopifyProbe = scrapeshopify.NewProbe(resolver)
+	}
+
+	scrapeEngine := scrapeapp.NewEngine(scrapeapp.EngineConfig{
+		InferDotComUSD: cfg.ScrapeInferDotComUSD,
+		MaxPrice:       cfg.ScrapeMaxPrice,
+	})
 
 	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
 	if err := exchangeConverter.Refresh(); err != nil {
@@ -80,7 +92,13 @@ func run() error {
 	defer close(exchangeStop)
 	exchangeConverter.Start(exchangeStop)
 
-	scrapeService := scrapeapp.NewService(appLogger, fastScraper, headlessScraper, resolver, exchangeConverter)
+	scrapeService := scrapeapp.NewService(
+		appLogger, scrapeEngine, staticFetcher, headlessScraper, shopifyProbe, resolver, exchangeConverter,
+		scrapeapp.ServiceConfig{
+			Budget:               cfg.ScrapeBudget,
+			MaxConcurrentRenders: cfg.ScrapeMaxConcurrentRenders,
+		},
+	)
 	scrapehttp.RegisterRoutes(mux, appLogger, scrapeService)
 
 	if cfg.DatabaseURL != "" {
@@ -161,6 +179,10 @@ func run() error {
 			cfg.DiscoverSitemapRefreshInterval,
 		)
 		discoverSitemapWorker.Start(ctx)
+
+		maintenanceWorker := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval)
+		maintenanceWorker.Start(ctx)
+
 		discoverhttp.RegisterRoutes(
 			mux,
 			appLogger,

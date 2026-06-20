@@ -138,7 +138,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   bool _showSignup = false;
   String? _pendingWishlistId;
   String? _pendingInviteToken;
-  String? _pendingSharedText;
+  final List<String> _pendingSharedTexts = [];
   StreamSubscription<String>? _sharedTextSubscription;
   WishlistRepository? _wishlistRepository;
   ProductImportRepository? _productImportRepository;
@@ -158,10 +158,10 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
         WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     _pendingWishlistId = _extractWishlistId(initialRoute);
     _pendingInviteToken = _extractInviteToken(initialRoute);
-    _consumePendingSharedText();
+    _consumePendingSharedTexts();
     _sharedTextSubscription = widget.shareIntakeService
         .watchSharedText()
-        .listen(_storePendingSharedText);
+        .listen(_ingestSharedText);
     _handleCurrentUserChanged();
   }
 
@@ -213,7 +213,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       return;
     }
 
-    _consumePendingSharedText();
+    _consumePendingSharedTexts();
   }
 
   String? _extractWishlistId(String? route) {
@@ -224,31 +224,41 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     return WishizAppLink.extractInviteToken(route);
   }
 
-  Future<void> _consumePendingSharedText() async {
-    final sharedText =
-        await widget.shareIntakeService.consumePendingSharedText();
-    if (!mounted || sharedText == null) return;
-    _storePendingSharedText(sharedText);
+  Future<void> _consumePendingSharedTexts() async {
+    final sharedTexts =
+        await widget.shareIntakeService.consumePendingSharedTexts();
+    if (!mounted || sharedTexts.isEmpty) return;
+    for (final sharedText in sharedTexts) {
+      _ingestSharedText(sharedText);
+    }
   }
 
-  void _storePendingSharedText(String sharedText) {
+  void _ingestSharedText(String sharedText) {
     final normalized = sharedText.trim();
     if (normalized.isEmpty) {
       return;
     }
 
     final wishlistId = _extractWishlistId(normalized);
-    final inviteToken = _extractInviteToken(normalized);
 
     setState(() {
       if (wishlistId != null) {
-        _pendingWishlistId = wishlistId;
-        _pendingInviteToken = inviteToken;
-        _pendingSharedText = null;
+        // First-wins: a queued list link must not clobber a cold-launch deep
+        // link (or an earlier queued link) already pending navigation.
+        if (_pendingWishlistId == null) {
+          _pendingWishlistId = wishlistId;
+          _pendingInviteToken = _extractInviteToken(normalized);
+        }
         return;
       }
 
-      _pendingSharedText = normalized;
+      // Append-with-dedupe → a unique FIFO buffer. De-dupe is load-bearing:
+      // HomeScreen re-triggers on initialSharedText value change, so adjacent
+      // equal heads would never advance. Also the intended "same URL shared
+      // twice before opening → one import" behavior.
+      if (!_pendingSharedTexts.contains(normalized)) {
+        _pendingSharedTexts.add(normalized);
+      }
     });
   }
 
@@ -380,7 +390,8 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
           currentUser: user,
           initialWishlistId: _pendingWishlistId,
           initialInviteToken: _pendingInviteToken,
-          initialSharedText: _pendingSharedText,
+          initialSharedText:
+              _pendingSharedTexts.isEmpty ? null : _pendingSharedTexts.first,
           onInitialWishlistHandled: () {
             if (_pendingWishlistId == null) {
               return;
@@ -390,10 +401,15 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
               _pendingInviteToken = null;
             });
           },
-          onInitialSharedTextHandled: () {
-            if (_pendingSharedText == null) return;
-            setState(() => _pendingSharedText = null);
-            _consumePendingSharedText();
+          onInitialSharedTextHandled: (handledText) {
+            // Advance by value (not removeAt(0)) so a concurrent tail-append
+            // can never drop the wrong item.
+            setState(() => _pendingSharedTexts.remove(handledText));
+            // Re-drain native only once the buffer empties — the next head is
+            // already buffered, and a value-change retrigger imports it.
+            if (_pendingSharedTexts.isEmpty) {
+              _consumePendingSharedTexts();
+            }
           },
         );
       },

@@ -256,13 +256,15 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			rank,
 			notes,
 			price_label,
+			price_amount,
+			price_currency_code,
 			priority,
 			status,
 			image_url,
 			product_url,
 			purchased_at
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $11, $12)
 		RETURNING
 			id::text,
 			wishlist_id::text,
@@ -270,6 +272,8 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			rank,
 			notes,
 			price_label,
+			price_amount::text,
+			price_currency_code,
 			priority,
 			status,
 			image_url,
@@ -277,7 +281,7 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			purchased_at,
 			created_at,
 			updated_at
-	`, params.WishlistID, params.Title, nextRank, params.Notes, params.PriceLabel, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt)
+	`, params.WishlistID, params.Title, nextRank, params.Notes, params.PriceLabel, params.PriceAmount, params.PriceCurrencyCode, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt)
 
 	_, item, err := scanWishlistItem(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -327,6 +331,8 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 			rank,
 			notes,
 			price_label,
+			price_amount::text,
+			price_currency_code,
 			priority,
 			status,
 			image_url,
@@ -492,6 +498,19 @@ func (r *Repository) DeleteInvite(ctx context.Context, wishlistID string, invite
 	return nil
 }
 
+// DeleteExpiredInvites removes invites past their expiry that were never accepted
+// and returns the number deleted. Used by the maintenance sweep.
+func (r *Repository) DeleteExpiredInvites(ctx context.Context) (int64, error) {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM wishlist_invites
+		WHERE expires_at < NOW() AND accepted_at IS NULL
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired invites: %w", err)
+	}
+	return commandTag.RowsAffected(), nil
+}
+
 func (r *Repository) GetInviteByTokenHash(ctx context.Context, wishlistID string, tokenHash string) (domain.WishlistInvite, error) {
 	row := r.pool.QueryRow(ctx, `
 		SELECT
@@ -654,6 +673,8 @@ func (r *Repository) attachItems(ctx context.Context, indexByID map[string]int, 
 			i.rank,
 			i.notes,
 			i.price_label,
+			i.price_amount::text,
+			i.price_currency_code,
 			i.priority,
 			i.status,
 			i.image_url,
@@ -792,6 +813,8 @@ func (r *Repository) listItemsByWishlistID(ctx context.Context, querier rowQuery
 			rank,
 			notes,
 			price_label,
+			price_amount::text,
+			price_currency_code,
 			priority,
 			status,
 			image_url,
@@ -933,6 +956,8 @@ func scanWishlistItem(row interface{ Scan(...any) error }) (string, domain.Wishl
 		&item.Rank,
 		&item.Notes,
 		&item.PriceLabel,
+		&item.PriceAmount,
+		&item.PriceCurrencyCode,
 		&item.Priority,
 		&item.Status,
 		&item.ImageURL,

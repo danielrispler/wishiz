@@ -137,6 +137,110 @@ func TestServiceMarksNeedsReviewWhenPriceIsNotHighConfidence(t *testing.T) {
 	}
 }
 
+func TestServiceCompletesViaVerdictAndUsesCanonicalURL(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{claimedJob: productImportJob()}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:          "Desk lamp",
+				PriceAmount:   "40.00",
+				PriceCurrency: "USD",
+				ImageURL:      "https://example.com/lamp.png",
+				CanonicalURL:  "https://example.com/products/lamp",
+				Verdict:       scrapeapp.VerdictAutoComplete,
+			},
+		},
+		nil,
+	)
+
+	if _, err := service.ProcessNext(context.Background()); err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if repo.settled.Status != importdomain.StatusCompleted {
+		t.Fatalf("expected completed via verdict, got %q", repo.settled.Status)
+	}
+	if wishlists.added == nil || value(wishlists.added.ProductURL) != "https://example.com/products/lamp" {
+		t.Fatalf("expected canonical product URL on item, got %+v", wishlists.added)
+	}
+}
+
+func TestServiceNeedsReviewViaVerdict(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{claimedJob: productImportJob()}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:          "Desk lamp",
+				PriceAmount:   "40.00",
+				PriceCurrency: "USD",
+				ImageURL:      "https://example.com/lamp.png",
+				Verdict:       scrapeapp.VerdictNeedsReview,
+			},
+		},
+		nil,
+	)
+
+	if _, err := service.ProcessNext(context.Background()); err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if repo.settled.Status != importdomain.StatusNeedsReview {
+		t.Fatalf("expected needs_review via verdict, got %q", repo.settled.Status)
+	}
+	if wishlists.added != nil {
+		t.Fatalf("expected no item creation for needs_review")
+	}
+}
+
+func TestServiceReportsProgressMonotonically(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{claimedJob: productImportJob()}
+	service := NewService(
+		testLogger(),
+		repo,
+		&fakeWishlistService{},
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name: "Lamp", PriceAmount: "40", PriceCurrency: "USD",
+				ImageURL: "https://x/lamp.png", Verdict: scrapeapp.VerdictAutoComplete,
+			},
+			emit: []progressEvent{
+				{"validating", 5},
+				{"rendering", 20},
+				{"rendering", 20}, // duplicate — throttled out
+				{"extracting", 70},
+				{"done", 100},
+			},
+		},
+		nil,
+	)
+
+	if _, err := service.ProcessNext(context.Background()); err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	got := repo.progress
+	want := []progressEvent{{"validating", 5}, {"rendering", 20}, {"extracting", 70}, {"done", 100}}
+	if len(got) != len(want) {
+		t.Fatalf("expected throttled progress %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("progress[%d] = %v, want %v (all %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestResolveOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -260,6 +364,7 @@ type fakeRepo struct {
 	claimedJob importdomain.Job
 	settled    ports.JobOutcome
 	settledID  string
+	progress   []progressEvent
 }
 
 func (r *fakeRepo) CreateOrGet(context.Context, ports.CreateJobParams, time.Duration) (importdomain.Job, bool, error) {
@@ -282,12 +387,24 @@ func (r *fakeRepo) Acknowledge(context.Context, string, time.Time) (importdomain
 	return importdomain.Job{}, nil
 }
 
-func (r *fakeRepo) ReleaseStuck(context.Context, ports.ReleaseStuckParams) (int64, int64, error) {
+func (r *fakeRepo) ReleaseStuck(
+	context.Context, ports.ReleaseStuckParams,
+) (releasedCount int64, failedCount int64, err error) {
 	return 0, 0, nil
 }
 
 func (r *fakeRepo) ClaimNext(context.Context, ports.ClaimParams) (importdomain.Job, error) {
 	return r.claimedJob, nil
+}
+
+func (r *fakeRepo) UpdateProgress(_ context.Context, _ string, stage string, percent int) error {
+	r.progress = append(r.progress, progressEvent{stage, percent})
+	return nil
+}
+
+type progressEvent struct {
+	stage   string
+	percent int
 }
 
 func (r *fakeRepo) Settle(_ context.Context, id string, outcome ports.JobOutcome) (importdomain.Job, error) {
@@ -303,9 +420,19 @@ func (r *fakeRepo) Assign(context.Context, string, string, string) (importdomain
 type fakeScraper struct {
 	product scrapeapp.Product
 	err     error
+	emit    []progressEvent
 }
 
 func (s fakeScraper) Scrape(context.Context, string, string) (scrapeapp.Product, error) {
+	return s.product, s.err
+}
+
+func (s fakeScraper) ScrapeWithProgress(
+	_ context.Context, _ string, _ string, reporter scrapeapp.ProgressReporter,
+) (scrapeapp.Product, error) {
+	for _, event := range s.emit {
+		reporter(event.stage, event.percent)
+	}
 	return s.product, s.err
 }
 

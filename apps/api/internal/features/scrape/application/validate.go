@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 type HostResolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
@@ -24,7 +29,7 @@ func ValidateProductURL(ctx context.Context, resolver HostResolver, rawURL strin
 		return nil, BadRequest("url must be a valid http or https URL")
 	}
 
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+	if parsedURL.Scheme != schemeHTTP && parsedURL.Scheme != schemeHTTPS {
 		return nil, BadRequest("url must use http or https")
 	}
 	if parsedURL.Host == "" {

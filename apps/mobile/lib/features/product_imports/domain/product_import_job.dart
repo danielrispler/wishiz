@@ -19,6 +19,8 @@ class ProductImportJob {
     this.priceWarnings = const [],
     this.imageUrl,
     required this.completeness,
+    this.progressStage,
+    this.progressPercent = 0,
     this.createdItemId,
     this.acknowledgedAt,
     required this.createdAt,
@@ -44,6 +46,8 @@ class ProductImportJob {
   final List<String> priceWarnings;
   final String? imageUrl;
   final int completeness;
+  final String? progressStage;
+  final int progressPercent;
   final String? createdItemId;
   final DateTime? acknowledgedAt;
   final DateTime createdAt;

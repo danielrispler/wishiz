@@ -13,7 +13,7 @@ class WishlistMetadataChip extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh.withOpacity(0.4),
+        color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(10),
       ),
       padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing2, vertical: 4),
@@ -21,7 +21,7 @@ class WishlistMetadataChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 12, color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
+            Icon(icon, size: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
             const SizedBox(width: 4),
           ],
           Text(
@@ -58,7 +58,7 @@ class WishlistTapMetadataChip extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: colorScheme.primaryContainer.withOpacity(0.5),
+          color: colorScheme.primaryContainer.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(10),
         ),
         padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing2, vertical: 4),

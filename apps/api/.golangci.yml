@@ -1,82 +1,99 @@
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment # This can be noisy
-  gocyclo:
-    min-complexity: 20
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: US
-  lll:
-    line-length: 120
-  goimports:
-    local-prefixes: github.com/danielrispler/wishiz/apps/api
-  unused:
-    check-exported: false
-  unparam:
-    check-exported: false
-  nakedret:
-    max-func-lines: 30
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-    disabled-checks:
-      - paramTypeCombine
-      - wrapperFunc
-
+version: "2"
+run:
+  tests: true
+  allow-parallel-runners: true
 linters:
+  default: none
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - unused
-    - gosimple
-    - ineffassign
-    - typecheck
-    - revive
-    - gofmt
-    - goimports
-    - misspell
-    - gocritic
-    - goconst
-    - gocyclo
     - asciicheck
-    - prealloc
     - bidichk
     - bodyclose
     - dogsled
     - durationcheck
+    - errcheck
     - errname
     - errorlint
     - forcetypeassert
+    - goconst
+    - gocritic
+    - gocyclo
+    - govet
+    - ineffassign
     - makezero
+    - misspell
     - nilerr
     - nilnil
     - noctx
     - paralleltest
+    - prealloc
+    - revive
+    - staticcheck
     - unconvert
     - unparam
+    - unused
     - wastedassign
-  disable-all: true
-
-run:
-  timeout: 5m
-  tests: true
-  allow-parallel-runners: true
-
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - paramTypeCombine
+        - wrapperFunc
+      enabled-tags:
+        - diagnostic
+        - style
+    gocyclo:
+      min-complexity: 20
+    govet:
+      disable:
+        - fieldalignment
+      enable-all: true
+    lll:
+      line-length: 120
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 30
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+    unparam:
+      check-exported: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test files: tolerate constant args to helpers and context-less test
+      # HTTP requests (httptest.NewRequest) — both are idiomatic in tests.
+      - linters:
+          - goconst
+          - noctx
+          - unparam
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: true
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - goconst
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/danielrispler/wishiz/apps/api
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

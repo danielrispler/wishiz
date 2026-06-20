@@ -2,373 +2,214 @@ package application
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
 )
 
-func TestServiceFallsBackToHeadlessWhenFastIsIncomplete(t *testing.T) {
+const autoCompleteHTML = `<html><head>
+	<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp","image":"https://x/lamp.png",
+		"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script></head><body></body></html>`
+
+const partialHTML = `<html><head><meta property="og:title" content="Desk Lamp"></head><body></body></html>`
+
+func testService(t *testing.T, static, render Fetcher, probe CandidateSource, converter PriceConverter) *Service {
+	t.Helper()
+	return NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		NewEngine(EngineConfig{}),
+		static, render, probe, publicResolver(), converter,
+		ServiceConfig{Budget: 5 * time.Second, MaxConcurrentRenders: 2},
+	)
+}
+
+func TestServiceAutoCompletesFromStaticAndEarlyAbortsRender(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name: "Nike Shox TL",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Nike Shox TL",
-				PriceAmount:     "599.90",
-				PriceCurrency:   "ILS",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://example.com/nike.png",
-			}, nil
-		}},
-		stubResolver{},
-		nil,
-	)
+	var rendered atomic.Bool
+	static := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
+	render := blockingFetcher{canceled: &rendered}
 
-	product, err := service.Scrape(context.Background(), "https://www.nike.com/product", "ILS")
+	product, err := testService(t, static, render, nil, nil).
+		Scrape(context.Background(), "https://shop.example/p", "USD")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if product.Source != sourceHeadless {
-		t.Fatalf("expected headless source, got %q", product.Source)
+	if product.Verdict != VerdictAutoComplete || product.Name != "Desk Lamp" {
+		t.Fatalf("expected auto_complete from static, got %+v", product)
+	}
+	if !rendered.Load() {
+		t.Fatalf("expected render to be early-aborted (ctx canceled)")
 	}
 }
 
-func TestServiceRejectsPrivateHosts(t *testing.T) {
+func TestServiceWaitsForRenderWhenStaticInsufficient(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{},
-		stubScraper{},
-		stubResolver{},
-		nil,
-	)
+	static := fakeFetcher{result: FetchResult{HTML: partialHTML, FinalURL: "https://shop.example/p"}}
+	render := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
 
-	_, err := service.Scrape(context.Background(), "http://127.0.0.1/private", "ILS")
-	if err == nil {
-		t.Fatalf("expected validation error")
+	product, err := testService(t, static, render, nil, nil).
+		Scrape(context.Background(), "https://shop.example/p", "USD")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
+	if product.Verdict != VerdictAutoComplete || product.PriceAmount != "40" {
+		t.Fatalf("expected render to complete the product, got %+v", product)
+	}
+}
 
+func TestServiceRejectsPrivateHost(t *testing.T) {
+	t.Parallel()
+
+	_, err := testService(t, fakeFetcher{}, fakeFetcher{}, nil, nil).
+		Scrape(context.Background(), "http://127.0.0.1/private", "USD")
 	appErr, ok := AsError(err)
 	if !ok || appErr.Code != ErrorCodeBadRequest {
-		t.Fatalf("expected bad request error, got %v", err)
+		t.Fatalf("expected bad request, got %v", err)
 	}
 }
 
-func TestServiceReturnsScrapeFailureWhenBothPathsHaveNoUsableData(t *testing.T) {
+func TestServiceConvertsPrice(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{}, errors.New("blocked")
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{}, nil
-		}},
-		stubResolver{},
-		nil,
-	)
+	static := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
+	converter := stubConverter{amount: "144.00", currency: "ILS"}
 
-	_, err := service.Scrape(context.Background(), "https://example.com/product", "ILS")
-	if err == nil {
-		t.Fatalf("expected scrape failure")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok || appErr.Code != ErrorCodeScrape {
-		t.Fatalf("expected scrape failure, got %v", err)
-	}
-}
-
-func TestServiceFailsWhenBothPathsAreIncomplete(t *testing.T) {
-	t.Parallel()
-
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name: "חולצת פולו מכותנה Loose Fit",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:     "חולצת פולו מכותנה Loose Fit",
-				ImageURL: "https://image.hm.com/product.jpg",
-			}, nil
-		}},
-		stubResolver{},
-		nil,
-	)
-
-	_, err := service.Scrape(context.Background(), "https://www2.hm.com/product", "ILS")
-	if err == nil {
-		t.Fatalf("expected scrape failure")
-	}
-
-	appErr, ok := AsError(err)
-	if !ok || appErr.Code != ErrorCodeScrape {
-		t.Fatalf("expected scrape failure, got %v", err)
-	}
-}
-
-func TestServiceReturnsConvertedFastResultWithoutHeadless(t *testing.T) {
-	t.Parallel()
-
-	headlessCalled := false
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "100.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://example.com/sneakers.png",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			headlessCalled = true
-			return Product{}, nil
-		}},
-		stubResolver{},
-		stubConverter{amount: "360.00", currency: "ILS"},
-	)
-
-	product, err := service.Scrape(context.Background(), "https://example.com/product", "ILS")
+	product, err := testService(t, static, nil, nil, converter).
+		Scrape(context.Background(), "https://shop.example/p", "ILS")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if headlessCalled {
-		t.Fatalf("expected fast result to skip headless")
-	}
-	if product.PriceAmount != "360.00" || product.PriceCurrency != "ILS" || product.Source != sourceFast {
-		t.Fatalf("unexpected converted product: %+v", product)
+	if product.PriceAmount != "144.00" || product.PriceCurrency != "ILS" {
+		t.Fatalf("expected converted price, got %+v", product)
 	}
 }
 
-func TestServiceAppliesFifteenSecondScrapeDeadline(t *testing.T) {
+func TestServiceDowngradesOnConversionFailure(t *testing.T) {
 	t.Parallel()
 
-	var remaining time.Duration
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(ctx context.Context, _ string) (Product, error) {
-			deadline, ok := ctx.Deadline()
-			if !ok {
-				t.Fatalf("expected scrape deadline")
-			}
-			remaining = time.Until(deadline)
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "100.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://example.com/sneakers.png",
-			}, nil
-		}},
-		stubScraper{},
-		stubResolver{},
-		nil,
-	)
+	static := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
+	converter := stubConverter{failFrom: "USD"}
 
-	_, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
+	product, err := testService(t, static, nil, nil, converter).
+		Scrape(context.Background(), "https://shop.example/p", "ILS")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if remaining < 14*time.Second || remaining > defaultScrapeTimeout {
-		t.Fatalf("expected about %s remaining, got %s", defaultScrapeTimeout, remaining)
+	if product.PriceAmount != "40" || product.PriceCurrency != "USD" {
+		t.Fatalf("expected original price kept, got %+v", product)
+	}
+	if product.Verdict == VerdictAutoComplete {
+		t.Fatalf("unconverted price must not auto_complete")
+	}
+	if !containsStr(product.PriceWarnings, "currency_unconverted") {
+		t.Fatalf("expected currency_unconverted warning, got %v", product.PriceWarnings)
 	}
 }
 
-func TestServiceReturnsTimeoutWhenScrapeDeadlineExpires(t *testing.T) {
+func TestServiceShopifyProbeContributes(t *testing.T) {
 	t.Parallel()
 
-	headlessCalled := false
-	parentCtx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer cancel()
+	static := fakeFetcher{result: FetchResult{HTML: partialHTML, FinalURL: "https://store.example/products/lamp"}}
+	probe := fakeProbe{candidates: []extractors.Candidate{
+		{Field: extractors.FieldName, Value: "Probe Lamp", Source: extractors.SourceShopify},
+		{Field: extractors.FieldImage, Value: "https://cdn/lamp.jpg", Source: extractors.SourceShopify},
+		extractors.NewShopifyPriceCandidate("40", "USD"),
+	}}
+
+	product, err := testService(t, static, nil, probe, nil).
+		Scrape(context.Background(), "https://store.example/products/lamp", "USD")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if product.Verdict != VerdictAutoComplete || product.Name != "Probe Lamp" {
+		t.Fatalf("expected probe to complete the product, got %+v", product)
+	}
+}
+
+func TestServiceTimesOutWhenNoData(t *testing.T) {
+	t.Parallel()
 
 	service := NewService(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(ctx context.Context, _ string) (Product, error) {
-			<-ctx.Done()
-			return Product{Name: "Slow product"}, ctx.Err()
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			headlessCalled = true
-			return Product{}, nil
-		}},
-		stubResolver{},
-		nil,
+		NewEngine(EngineConfig{}),
+		slowFetcher{}, nil, nil, publicResolver(), nil,
+		ServiceConfig{Budget: 50 * time.Millisecond},
 	)
-
-	_, err := service.Scrape(parentCtx, "https://example.com/product", "USD")
-	if err == nil {
-		t.Fatalf("expected timeout error")
-	}
+	_, err := service.Scrape(context.Background(), "https://shop.example/p", "USD")
 	appErr, ok := AsError(err)
 	if !ok || appErr.Code != ErrorCodeTimeout {
-		t.Fatalf("expected timeout error, got %v", err)
-	}
-	if headlessCalled {
-		t.Fatalf("expected headless scrape to be skipped after timeout")
+		t.Fatalf("expected timeout, got %v", err)
 	}
 }
 
-func TestServiceFallsBackToHeadlessWhenFastPriceIsNotHighConfidence(t *testing.T) {
+func TestServiceEmitsProgressStagesInOrder(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "10.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceSuspicious,
-				ImageURL:        "https://example.com/fast.png",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "100.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://example.com/headless.png",
-			}, nil
-		}},
-		stubResolver{},
-		nil,
-	)
-
-	product, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if product.Source != sourceHeadless || product.PriceAmount != "100.00" {
-		t.Fatalf("expected high-confidence headless product, got %+v", product)
-	}
-}
-
-func TestServiceReturnsBestCompleteProductWhenPriceNeedsReview(t *testing.T) {
-	t.Parallel()
-
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "10.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceSuspicious,
-				ImageURL:        "https://example.com/fast.png",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{}, nil
-		}},
-		stubResolver{},
-		nil,
-	)
-
-	product, err := service.Scrape(context.Background(), "https://example.com/product", "USD")
-	if err != nil {
-		t.Fatalf("expected reviewable product response, got %v", err)
-	}
-	if product.PriceConfidence != PriceConfidenceSuspicious || product.Source != sourceFast {
-		t.Fatalf("unexpected product: %+v", product)
-	}
-}
-
-func TestServiceFallsBackWhenFastConversionFails(t *testing.T) {
-	t.Parallel()
-
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:          "Sneakers",
-				PriceAmount:   "100.00",
-				PriceCurrency: "USD",
-				ImageURL:      "https://example.com/fast.png",
-			}, nil
-		}},
-		stubScraper{scrape: func(context.Context, string) (Product, error) {
-			return Product{
-				Name:            "Sneakers",
-				PriceAmount:     "320.00",
-				PriceCurrency:   "ILS",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://example.com/headless.png",
-			}, nil
-		}},
-		stubResolver{},
-		stubConverter{failFrom: "USD"},
-	)
-
-	product, err := service.Scrape(context.Background(), "https://example.com/product", "ILS")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if product.PriceAmount != "320.00" || product.PriceCurrency != "ILS" || product.ImageURL != "https://example.com/headless.png" || product.Source != sourceHeadless {
-		t.Fatalf("unexpected product: %+v", product)
-	}
-}
-
-func TestServiceNormalizesGoogleURLBeforeScraping(t *testing.T) {
-	t.Parallel()
-
-	var scrapedURL string
-	service := NewService(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stubScraper{scrape: func(_ context.Context, rawURL string) (Product, error) {
-			scrapedURL = rawURL
-			return Product{
-				Name:            "Jacket",
-				PriceAmount:     "80.00",
-				PriceCurrency:   "USD",
-				PriceConfidence: PriceConfidenceHigh,
-				ImageURL:        "https://merchant.example/jacket.png",
-			}, nil
-		}},
-		stubScraper{},
-		stubResolver{},
-		nil,
-	)
-
-	_, err := service.Scrape(
-		context.Background(),
-		"https://www.google.com/url?q=https%3A%2F%2Fmerchant.example%2Fproducts%2Fjacket",
-		"USD",
+	static := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
+	var stages []string
+	_, err := testService(t, static, nil, nil, nil).ScrapeWithProgress(
+		context.Background(), "https://shop.example/p", "USD",
+		func(stage string, _ int) { stages = append(stages, stage) },
 	)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if scrapedURL != "https://merchant.example/products/jacket" {
-		t.Fatalf("expected merchant URL, got %q", scrapedURL)
+	want := []string{StageValidating, StageExtracting, StageCrossChecking, StageDone}
+	if len(stages) != len(want) {
+		t.Fatalf("unexpected stages: %v", stages)
+	}
+	for i, stage := range want {
+		if stages[i] != stage {
+			t.Fatalf("stage %d = %q, want %q (all: %v)", i, stages[i], stage, stages)
+		}
 	}
 }
 
-type stubScraper struct {
-	scrape func(ctx context.Context, rawURL string) (Product, error)
+// --- fakes ---
+
+type fakeFetcher struct {
+	result FetchResult
+	err    error
 }
 
-func (s stubScraper) Scrape(ctx context.Context, rawURL string) (Product, error) {
-	if s.scrape == nil {
-		return Product{}, nil
-	}
-	return s.scrape(ctx, rawURL)
+func (f fakeFetcher) Fetch(context.Context, string) (FetchResult, error) {
+	return f.result, f.err
+}
+
+type slowFetcher struct{}
+
+func (slowFetcher) Fetch(ctx context.Context, _ string) (FetchResult, error) {
+	<-ctx.Done()
+	return FetchResult{}, ctx.Err()
+}
+
+type blockingFetcher struct {
+	canceled *atomic.Bool
+}
+
+func (b blockingFetcher) Fetch(ctx context.Context, _ string) (FetchResult, error) {
+	<-ctx.Done()
+	b.canceled.Store(true)
+	return FetchResult{}, ctx.Err()
+}
+
+type fakeProbe struct {
+	candidates []extractors.Candidate
+}
+
+func (p fakeProbe) Candidates(context.Context, string) ([]extractors.Candidate, error) {
+	return p.candidates, nil
+}
+
+func publicResolver() stubResolver {
+	return stubResolver{addresses: []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}}
 }
 
 type stubConverter struct {
@@ -377,9 +218,9 @@ type stubConverter struct {
 	failFrom string
 }
 
-func (s stubConverter) Convert(amount string, fromCurrency string, toCurrency string) (string, string, error) {
+func (s stubConverter) Convert(amount, fromCurrency, toCurrency string) (converted string, code string, err error) {
 	if s.failFrom != "" && fromCurrency == s.failFrom {
-		return "", "", fmt.Errorf("conversion failed")
+		return "", "", &Error{Code: ErrorCodeScrape, Message: "conversion failed"}
 	}
 	if fromCurrency == toCurrency {
 		return amount, toCurrency, nil

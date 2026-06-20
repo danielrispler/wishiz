@@ -48,17 +48,22 @@ type UpdateWishlistParams struct {
 }
 
 type AddItemParams struct {
-	WishlistID  string
-	Title       string
-	Notes       *string
-	PriceLabel  *string
-	Priority    string
-	Status      string
-	ImageURL    *string
-	ProductURL  *string
-	PurchasedAt *time.Time
+	WishlistID        string
+	Title             string
+	Notes             *string
+	PriceLabel        *string
+	PriceAmount       *string
+	PriceCurrencyCode *string
+	Priority          string
+	Status            string
+	ImageURL          *string
+	ProductURL        *string
+	PurchasedAt       *time.Time
 }
 
+// UpdateItemParams deliberately omits PriceAmount/PriceCurrencyCode: structured
+// price is an import-time snapshot. Edits manage the display PriceLabel only, and
+// UpdateItem preserves the structured columns rather than nulling them.
 type UpdateItemParams struct {
 	WishlistID  string
 	ItemID      string

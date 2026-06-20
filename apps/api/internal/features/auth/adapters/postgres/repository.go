@@ -255,6 +255,19 @@ func (r *Repository) DeleteSessionByTokenHash(ctx context.Context, tokenHash str
 	return nil
 }
 
+// DeleteExpiredSessions removes session rows whose expiry has passed and returns
+// the number deleted. Used by the maintenance sweep; safe to call repeatedly.
+func (r *Repository) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM app_sessions
+		WHERE expires_at < NOW()
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return commandTag.RowsAffected(), nil
+}
+
 func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 	var user domain.User
 	var rawBrands []string

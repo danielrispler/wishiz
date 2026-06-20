@@ -148,10 +148,29 @@ func resolveField(
 	})
 
 	winner := sorted[0]
+
+	// Image is a display asset: any valid product image is acceptable, so two
+	// authoritative sources offering different renditions of the same photo
+	// (og:image vs a JSON-LD thumbnail — near-universal) is NOT a conflict. Link
+	// is likewise exempt (canonical wins outright).
+	conflict := field != extractors.FieldLink &&
+		field != extractors.FieldImage &&
+		hasTrustedDisagreement(sorted)
+
+	// A multi-offer JSON-LD range (one Offer per size/color variant) yields
+	// several authoritative-but-different prices. The amount rendered in the
+	// visible DOM tells us which variant the shopper actually sees, so a single
+	// displayed price resolves the range instead of forcing needs_review.
+	if conflict && field == extractors.FieldPrice {
+		if disambiguated := displayedPriceWinner(sorted, candidates); disambiguated != nil {
+			winner = disambiguated
+			conflict = false
+		}
+	}
+
 	confidence := confidenceFor(field, winner)
 	warnings := winner.warnings
-
-	if field != extractors.FieldLink && hasTrustedDisagreement(sorted) {
+	if conflict {
 		confidence = ConfidenceConflict
 		warnings = append(warnings, extractors.WarningConflict)
 	}
@@ -165,6 +184,52 @@ func resolveField(
 		inferred:   winner.rep.Inferred,
 		warnings:   uniqueStrings(warnings),
 	}
+}
+
+// displayedPriceWinner resolves a price range using the amount rendered in the
+// visible DOM. When exactly one authoritative price group's amount equals a
+// generic-DOM (display) price, that group is what the shopper sees and wins.
+// If no displayed price matches, or several do (the displayed price is itself
+// ambiguous, e.g. a strikethrough was-price shown alongside the sale price), the
+// conflict stands. Display prices flagged non-primary ("you may also like") are
+// ignored so a carousel price can't disambiguate the wrong way.
+func displayedPriceWinner(groups []*candidateGroup, candidates []extractors.Candidate) *candidateGroup {
+	displayed := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if candidate.Field != extractors.FieldPrice || candidate.Source != extractors.SourceGenericDOM {
+			continue
+		}
+		if hasWarning(candidate.Warnings, extractors.WarningNonPrimaryContext) {
+			continue
+		}
+		displayed[candidate.Value] = struct{}{}
+	}
+	if len(displayed) == 0 {
+		return nil
+	}
+	var match *candidateGroup
+	for _, group := range groups {
+		if group.maxTier != tierAuthoritative {
+			continue
+		}
+		if _, ok := displayed[group.value]; !ok {
+			continue
+		}
+		if match != nil {
+			return nil // displayed price is ambiguous → keep the conflict
+		}
+		match = group
+	}
+	return match
+}
+
+func hasWarning(warnings []string, target string) bool {
+	for _, warning := range warnings {
+		if warning == target {
+			return true
+		}
+	}
+	return false
 }
 
 func confidenceFor(field extractors.Field, group *candidateGroup) FieldConfidence {

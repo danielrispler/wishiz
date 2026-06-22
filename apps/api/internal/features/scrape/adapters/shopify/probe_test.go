@@ -45,6 +45,24 @@ func TestParseProductJSON(t *testing.T) {
 	}
 }
 
+// Regression (apc-us.com): a .json variant with no presentment_prices still
+// carries price_currency on the bare variant. Discarding it emitted a
+// currency-less price that conflicted with the page's json_ld USD price and
+// forced needs_review. The probe must read price_currency.
+func TestParseProductJSONBareVariantCurrency(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://store.example")
+	data := []byte(`{"product":{"title":"Grace Mini Bag","image":{"src":"https://cdn/bag.jpg"},
+		"variants":[{"price":"375.00","price_currency":"usd"}]}}`)
+
+	candidates := parseProductJSON(data, false, base)
+	p, ok := price(candidates)
+	if !ok || p.Value != "375.00" || p.Currency != "USD" || p.Source != extractors.SourceShopify {
+		t.Fatalf("unexpected price: %+v (ok=%v)", p, ok)
+	}
+}
+
 func TestParseProductJSDotJSCentsNoCurrencySkipsPrice(t *testing.T) {
 	t.Parallel()
 

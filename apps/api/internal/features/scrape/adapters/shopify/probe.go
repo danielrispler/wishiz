@@ -152,6 +152,7 @@ type shopifyProduct struct {
 
 type shopifyVariant struct {
 	Price             json.RawMessage `json:"price"`
+	PriceCurrency     string          `json:"price_currency"`
 	PresentmentPrices []struct {
 		Price struct {
 			Amount       string `json:"amount"`
@@ -211,12 +212,15 @@ func firstImage(parsed shopifyProduct, base *url.URL) string {
 }
 
 // variantPrice returns the first variant's amount and currency. presentment_prices
-// is the only path that carries a currency: its amount is already major-unit and
-// is returned unscaled (a zero-decimal currency like JPY must not be divided by
-// 100). The .json bare price is also major-unit, returned with an empty currency
-// for downstream inference. The .js bare price is integer minor units with no
-// currency — we can know neither the decimal exponent nor the label, so we skip
-// it rather than emit a price we can't both scale and label.
+// is preferred: its amount is already major-unit and is returned unscaled (a
+// zero-decimal currency like JPY must not be divided by 100). The .json bare
+// price is also major-unit; its sibling price_currency field labels it (so the
+// price reinforces the page's currency instead of emitting a currency-less
+// amount that consensus treats as a separate price). When price_currency is
+// absent the currency is left empty for downstream inference. The .js bare price
+// is integer minor units with no currency — we can know neither the decimal
+// exponent nor the label, so we skip it rather than emit a price we can't both
+// scale and label.
 func variantPrice(variants []shopifyVariant, fromJS bool) (amount string, currency string, ok bool) {
 	if len(variants) == 0 {
 		return "", "", false
@@ -237,7 +241,7 @@ func variantPrice(variants []shopifyVariant, fromJS bool) (amount string, curren
 		// Integer minor units, no currency: skip (see doc comment).
 		return "", "", false
 	}
-	return raw, "", true
+	return raw, strings.ToUpper(strings.TrimSpace(variant.PriceCurrency)), true
 }
 
 func absolute(base *url.URL, candidate string) string {

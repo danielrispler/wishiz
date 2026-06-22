@@ -262,38 +262,54 @@ func decentSourceCount(field extractors.Field, group *candidateGroup) int {
 }
 
 // hasTrustedDisagreement reports a conflict only between sources of comparable
-// trust: ≥2 authoritative groups with different values, or — when no
-// authoritative source is present — ≥2 decent groups that disagree. An
+// trust: two authoritative groups that are mutually incompatible, or — when no
+// authoritative source is present — two incompatible decent groups. An
 // authoritative source is never overruled (or flagged) by a merely-decent one,
 // so an authoritative Shopify/JSON-LD value wins outright over a junky og:title.
 func hasTrustedDisagreement(groups []*candidateGroup) bool {
-	authoritative := map[string]struct{}{}
-	decent := map[string]struct{}{}
+	var authoritative, decent []*candidateGroup
 	for _, group := range groups {
-		key := disagreementKey(group)
 		switch group.maxTier {
 		case tierAuthoritative:
-			authoritative[key] = struct{}{}
+			authoritative = append(authoritative, group)
 		case tierDecent:
-			decent[key] = struct{}{}
+			decent = append(decent, group)
 		case tierNone, tierDisplay, tierWeak:
 			// not trusted enough to count toward a conflict
 		}
 	}
-	if len(authoritative) >= 2 {
-		return true
+	if len(authoritative) >= 1 {
+		// A conflict requires ≥2 authoritative groups that genuinely contradict;
+		// one authoritative group (even alongside decent ones) is never a conflict.
+		return anyIncompatible(authoritative)
 	}
-	if len(authoritative) == 1 {
-		return false
-	}
-	return len(decent) >= 2
+	return anyIncompatible(decent)
 }
 
-// disagreementKey combines amount and currency so that two price groups with the
-// same amount but different currency (100 USD vs 100 EUR) count as a conflict.
-// Currency is empty for non-price fields, so this is a no-op for name/image/link.
-func disagreementKey(group *candidateGroup) string {
-	return group.value + "\x00" + group.currency
+// anyIncompatible reports whether any two groups in the set genuinely contradict.
+func anyIncompatible(groups []*candidateGroup) bool {
+	for i := range groups {
+		for j := i + 1; j < len(groups); j++ {
+			if groupsIncompatible(groups[i], groups[j]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// groupsIncompatible reports whether two candidate groups genuinely contradict.
+// Different values always conflict. For prices, the same amount with two
+// DIFFERENT known currencies (100 USD vs 100 EUR) conflicts, but the same amount
+// where one side's currency is empty/unknown does NOT — an amount with no
+// currency is less specific, not contradictory (a Shopify probe price reinforces
+// the page's USD price rather than fighting it). Currency is empty for non-price
+// fields, so this reduces to a value comparison for name/image/link.
+func groupsIncompatible(a, b *candidateGroup) bool {
+	if a.value != b.value {
+		return true
+	}
+	return a.currency != "" && b.currency != "" && a.currency != b.currency
 }
 
 func uniqueStrings(values []string) []string {

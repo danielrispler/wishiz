@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:wishiz/core/constants/app_constants.dart';
+import 'package:wishiz/core/theme/app_colors.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
+import 'package:wishiz/shared/widgets/gradient_progress_bar.dart';
+import 'package:wishiz/shared/widgets/shimmer_box.dart';
+import 'package:wishiz/shared/widgets/wishiz_image.dart';
 
 class ImportJobTile extends StatelessWidget {
   const ImportJobTile({
@@ -24,34 +29,44 @@ class ImportJobTile extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _JobStatusIcon(job: job),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _jobTitle(job),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 2),
-              if (job.isActive)
-                _ImportProgress(job: job)
-              else
-                Text(
-                  _jobSubtitle(job),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ],
-          ),
-        ),
+        // Thumbnail + body cross-fade+scale between the waiting skeleton and
+        // the settled item so the real content "pops" the moment a job lands.
+        // Action buttons live OUTSIDE the switcher so taps stay unambiguous
+        // even mid-transition (the switcher transiently mounts both children).
+        _morph(_JobThumbnail(job: job)),
+        const SizedBox(width: 12),
+        Expanded(child: _morph(_JobBody(job: job))),
         const SizedBox(width: 8),
-        Wrap(spacing: 4, children: _jobActions()),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StatePill(job: job),
+            if (_jobActions().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Wrap(spacing: 0, children: _jobActions()),
+            ],
+          ],
+        ),
       ],
+    );
+  }
+
+  Widget _morph(Widget child) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutBack,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+          child: child,
+        ),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(job.isActive ? 'active' : 'settled'),
+        child: child,
+      ),
     );
   }
 
@@ -128,68 +143,186 @@ class ImportJobTile extends StatelessWidget {
   }
 }
 
-class _JobStatusIcon extends StatelessWidget {
-  const _JobStatusIcon({required this.job});
+/// 40×40 leading slot. Shimmer while importing; the real product image once
+/// settled; a state-appropriate glyph when there is no image.
+class _JobThumbnail extends StatelessWidget {
+  const _JobThumbnail({required this.job});
+
+  static const double _size = 40;
+  static const BorderRadius _radius = BorderRadius.all(Radius.circular(10));
 
   final ProductImportJob job;
 
   @override
   Widget build(BuildContext context) {
     if (job.isActive) {
-      return const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
+      return const ShimmerBox(width: _size, height: _size, borderRadius: _radius);
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final imageUrl = job.imageUrl;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+    if (hasImage) {
+      return WishizImage(
+        source: imageUrl,
+        width: _size,
+        height: _size,
+        borderRadius: _radius,
+        backgroundColor: colorScheme.surfaceContainerHigh,
+        errorChild: _glyphTile(colorScheme),
       );
     }
-    if (job.isCompleted) {
-      return const Icon(Icons.check_circle_outline, size: 20);
-    }
-    if (job.needsReview) {
-      return const Icon(Icons.rate_review_outlined, size: 20);
-    }
+    return _glyphTile(colorScheme);
+  }
+
+  Widget _glyphTile(ColorScheme colorScheme) {
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(
+        borderRadius: _radius,
+        color: colorScheme.surfaceContainerHigh,
+      ),
+      alignment: Alignment.center,
+      child: _glyph(colorScheme),
+    );
+  }
+
+  Widget _glyph(ColorScheme colorScheme) {
+    final IconData icon;
     if (job.unsupported) {
-      return const Icon(Icons.block, size: 20);
+      icon = Icons.block;
+    } else if (job.failed) {
+      icon = Icons.error_outline;
+    } else {
+      icon = Icons.shopping_bag_outlined;
     }
-    return const Icon(Icons.error_outline, size: 20);
+    return Icon(
+      icon,
+      size: 18,
+      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+    );
   }
 }
 
-class _ImportProgress extends StatelessWidget {
-  const _ImportProgress({required this.job});
+/// Title + price/progress region. Ghost shimmer lines while importing; the real
+/// title and price (or a status subtitle) once the job settles.
+class _JobBody extends StatelessWidget {
+  const _JobBody({required this.job});
 
   final ProductImportJob job;
 
   @override
   Widget build(BuildContext context) {
-    final percent = job.progressPercent.clamp(0, 100);
     final theme = Theme.of(context);
+    if (job.isActive) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ShimmerBox(width: 110, height: 10),
+          const SizedBox(height: 8),
+          GradientProgressBar(
+            value: job.progressPercent <= 0 ? null : job.progressPercent / 100,
+          ),
+          const SizedBox(height: 5),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              _stageLabel(job),
+              key: ValueKey(_stageLabel(job)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final priceLabel = job.priceLabel?.trim();
+    final showPrice =
+        job.isCompleted && priceLabel != null && priceLabel.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _stageLabel(job),
+          _jobTitle(job),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall,
+          style: theme.textTheme.titleMedium,
         ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          // percent == 0 → indeterminate (just claimed). Otherwise animate
-          // smoothly between polled values so the bar glides rather than jumps.
-          child: percent == 0
-              ? const LinearProgressIndicator(minHeight: 4)
-              : TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 0, end: percent / 100),
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOut,
-                  builder: (context, value, _) =>
-                      LinearProgressIndicator(value: value, minHeight: 4),
-                ),
-        ),
+        const SizedBox(height: 2),
+        if (showPrice)
+          Text(
+            priceLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          )
+        else
+          Text(
+            _jobSubtitle(job),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
       ],
     );
+  }
+}
+
+/// Colour-coded status pill. Brand gradient while importing; tonal semantic
+/// tints once settled.
+class _StatePill extends StatelessWidget {
+  const _StatePill({required this.job});
+
+  final ProductImportJob job;
+
+  @override
+  Widget build(BuildContext context) {
+    final (String label, Color bg, Color fg, Gradient? gradient) = _style();
+    return Container(
+      decoration: BoxDecoration(
+        color: gradient == null ? bg : null,
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: fg,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  (String, Color, Color, Gradient?) _style() {
+    if (job.isActive) {
+      return ('Importing', AppColors.primary, AppColors.onPrimary,
+          AppColors.primaryGradient);
+    }
+    if (job.isCompleted) {
+      final label = job.wishlistId == null ? 'Ready' : 'Added';
+      return (label, AppColors.tertiary.withValues(alpha: 0.12),
+          AppColors.tertiary, null);
+    }
+    if (job.needsReview) {
+      return ('Needs review', AppColors.warningContainer, AppColors.warning,
+          null);
+    }
+    return ("Couldn't import", AppColors.errorContainer.withValues(alpha: 0.16),
+        AppColors.errorContainer, null);
   }
 }
 

@@ -58,6 +58,40 @@ func TestIsBrowserSubresourceAllowed(t *testing.T) {
 	}
 }
 
+// A bare domain must never pass as a product name. The classic leak is an
+// anti-bot / error page whose <title> is just the site host ("www.aritzia.com"):
+// it slipped through because isDomainOnly stripped "www." from the host but not
+// from the candidate, so "www.aritzia.com" != "aritzia.com" and survived.
+func TestValidateNameRejectsBareDomain(t *testing.T) {
+	t.Parallel()
+
+	host := "www.aritzia.com"
+	rejected := []string{
+		"www.aritzia.com",
+		"https://www.aritzia.com",
+		"http://www.aritzia.com/",
+		"www.aritzia.com/us/en/",
+		"aritzia.com",
+		"  WWW.ARITZIA.COM  ",
+	}
+	for _, name := range rejected {
+		if ValidateName(name, host) {
+			t.Errorf("expected %q to be rejected as a bare-domain name", name)
+		}
+	}
+
+	accepted := []string{
+		"The Lodge Pant™ - CruiseLinen™",
+		"Aritzia Super Puff",  // brand word in a real product name is fine
+		"Norre Media Console", // unrelated real name
+	}
+	for _, name := range accepted {
+		if !ValidateName(name, host) {
+			t.Errorf("expected %q to be accepted as a real product name", name)
+		}
+	}
+}
+
 type stubResolver struct {
 	addresses []net.IPAddr
 }

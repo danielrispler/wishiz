@@ -27,6 +27,10 @@ class AppColors {
   static const Color onErrorContainer = Color(0xFF510017);
   static const Color tertiary = Color(0xFF006A2D);
 
+  // Warning / review (amber) — dark enough to read as pill text on a soft tint
+  static const Color warning = Color(0xFF8A5A00);
+  static const Color warningContainer = Color(0xFFFCE8C4);
+
   // Signature gradient
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,

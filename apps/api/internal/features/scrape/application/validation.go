@@ -51,12 +51,28 @@ func isAntiBotName(name string) bool {
 }
 
 func isDomainOnly(name, host string) bool {
-	lower := strings.ToLower(strings.TrimSpace(name))
-	host = strings.ToLower(strings.TrimPrefix(host, "www."))
+	candidate := normalizeHostLike(name)
+	host = normalizeHostLike(host)
 	if host == "" {
 		return false
 	}
-	return lower == host || lower == strings.TrimSuffix(host, "."+topLevel(host))
+	return candidate == host || candidate == strings.TrimSuffix(host, "."+topLevel(host))
+}
+
+// normalizeHostLike reduces a string to its bare host form for domain comparison:
+// lowercased, scheme + "www." stripped, path/query/fragment dropped. Applied to
+// BOTH the candidate name and the host so an anti-bot/error page titled with the
+// raw domain ("https://www.aritzia.com/us/en/") is recognized as domain-only and
+// rejected — not accepted as a product name.
+func normalizeHostLike(value string) string {
+	v := strings.ToLower(strings.TrimSpace(value))
+	v = strings.TrimPrefix(v, "https://")
+	v = strings.TrimPrefix(v, "http://")
+	v = strings.TrimPrefix(v, "www.")
+	if i := strings.IndexAny(v, "/?#"); i >= 0 {
+		v = v[:i]
+	}
+	return strings.Trim(v, ". ")
 }
 
 func topLevel(host string) string {

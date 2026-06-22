@@ -3,19 +3,21 @@ package application
 import "fmt"
 
 // ComputeVerdict applies the per-field trust gates to decide whether a product
-// is safe to auto-complete. This is the kill-switch for "verify everything":
-// auto_complete requires name + image + price all HIGH (price not in conflict)
-// and currency HIGH-or-inferred-MEDIUM.
+// is safe to auto-complete. Calibration (relaxed): auto_complete requires a
+// name and price of at least MEDIUM confidence (price NOT in conflict and NOT
+// LOW/MISSING) and currency HIGH-or-inferred-MEDIUM. Image is display-only and
+// does NOT gate — a missing/low image still auto-completes. A genuine
+// disagreement between sources (ConfidenceConflict) is excluded by the
+// HIGH/MEDIUM membership test and still routes to review.
 func ComputeVerdict(product Product) (verdict Verdict, reasons []string) {
 	fields := product.Fields
 
-	nameOK := fields.Name == ConfidenceHigh
-	imageOK := fields.Image == ConfidenceHigh
-	priceOK := fields.Price == ConfidenceHigh
+	nameOK := fields.Name == ConfidenceHigh || fields.Name == ConfidenceMedium
+	priceOK := fields.Price == ConfidenceHigh || fields.Price == ConfidenceMedium
 	currencyOK := fields.Currency == ConfidenceHigh ||
 		(fields.Currency == ConfidenceMedium && product.CurrencyInferred)
 
-	if nameOK && imageOK && priceOK && currencyOK {
+	if nameOK && priceOK && currencyOK {
 		return VerdictAutoComplete, nil
 	}
 
@@ -27,9 +29,6 @@ func ComputeVerdict(product Product) (verdict Verdict, reasons []string) {
 	}
 	if !currencyOK {
 		reasons = append(reasons, reasonFor("currency", fields.Currency))
-	}
-	if !imageOK {
-		reasons = append(reasons, reasonFor("image", fields.Image))
 	}
 
 	if isReviewable(product) {

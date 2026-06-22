@@ -149,7 +149,6 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     required int newIndex,
   }) async {
     final messenger = ScaffoldMessenger.of(context);
-    if (newIndex > oldIndex) newIndex -= 1;
     final nextItems = List<WishlistItem>.from(visibleItems);
     nextItems.insert(newIndex, nextItems.removeAt(oldIndex));
     try {
@@ -446,10 +445,9 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                             buildDefaultDragHandles: false,
                             proxyDecorator: (child, index, animation) => Material(color: Colors.transparent, child: child),
                             itemCount: reorderItems.length,
-                            onReorder: (oldIndex, newIndex) {
-                              final adjustedNew = newIndex > oldIndex ? newIndex - 1 : newIndex;
+                            onReorderItem: (oldIndex, newIndex) {
                               final next = List<WishlistItem>.from(reorderItems);
-                              next.insert(adjustedNew, next.removeAt(oldIndex));
+                              next.insert(newIndex, next.removeAt(oldIndex));
                               setState(() => _reorderOverride = next);
                               _reorderItems(wishlist: wishlist, visibleItems: reorderItems, oldIndex: oldIndex, newIndex: newIndex);
                             },

@@ -50,6 +50,13 @@ func (e *Engine) Extract(html string, finalURL string, _ http.Header) []extracto
 	if inferred, ok := extractors.InferredCurrency(document, base, e.cfg.InferDotComUSD); ok {
 		candidates = append(candidates, inferred)
 	}
+	if brand, ok := extractors.BrandImage(document, base); ok {
+		// Display-only fallback, carried on its own field so consensus never sees
+		// it. Reconcile uses it only when no product image survives.
+		candidates = append(candidates, extractors.Candidate{
+			Field: extractors.FieldBrandImage, Value: brand, Source: extractors.SourceGenericDOM, Raw: brand,
+		})
+	}
 	return candidates
 }
 
@@ -95,7 +102,32 @@ func (e *Engine) Reconcile(candidates []extractors.Candidate, finalURL string) P
 	}
 
 	product.Verdict, product.Reasons = ComputeVerdict(product)
+
+	// Brand-image fallback: applied AFTER the verdict so it can never flip a
+	// result into review. When no product image survived consensus and the
+	// product is worth showing (not failed), fall back to the site brand asset so
+	// the item renders something instead of nothing.
+	if product.Verdict != VerdictFailed && product.ImageURL == "" {
+		if brand := brandImageOf(candidates); brand != "" {
+			product.ImageURL = brand
+			product.Fields.Image = ConfidenceLow
+			product.PriceWarnings = uniqueStrings(
+				append(product.PriceWarnings, extractors.WarningBrandImageFallback))
+		}
+	}
 	return product
+}
+
+// brandImageOf returns the display-only brand-image fallback value, if Extract
+// found one. It is kept out of consensus (its own field), so this direct lookup
+// is the only place it is read.
+func brandImageOf(candidates []extractors.Candidate) string {
+	for _, candidate := range candidates {
+		if candidate.Field == extractors.FieldBrandImage {
+			return candidate.Value
+		}
+	}
+	return ""
 }
 
 func validNameCandidates(candidates []extractors.Candidate, host string) []extractors.Candidate {

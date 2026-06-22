@@ -17,6 +17,11 @@ const (
 	FieldCurrency Field = "currency"
 	FieldImage    Field = "image"
 	FieldLink     Field = "link"
+	// FieldBrandImage is a display-only fallback asset (apple-touch-icon /
+	// favicon / rejected og:image). It is NOT a consensus field: resolveField is
+	// never run over it, so it never votes and never reaches price_source. The
+	// engine consults it only when no product image survives.
+	FieldBrandImage Field = "brand_image"
 )
 
 // SourceName identifies the extractor/source that produced a Candidate. Trust
@@ -69,6 +74,10 @@ const (
 	WarningCurrencyUnconverted = "currency_unconverted"
 	WarningDisplayOnlyImage    = "display_only_image"
 	WarningConflict            = "conflicting_candidates"
+	// WarningBrandImageFallback marks a product whose ImageURL is a site brand
+	// asset (logo/icon) used because no product image survived. Display-only — it
+	// never gates the verdict.
+	WarningBrandImageFallback = "brand_image_fallback"
 )
 
 // Candidate is a single extractor's vote for one field.

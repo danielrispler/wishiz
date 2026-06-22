@@ -205,9 +205,12 @@ func TestFetchSendsBrowserHeaders(t *testing.T) {
 	}
 }
 
+// TestFetchRetriesThenSucceeds is serial on purpose: it mutates the package-global
+// backoffBase, which the parallel TestRetryClassificationAndBackoff reads via
+// backoff(). Keeping it in the serial phase avoids a data race on that global.
+//
+//nolint:paralleltest // intentionally serial (mutates backoffBase); see comment above.
 func TestFetchRetriesThenSucceeds(t *testing.T) {
-	t.Parallel()
-
 	old := backoffBase
 	backoffBase = time.Millisecond
 	defer func() { backoffBase = old }()
@@ -230,6 +233,98 @@ func TestFetchRetriesThenSucceeds(t *testing.T) {
 	}
 	if result.HTML != "<html>recovered</html>" || calls != 2 {
 		t.Fatalf("expected retry to succeed on 2nd call, got html=%q calls=%d", result.HTML, calls)
+	}
+}
+
+func TestFetchFollowsHTTPRedirectCarryingCookies(t *testing.T) {
+	t.Parallel()
+
+	// An HTTP 3xx with a relative Location is followed; a cookie set on hop 1 must
+	// be sent on hop 2 (the per-Fetch tls-client jar is reused across hops).
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "abc"})
+			http.Redirect(w, r, "/step2", http.StatusFound) // relative Location
+		case "/step2":
+			if cookie, err := r.Cookie("sid"); err == nil && cookie.Value == "abc" {
+				_, _ = w.Write([]byte("<html>cookie-carried</html>"))
+				return
+			}
+			_, _ = w.Write([]byte("<html>cookie-missing</html>"))
+		}
+	}))
+	defer server.Close()
+
+	client := New(allowResolver{})
+	client.validateHop = func(context.Context, string) error { return nil } // allow the loopback hop
+	result, err := client.Fetch(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if !strings.Contains(result.HTML, "cookie-carried") {
+		t.Fatalf("expected cookie carried across the redirect, got %q", result.HTML)
+	}
+	if !strings.HasSuffix(result.FinalURL, "/step2") {
+		t.Fatalf("expected final URL at /step2 (relative Location resolved), got %q", result.FinalURL)
+	}
+}
+
+func TestFetchHTTPRedirectLoopHitsCap(t *testing.T) {
+	t.Parallel()
+
+	// An unbounded HTTP 3xx loop must stop at the hop cap and error, not spin.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/next", http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := New(allowResolver{})
+	client.validateHop = func(context.Context, string) error { return nil }
+	if _, err := client.Fetch(context.Background(), server.URL); err == nil {
+		t.Fatal("expected an error from an unbounded redirect loop")
+	}
+}
+
+func TestFetchRejectsHTTPRedirectToPrivateHost(t *testing.T) {
+	t.Parallel()
+
+	// With the real SSRF guard, an HTTP 3xx Location pointing at the loopback
+	// server (a private host) must be rejected mid-chain as a hard error.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/private", http.StatusFound)
+	}))
+	defer server.Close()
+
+	if _, err := New(allowResolver{}).Fetch(context.Background(), server.URL); err == nil {
+		t.Fatal("expected the SSRF guard to reject the HTTP redirect to a private host")
+	}
+}
+
+func TestFetchHonorsContextDeadlineOnSlowServer(t *testing.T) {
+	t.Parallel()
+
+	// A hung server must not exceed the request deadline: Fetch returns promptly
+	// with an error when the context deadline trips.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(3 * time.Second):
+			_, _ = w.Write([]byte("<html>too slow</html>"))
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := New(allowResolver{}).Fetch(ctx, server.URL)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected a deadline error from a slow server")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("expected Fetch to return near the 200ms deadline, took %s", elapsed)
 	}
 }
 

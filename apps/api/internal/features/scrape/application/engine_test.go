@@ -52,9 +52,11 @@ func TestEngineJSONLDNumericPrice(t *testing.T) {
 	}
 }
 
-func TestEngineLoneOgTitleIsMediumAndNotAutoComplete(t *testing.T) {
+func TestEngineLoneOgTitleMediumNameAutoCompletes(t *testing.T) {
 	t.Parallel()
 
+	// A lone og:title yields a MEDIUM name. With the relaxed gate (MEDIUM name
+	// accepted) plus HIGH og:image/price/currency, the product auto-completes.
 	product := reconcile(t, "https://shop.example/p", `<html><head>
 		<meta property="og:title" content="Brand | Cool Lamp">
 		<meta property="og:image" content="https://x/lamp.png">
@@ -68,8 +70,8 @@ func TestEngineLoneOgTitleIsMediumAndNotAutoComplete(t *testing.T) {
 	if product.Fields.Image != ConfidenceHigh || product.Fields.Price != ConfidenceHigh {
 		t.Fatalf("expected og:image/price HIGH, got %+v", product.Fields)
 	}
-	if product.Verdict == VerdictAutoComplete {
-		t.Fatalf("lone og:title must not auto_complete")
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("expected auto_complete with MEDIUM name, got %q (reasons %v)", product.Verdict, product.Reasons)
 	}
 }
 
@@ -262,9 +264,12 @@ func TestEngineSameAmountDifferentCurrencyIsConflict(t *testing.T) {
 	}
 }
 
-func TestEngineDOMOnlyImageIsLowNotAutoComplete(t *testing.T) {
+func TestEngineDOMOnlyImageStillAutoCompletes(t *testing.T) {
 	t.Parallel()
 
+	// Image is display-only and no longer gates the verdict. JSON-LD gives HIGH
+	// name/price/currency; the only image is a DOM <img> (LOW). The product
+	// auto-completes and still surfaces the LOW image for display.
 	product := reconcile(t, "https://shop.example/p", `<html><head>
 		<script type="application/ld+json">{"@type":"Product","name":"Lamp",
 			"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script>
@@ -273,8 +278,8 @@ func TestEngineDOMOnlyImageIsLowNotAutoComplete(t *testing.T) {
 	if product.ImageURL != "https://x/lamp.png" || product.Fields.Image != ConfidenceLow {
 		t.Fatalf("expected DOM image LOW, got url=%q conf=%q", product.ImageURL, product.Fields.Image)
 	}
-	if product.Verdict == VerdictAutoComplete {
-		t.Fatalf("DOM-only image must not auto_complete")
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("display-only image must not block auto_complete, got %q (%v)", product.Verdict, product.Reasons)
 	}
 }
 
@@ -299,11 +304,13 @@ func TestEngineShopifyCandidatesAutoComplete(t *testing.T) {
 	}
 }
 
-func TestEngineMerchantPriceIsMediumNotAutoComplete(t *testing.T) {
+func TestEngineMerchantPriceMediumCurrencyMissingReviews(t *testing.T) {
 	t.Parallel()
 
-	// JSON-LD gives HIGH name+image but no offer; merchant selector supplies the
-	// price as a MEDIUM voter — which must NOT be enough to auto-complete.
+	// JSON-LD gives HIGH name+image; the merchant selector supplies a MEDIUM
+	// price. The MEDIUM price is now accepted, but the bare "$" on a .com yields
+	// NO currency (SAFE policy), so the missing currency — not the price — is what
+	// holds it in needs_review.
 	product := reconcile(t, "https://vuoriclothing.com/products/villa", `<html><head>
 		<script type="application/ld+json">{"@type":"Product","name":"Villa Pant","image":"https://x/villa.png"}</script>
 		</head><body><span data-testid="productdescriptionprice-price">$128</span></body></html>`)
@@ -311,14 +318,20 @@ func TestEngineMerchantPriceIsMediumNotAutoComplete(t *testing.T) {
 	if product.PriceAmount != "128" || product.Fields.Price != ConfidenceMedium {
 		t.Fatalf("expected merchant price MEDIUM, got amount=%q conf=%q", product.PriceAmount, product.Fields.Price)
 	}
-	if product.Verdict == VerdictAutoComplete {
-		t.Fatalf("merchant-only price must not auto_complete")
+	if product.Fields.Currency != ConfidenceMissing {
+		t.Fatalf("expected currency MISSING (bare $ on .com), got %q", product.Fields.Currency)
+	}
+	if product.Verdict != VerdictNeedsReview {
+		t.Fatalf("missing currency must hold needs_review, got %q (%v)", product.Verdict, product.Reasons)
 	}
 }
 
-func TestEngineMicrodataAloneIsReviewNotAuto(t *testing.T) {
+func TestEngineMicrodataAloneAutoCompletes(t *testing.T) {
 	t.Parallel()
 
+	// Microdata is a single MEDIUM source for price/image, with an explicit USD
+	// currency (HIGH). The relaxed gate accepts a single-source MEDIUM name+price,
+	// so this now auto-completes.
 	product := reconcile(t, "https://shop.example/p", `<html><body>
 		<div itemscope itemtype="http://schema.org/Product">
 			<span itemprop="name">Wool Scarf</span>
@@ -330,8 +343,89 @@ func TestEngineMicrodataAloneIsReviewNotAuto(t *testing.T) {
 	if product.PriceAmount != "49.99" || product.PriceCurrency != "USD" {
 		t.Fatalf("unexpected microdata product: %+v", product)
 	}
-	if product.Verdict == VerdictAutoComplete {
-		t.Fatalf("microdata alone is decent, must not auto_complete: %+v", product.Fields)
+	if product.Fields.Price != ConfidenceMedium {
+		t.Fatalf("expected single-source microdata price MEDIUM, got %q", product.Fields.Price)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("single-source MEDIUM price must auto_complete, got %q (%v)", product.Verdict, product.Reasons)
+	}
+}
+
+func TestEngineImageMissingAutoCompletes(t *testing.T) {
+	t.Parallel()
+
+	// No image at all: image is optional for the verdict, so HIGH name/price/
+	// currency still auto-completes with an empty ImageURL.
+	product := reconcile(t, "https://shop.example/products/lamp", `<html><head>
+		<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp",
+			"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script>
+		</head><body></body></html>`)
+
+	if product.ImageURL != "" || product.Fields.Image != ConfidenceMissing {
+		t.Fatalf("expected no image, got url=%q conf=%q", product.ImageURL, product.Fields.Image)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("missing image must not block auto_complete, got %q (%v)", product.Verdict, product.Reasons)
+	}
+}
+
+func TestEngineBrandImageFallbackWhenNoProductImage(t *testing.T) {
+	t.Parallel()
+
+	// No product image survives, but the page exposes an apple-touch-icon. The
+	// engine fills ImageURL with that brand asset (display-only) + a warning, and
+	// still auto-completes off the HIGH name/price/currency.
+	product := reconcile(t, "https://shop.example/products/lamp", `<html><head>
+		<link rel="apple-touch-icon" href="/brand-touch.png">
+		<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp",
+			"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script>
+		</head><body></body></html>`)
+
+	if product.ImageURL != "https://shop.example/brand-touch.png" {
+		t.Fatalf("expected brand-image fallback, got %q", product.ImageURL)
+	}
+	if !containsStr(product.PriceWarnings, extractors.WarningBrandImageFallback) {
+		t.Fatalf("expected brand-image fallback warning, got %v", product.PriceWarnings)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("brand fallback must not block auto_complete, got %q (%v)", product.Verdict, product.Reasons)
+	}
+}
+
+func TestEngineProductImageBeatsBrandFallback(t *testing.T) {
+	t.Parallel()
+
+	// When a real product image exists, the brand asset (apple-touch-icon) is
+	// ignored: the product image wins and no fallback warning is added.
+	product := reconcile(t, "https://shop.example/products/lamp", `<html><head>
+		<link rel="apple-touch-icon" href="/brand-touch.png">
+		<script type="application/ld+json">{"@type":"Product","name":"Desk Lamp","image":"https://x/lamp.png",
+			"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script>
+		</head><body></body></html>`)
+
+	if product.ImageURL != "https://x/lamp.png" {
+		t.Fatalf("expected product image to win, got %q", product.ImageURL)
+	}
+	if containsStr(product.PriceWarnings, extractors.WarningBrandImageFallback) {
+		t.Fatalf("brand fallback must not fire when a product image exists: %v", product.PriceWarnings)
+	}
+}
+
+func TestEngineBrandImageSkippedOnFailedVerdict(t *testing.T) {
+	t.Parallel()
+
+	// A pure block page (anti-bot name rejected, no price) fails. The brand asset
+	// must NOT be attached to a failed scrape — a failed product shows nothing.
+	product := reconcile(t, "https://shop.example/p", `<html><head>
+		<link rel="apple-touch-icon" href="/brand-touch.png">
+		<title>Just a moment...</title></head>
+		<body><h1>Attention Required! | Cloudflare</h1></body></html>`)
+
+	if product.Verdict != VerdictFailed {
+		t.Fatalf("expected failed verdict, got %q", product.Verdict)
+	}
+	if product.ImageURL != "" {
+		t.Fatalf("failed scrape must not carry a brand image, got %q", product.ImageURL)
 	}
 }
 

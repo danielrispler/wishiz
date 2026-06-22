@@ -71,7 +71,7 @@ class WishizAppBar extends StatelessWidget implements PreferredSizeWidget {
                         )
                       : const SizedBox.shrink()),
             ),
-            if (actions != null) ...actions!,
+            ...?actions,
           ],
         ),
       ),

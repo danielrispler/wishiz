@@ -1,0 +1,8 @@
+{
+  "url": "https://shop.example/products/kettle",
+  "name": "Nimbus Kettle",
+  "amount": "59.00",
+  "currency": "USD",
+  "image": "https://cdn.example/brand-touch.png",
+  "verdict": "auto_complete"
+}

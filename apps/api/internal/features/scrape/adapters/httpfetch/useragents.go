@@ -12,7 +12,10 @@ type browserProfile struct {
 	secCHUAPlatform string
 }
 
-// desktopProfiles is a small rotation pool of recent desktop Chrome profiles.
+// desktopProfiles is a rotation pool of desktop Chrome profiles. Every profile's
+// major version MUST match httpx.ChromeProfile (Chrome 124) so the UA, sec-ch-ua,
+// JA3/JA4 and HTTP/2 fingerprint all agree on one Chrome version — a cross-layer
+// version mismatch is exactly what fingerprinting WAFs flag.
 var desktopProfiles = []browserProfile{
 	{
 		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -30,8 +33,8 @@ var desktopProfiles = []browserProfile{
 	},
 	{
 		userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-			"(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-		secCHUA:         `"Chromium";v="123", "Google Chrome";v="123", "Not-A.Brand";v="99"`,
+			"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		secCHUA:         `"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"`,
 		secCHUAMobile:   "?0",
 		secCHUAPlatform: `"Linux"`,
 	},

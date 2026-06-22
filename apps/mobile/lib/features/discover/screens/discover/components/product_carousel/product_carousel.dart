@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:wishiz/features/discover/models/product.dart';
 import 'trending_item_card.dart';
 
@@ -23,7 +24,7 @@ class ProductCarousel extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        cacheExtent: 520,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(520),
         itemCount: products.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, i) {

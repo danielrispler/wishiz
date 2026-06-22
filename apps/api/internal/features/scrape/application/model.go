@@ -54,8 +54,9 @@ type FieldConfidences struct {
 type Verdict string
 
 const (
-	// VerdictAutoComplete: name+image+price all HIGH from trusted sources and
-	// currency HIGH-or-inferred-MEDIUM — safe to auto-accept without review.
+	// VerdictAutoComplete: name+price at least MEDIUM (price not in conflict) and
+	// currency HIGH-or-inferred-MEDIUM — safe to auto-accept without review. Image
+	// is display-only and does not gate.
 	VerdictAutoComplete Verdict = "auto_complete"
 	// VerdictNeedsReview: enough data for a human to confirm, but not safe to
 	// auto-accept.

@@ -237,8 +237,8 @@ func (s *Service) ScrapeWithProgress(
 }
 
 // applyConversion converts the price to the target currency. On failure it keeps
-// the original amount+currency, flags it, and downgrades the price below
-// auto-complete (never fails the whole product over a missing exchange rate).
+// the original amount+currency, flags it, and forces the product into review
+// (never fails the whole product over a missing exchange rate).
 func (s *Service) applyConversion(product Product, targetCurrency string) Product {
 	if product.PriceAmount == "" || product.PriceCurrency == "" {
 		return product
@@ -246,11 +246,21 @@ func (s *Service) applyConversion(product Product, targetCurrency string) Produc
 	amount, currency, err := s.converter.Convert(product.PriceAmount, product.PriceCurrency, targetCurrency)
 	if err != nil {
 		product.PriceWarnings = uniqueStrings(append(product.PriceWarnings, extractors.WarningCurrencyUnconverted))
-		if product.Fields.Price == ConfidenceHigh {
-			product.Fields.Price = ConfidenceMedium
-			product.PriceConfidence = legacyPriceConfidence(product.Fields.Price)
+		// Keep the legacy price-confidence string below "trusted" for the
+		// no-verdict fallback path (HasTrustedPrice).
+		if product.PriceConfidence == PriceConfidenceHigh {
+			product.PriceConfidence = PriceConfidenceMedium
 		}
 		product.Verdict, product.Reasons = ComputeVerdict(product)
+		// A price we could not convert to the target currency must never
+		// auto-complete: the amount is correct but it is in the wrong currency for
+		// display. Force review even when every field is otherwise high-confidence.
+		// (Under the relaxed gate a MEDIUM downgrade would still auto-complete, so
+		// the override — not a confidence downgrade — is what holds it for review.)
+		if product.Verdict == VerdictAutoComplete {
+			product.Verdict = VerdictNeedsReview
+			product.Reasons = append(product.Reasons, extractors.WarningCurrencyUnconverted)
+		}
 		return product
 	}
 	product.PriceAmount = amount

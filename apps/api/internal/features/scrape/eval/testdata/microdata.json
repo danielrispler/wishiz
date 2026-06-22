@@ -4,5 +4,5 @@
   "amount": "120.00",
   "currency": "USD",
   "image": "https://cdn.example/cedar.png",
-  "verdict": "needs_review"
+  "verdict": "auto_complete"
 }

@@ -1,4 +1,4 @@
-package com.example.wishiz
+package com.wishiz
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

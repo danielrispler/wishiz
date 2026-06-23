@@ -1,4 +1,4 @@
-package com.example.wishiz
+package com.wishiz
 
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity

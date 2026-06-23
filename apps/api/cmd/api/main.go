@@ -241,9 +241,9 @@ func registerDBRoutes(
 func registerBaseRoutes(mux *http.ServeMux, cfg config.Config) {
 	applinkshttp.RegisterRoutes(mux, applinkshttp.Options{
 		ShareBaseURL:                 cfg.ShareBaseURL,
-		AndroidPackageName:           "com.example.wishiz",
+		AndroidPackageName:           "com.wishiz",
 		AndroidSHA256CertFingerprint: cfg.AndroidAppLinkSHA256CertFingerprint,
-		IOSAppID:                     "P46VR4C98R.com.wishiz.beta",
+		IOSAppID:                     "P46VR4C98R.com.wishiz",
 	})
 	healthhttp.RegisterRoutes(mux)
 }

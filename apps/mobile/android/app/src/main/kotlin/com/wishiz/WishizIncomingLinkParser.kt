@@ -1,4 +1,4 @@
-package com.example.wishiz
+package com.wishiz
 
 object WishizIncomingLinkParser {
     const val actionView = "android.intent.action.VIEW"

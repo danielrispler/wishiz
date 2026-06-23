@@ -1,0 +1,6 @@
+// Base config for the ShareExtension target so its version tracks the Flutter
+// app version (pubspec) instead of being hardcoded. Do NOT use Debug/Release.xcconfig
+// here — those #include the Pods-Runner xcconfig, which is wrong for an app extension.
+#include "Generated.xcconfig"
+MARKETING_VERSION=$(FLUTTER_BUILD_NAME)
+CURRENT_PROJECT_VERSION=$(FLUTTER_BUILD_NUMBER)

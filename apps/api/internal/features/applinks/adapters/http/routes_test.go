@@ -32,7 +32,7 @@ func TestAssetLinksRouteReturnsAndroidAssociation(t *testing.T) {
 		t.Fatalf("decode assetlinks response: %v", err)
 	}
 
-	if payload[0].Target.PackageName != "com.example.wishiz" {
+	if payload[0].Target.PackageName != "com.wishiz" {
 		t.Fatalf("unexpected package name: %q", payload[0].Target.PackageName)
 	}
 	if payload[0].Target.SHA256CertFingerprints[0] != sampleOptions().AndroidSHA256CertFingerprint {
@@ -131,8 +131,8 @@ func TestWishlistLandingPagePreservesInviteToken(t *testing.T) {
 func sampleOptions() Options {
 	return Options{
 		ShareBaseURL:                 "https://wishiz.app",
-		AndroidPackageName:           "com.example.wishiz",
+		AndroidPackageName:           "com.wishiz",
 		AndroidSHA256CertFingerprint: "BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",
-		IOSAppID:                     "P46VR4C98R.com.wishiz.beta",
+		IOSAppID:                     "P46VR4C98R.com.wishiz",
 	}
 }

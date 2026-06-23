@@ -64,10 +64,9 @@ func (w *Worker) WithDiscoverSweeper(sweeper DiscoverSweeper, maxRows int) *Work
 }
 
 // Sweep runs one housekeeping pass synchronously and returns the first sweep
-// error (if any) so the api role's POST /internal/maintenance endpoint (driven by
-// Cloud Scheduler) can report failure instead of always 200. A canceled context
-// (graceful shutdown) is not treated as a failure. The in-process ticker is only
-// started in the all role.
+// error (if any) so the weekly-batch Job can surface failure in its exit code. A
+// canceled context (graceful shutdown) is not treated as a failure. The in-process
+// ticker is only started in the all role.
 func (w *Worker) Sweep(ctx context.Context) error {
 	return w.sweep(ctx)
 }

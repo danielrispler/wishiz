@@ -59,7 +59,7 @@ type Scraper interface {
 // Dispatcher hands a freshly-enqueued import off to be processed out-of-band
 // (Cloud Tasks -> the scraper service's process route). It is optional: when nil
 // (local/all role) the in-process poller drains the queue instead. A dispatch
-// failure must never fail the enqueue — the import-drain Job recovers the job.
+// failure must never fail the enqueue — the weekly-batch Job's drain recovers it.
 type Dispatcher interface {
 	Dispatch(ctx context.Context, jobID string) error
 }
@@ -172,7 +172,7 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 
 	// Only a brand-new pending job needs dispatch; an existing/deduped job is
 	// already in flight. Dispatch failures are logged, not surfaced: the import
-	// returns success and the import-drain Job recovers an undispatched job. The
+	// returns success and the weekly-batch Job's drain recovers an undispatched job. The
 	// Cloud Tasks RPC runs on a detached goroutine so its latency never blocks the
 	// user's enqueue response; it uses a fresh context (the request ctx is canceled
 	// once the response is written) with its own short timeout.
@@ -350,7 +350,7 @@ func (s *Service) ProcessByID(ctx context.Context, jobID string) error {
 }
 
 // DrainPending processes up to limit pending jobs and returns how many it
-// settled. It is the import-drain Job's entry point: each iteration reuses
+// settled. It is the weekly-batch Job's drain step: each iteration reuses
 // ProcessNext (RecoverStuck + ClaimNext + processClaimed), so it also recovers
 // jobs whose Cloud Task was never created or whose scraper instance died
 // mid-process. It stops early when the queue is empty.

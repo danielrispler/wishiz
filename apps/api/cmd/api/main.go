@@ -93,20 +93,18 @@ func run() error {
 		}
 	}
 
-	// Scrape engine for roles that scrape. discover-batch never fires the paid
-	// ZenRows backstop (it uses Scrape, not ScrapeImport), so it is built without.
+	// Scrape engine for roles that scrape. The paid ZenRows backstop is wired
+	// whenever a key is present; it only fires on ScrapeImport (live import + the
+	// weekly drain), never on the Scrape path used by /scrape and the discover crawl.
 	var scrape *scrapeBundle
 	if roleNeedsScrape(role) {
-		scrape = setupScrape(cfg, appLogger, role != config.RoleDiscoverBatch)
+		scrape = setupScrape(cfg, appLogger, true)
 		defer scrape.close()
 	}
 
-	// Job roles that need the pool + scrape engine: run their one task, exit.
-	switch role {
-	case config.RoleDiscoverBatch:
-		return runDiscoverBatch(ctx, cfg, appLogger, pool, scrape)
-	case config.RoleImportDrain:
-		return runImportDrain(ctx, cfg, appLogger, pool, scrape)
+	// The weekly-batch Job needs the pool + scrape engine: run its task, then exit.
+	if role == config.RoleWeeklyBatch {
+		return runWeeklyBatch(ctx, cfg, appLogger, pool, scrape)
 	}
 
 	// Service roles (api, scraper, all): build the HTTP server.
@@ -220,7 +218,6 @@ func registerDBRoutes(
 		productimporthttp.RegisterRoutes(mux, appLogger, productImportService, authMiddleware)
 		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService, authMiddleware)
 		discoverhttp.RegisterRoutes(mux, appLogger, discoverService, authService, authMiddleware, cfg.InternalAPIKey)
-		maintenance.RegisterRoutes(mux, maintenanceWorker)
 	}
 
 	if roleServesScrape(role) {
@@ -295,39 +292,43 @@ func runMigrate(ctx context.Context, cfg config.Config, appLogger *slog.Logger) 
 	return nil
 }
 
-func runDiscoverBatch(
+// runWeeklyBatch is the single weekly Cloud Run Job. It runs three independent
+// steps in sequence — maintenance sweep, discover sitemap crawl, then drain
+// pending imports — and exits non-zero if any step that reports errors failed, so
+// a failed weekly run is visible in Cloud Run. Steps do not gate each other: a
+// maintenance failure must not skip the crawl or the drain.
+func runWeeklyBatch(
 	ctx context.Context, cfg config.Config, appLogger *slog.Logger, pool *pgxpool.Pool, scrape *scrapeBundle,
 ) error {
 	if pool == nil {
-		return errors.New("discover-batch role requires DATABASE_URL")
+		return errors.New("weekly-batch role requires DATABASE_URL")
 	}
-	discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
-	worker := discoverapp.NewSitemapWorker(
-		appLogger, discoverRepo, scrape.service, cfg.DiscoverSitemapRefreshInterval,
-	)
-	worker.Refresh(ctx)
-	return nil
-}
-
-func runImportDrain(
-	ctx context.Context, cfg config.Config, appLogger *slog.Logger, pool *pgxpool.Pool, scrape *scrapeBundle,
-) error {
-	if pool == nil {
-		return errors.New("import-drain role requires DATABASE_URL")
-	}
+	authRepo := authpostgres.NewRepository(pool)
 	wishlistRepo := wishlistpostgres.NewRepository(pool)
-	wishlistService := wishlistapp.NewService(wishlistRepo)
-	productImportRepo := productimportpostgres.NewRepository(pool)
-	service := productimportapp.NewService(
-		appLogger, productImportRepo, wishlistService, scrape.service, net.DefaultResolver,
-	)
+	discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
 
-	processed, err := service.DrainPending(ctx, cfg.ImportDrainLimit)
-	if err != nil {
-		return fmt.Errorf("drain pending imports: %w", err)
+	// 1. Maintenance sweep (DB-only): expired sessions/invites + discover TTL/cap.
+	errMaintenance := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval).
+		WithDiscoverSweeper(discoverRepo, cfg.DiscoverMaxProducts).
+		Sweep(ctx)
+
+	// 2. Discover sitemap crawl (Chromium, Scrape only — never the paid backstop).
+	discoverapp.NewSitemapWorker(
+		appLogger, discoverRepo, scrape.service, cfg.DiscoverSitemapRefreshInterval,
+	).Refresh(ctx)
+
+	// 3. Drain pending imports: the only prod backstop now that import-drain is gone
+	// — recovers jobs whose Cloud Task was never created or exhausted its retries.
+	wishlistService := wishlistapp.NewService(wishlistRepo)
+	importService := productimportapp.NewService(
+		appLogger, productimportpostgres.NewRepository(pool), wishlistService, scrape.service, net.DefaultResolver,
+	)
+	processed, errDrain := importService.DrainPending(ctx, cfg.ImportDrainLimit)
+	if errDrain == nil {
+		appLogger.Info("weekly batch import drain finished", "processed", processed)
 	}
-	appLogger.Info("import drain finished", "processed", processed)
-	return nil
+
+	return errors.Join(errMaintenance, errDrain)
 }
 
 // ---- Scrape engine bundle ----
@@ -363,13 +364,11 @@ func setupScrape(cfg config.Config, appLogger *slog.Logger, withBackstop bool) *
 
 	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
 	switch cfg.ServiceRole {
-	case config.RoleDiscoverBatch:
-		// discover-batch never converts currency (it uses Scrape, not ScrapeImport),
-		// so skip the ECB fetch entirely — it would be pure wasted I/O.
-	case config.RoleImportDrain:
-		// The import-drain Job is short-lived and DOES convert; warm the rate cache
-		// synchronously so its imports don't race a cold cache and get forced to
-		// needs_review. A failed fetch still degrades gracefully (review, not panic).
+	case config.RoleWeeklyBatch:
+		// The weekly-batch Job drains imports (DOES convert currency); warm the rate
+		// cache synchronously so the drain doesn't race a cold cache and force
+		// needs_review. The sitemap crawl uses Scrape and needs no rates. A failed
+		// fetch still degrades gracefully (review, not panic).
 		if err := exchangeConverter.Refresh(); err != nil {
 			appLogger.Warn("initial exchange rate refresh failed", "error", err)
 		}
@@ -423,7 +422,7 @@ func scrapeImporter(s *scrapeapp.Service) productimportapp.Scraper {
 
 func roleNeedsScrape(role string) bool {
 	switch role {
-	case config.RoleScraper, config.RoleDiscoverBatch, config.RoleImportDrain, config.RoleAll:
+	case config.RoleScraper, config.RoleWeeklyBatch, config.RoleAll:
 		return true
 	default:
 		return false

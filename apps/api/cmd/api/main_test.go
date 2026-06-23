@@ -22,8 +22,7 @@ func TestRolePredicates(t *testing.T) {
 		{config.RoleAPI, false, true, false},
 		{config.RoleScraper, true, false, true},
 		{config.RoleMigrate, false, false, false},
-		{config.RoleDiscoverBatch, true, false, false},
-		{config.RoleImportDrain, true, false, false},
+		{config.RoleWeeklyBatch, true, false, false},
 	}
 
 	for _, tc := range cases {

@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted (scheduled-Jobs topology + maintenance endpoint superseded by ADR-0004:
+`discover-batch` + `import-drain` Jobs and `POST /internal/maintenance` are
+consolidated into one weekly `weekly-batch` Job)
 
 ## Decision
 

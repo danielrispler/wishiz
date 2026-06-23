@@ -220,8 +220,8 @@ func (w *SitemapWorker) Start(ctx context.Context) {
 }
 
 // Refresh runs one full sitemap refresh synchronously and returns when done. It
-// is the discover-batch Cloud Run Job's entry point (the in-process ticker is
-// only started in the all role). Safe to call without Start.
+// is the weekly-batch Cloud Run Job's crawl step (the in-process ticker is only
+// started in the all role). Safe to call without Start.
 func (w *SitemapWorker) Refresh(ctx context.Context) {
 	w.refresh(ctx)
 }

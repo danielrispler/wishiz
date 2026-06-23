@@ -9,22 +9,21 @@ import (
 
 // Service roles select which slice of the binary runs. The same image is
 // deployed several ways and SERVICE_ROLE branches the wiring in cmd/api/main.go.
-//   - all            local docker-compose / tests: the monolith (every route +
+//   - all          local docker-compose / tests: the monolith (every route +
 //     all in-process background loops + boot-migrate).
-//   - api            request-driven service: user/read routes, import enqueue
-//     (+ Cloud Tasks dispatch), maintenance endpoint. No scrape engine, no loops.
-//   - scraper        request-driven service: scrape engine + internal scrape
+//   - api          request-driven service: user/read routes, import enqueue
+//     (+ Cloud Tasks dispatch). No scrape engine, no loops, no maintenance route.
+//   - scraper      request-driven service: scrape engine + internal scrape
 //     routes (live import process, discover seed). No loops.
-//   - migrate        run-to-completion Job: apply migrations, then exit.
-//   - discover-batch run-to-completion Job: one discover sitemap refresh, exit.
-//   - import-drain   run-to-completion Job: drain pending imports, exit.
+//   - migrate      run-to-completion Job: apply migrations, then exit.
+//   - weekly-batch run-to-completion Job (weekly Cloud Scheduler): maintenance
+//     sweep -> discover sitemap crawl -> drain pending imports, then exit.
 const (
-	RoleAll           = "all"
-	RoleAPI           = "api"
-	RoleScraper       = "scraper"
-	RoleMigrate       = "migrate"
-	RoleDiscoverBatch = "discover-batch"
-	RoleImportDrain   = "import-drain"
+	RoleAll         = "all"
+	RoleAPI         = "api"
+	RoleScraper     = "scraper"
+	RoleMigrate     = "migrate"
+	RoleWeeklyBatch = "weekly-batch"
 )
 
 type Config struct {

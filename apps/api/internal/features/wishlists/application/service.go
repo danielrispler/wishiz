@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/ports"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/randhex"
 )
 
 var uuidPattern = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -855,11 +855,7 @@ func purchasedAtForStatus(status string, now time.Time) *time.Time {
 }
 
 func randomToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	return randhex.String(32)
 }
 
 func tokenHash(token string) string {

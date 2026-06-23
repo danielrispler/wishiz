@@ -176,6 +176,37 @@ func (r *Repository) claimable(j *domain.Job, p ports.ClaimParams) bool {
 	return j.Status == domain.StatusPending && j.AttemptCount < p.MaxAttempts
 }
 
+// ClaimByID claims one specific job only if it is still pending, mirroring the
+// postgres adapter. A missing or non-pending job yields ErrNotFound so the
+// directed-dispatch caller (Cloud Tasks) can treat redelivery as a no-op.
+func (r *Repository) ClaimByID(_ context.Context, id string, now time.Time) (domain.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	j, ok := r.jobs[id]
+	if !ok || j.Status != domain.StatusPending {
+		return domain.Job{}, ports.ErrNotFound
+	}
+	j.Status = domain.StatusProcessing
+	j.LockedAt = ptrTime(now)
+	j.LastAttemptedAt = ptrTime(now)
+	j.AttemptCount++
+	j.Retryable = false
+	j.ProgressStage = "validating"
+	j.ProgressPercent = 0
+	return *j, nil
+}
+
+func (r *Repository) ReleaseToPending(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if j, ok := r.jobs[id]; ok && j.Status == domain.StatusProcessing {
+		j.Status = domain.StatusPending
+		j.LockedAt = nil
+		j.Retryable = true
+	}
+	return nil
+}
+
 func (r *Repository) UpdateProgress(_ context.Context, id string, stage string, percent int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

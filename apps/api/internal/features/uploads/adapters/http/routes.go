@@ -3,7 +3,6 @@ package uploadshttp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,7 +17,6 @@ const maxUploadBytes int64 = 10 << 20
 
 type Uploader interface {
 	UploadImage(ctx context.Context, params storage.UploadImageParams) (storage.Object, error)
-	GetObject(ctx context.Context, key string) (storage.ObjectData, error)
 }
 
 type handler struct {
@@ -46,7 +44,6 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, uploader Uploader, 
 	}
 
 	mux.HandleFunc("POST /uploads/images", authMiddleware(withAuthenticatedUser(h.uploadImage)))
-	mux.HandleFunc("GET /storage/{key...}", h.proxyStorageObject)
 }
 
 func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
@@ -102,67 +99,6 @@ func (h handler) uploadImage(w http.ResponseWriter, r *http.Request) {
 		Key: object.Key,
 		URL: object.URL,
 	})
-}
-
-func (h handler) proxyStorageObject(w http.ResponseWriter, r *http.Request) {
-	key := r.PathValue("key")
-	if key == "" {
-		http.NotFound(w, r)
-		return
-	}
-
-	obj, err := h.uploader.GetObject(r.Context(), key)
-	if err != nil {
-		h.logger.Error("storage proxy failed", "key", key, "error", err)
-		http.NotFound(w, r)
-		return
-	}
-	defer obj.Body.Close()
-
-	if obj.ContentType != "" {
-		w.Header().Set("Content-Type", obj.ContentType)
-	}
-	if obj.ContentLength > 0 {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", obj.ContentLength))
-	}
-	if obj.CacheControl != "" {
-		w.Header().Set("Cache-Control", obj.CacheControl)
-	} else {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	}
-	if obj.ETag != "" {
-		w.Header().Set("ETag", obj.ETag)
-	}
-	if !obj.LastModified.IsZero() {
-		w.Header().Set("Last-Modified", obj.LastModified.UTC().Format(http.TimeFormat))
-	}
-	if isNotModified(r, obj) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	if _, err := io.Copy(w, obj.Body); err != nil {
-		h.logger.Error("storage proxy stream failed", "key", key, "error", err)
-	}
-}
-
-func isNotModified(r *http.Request, obj storage.ObjectData) bool {
-	if match := strings.TrimSpace(r.Header.Get("If-None-Match")); match != "" && obj.ETag != "" {
-		for _, candidate := range strings.Split(match, ",") {
-			value := strings.TrimSpace(candidate)
-			if value == "*" || value == obj.ETag {
-				return true
-			}
-		}
-	}
-
-	if modifiedSince := strings.TrimSpace(r.Header.Get("If-Modified-Since")); modifiedSince != "" && !obj.LastModified.IsZero() {
-		t, err := http.ParseTime(modifiedSince)
-		if err == nil && !obj.LastModified.After(t) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func sniffBytes(file io.Reader) []byte {

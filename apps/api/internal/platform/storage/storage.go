@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 )
 
 var ErrInvalidContentType = errors.New("invalid content type")
@@ -15,18 +14,11 @@ type Object struct {
 	URL string
 }
 
-type ObjectData struct {
-	Body          io.ReadCloser
-	ContentType   string
-	ContentLength int64
-	CacheControl  string
-	ETag          string
-	LastModified  time.Time
-}
-
+// Uploader stores an uploaded image and returns its public URL. Reads are served
+// directly by the storage backend (GCS public objects), not proxied through the
+// API, so there is no read method here.
 type Uploader interface {
 	UploadImage(ctx context.Context, params UploadImageParams) (Object, error)
-	GetObject(ctx context.Context, key string) (ObjectData, error)
 }
 
 type UploadImageParams struct {

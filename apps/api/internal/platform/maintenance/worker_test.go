@@ -66,7 +66,7 @@ func TestSweepInvokesDiscoverSweeperWithCap(t *testing.T) {
 	worker := NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), okSweeper{}, okSweeper{}, time.Hour).
 		WithDiscoverSweeper(disc, 2000)
 
-	worker.sweep(context.Background())
+	_ = worker.sweep(context.Background())
 
 	if disc.calls != 1 {
 		t.Fatalf("expected discover sweeper called once, got %d", disc.calls)
@@ -81,7 +81,7 @@ func TestSweepWithoutDiscoverSweeperIsNoOp(t *testing.T) {
 
 	// No WithDiscoverSweeper: discover field is nil and must not panic.
 	worker := NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), okSweeper{}, okSweeper{}, time.Hour)
-	worker.sweep(context.Background())
+	_ = worker.sweep(context.Background())
 }
 
 func TestSweepCanceledContextLogsBelowError(t *testing.T) {
@@ -92,7 +92,7 @@ func TestSweepCanceledContextLogsBelowError(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	worker.sweep(ctx)
+	_ = worker.sweep(ctx)
 
 	if rec.max >= slog.LevelError {
 		t.Fatalf("graceful-shutdown cancellation must not log at Error, got level %v", rec.max)
@@ -106,9 +106,32 @@ func TestSweepRealErrorLogsError(t *testing.T) {
 	boom := context.DeadlineExceeded // a non-Canceled error stands in for a real failure
 	worker := NewWorker(slog.New(rec), errSweeper{err: boom}, errSweeper{err: boom}, time.Hour)
 
-	worker.sweep(context.Background())
+	_ = worker.sweep(context.Background())
 
 	if rec.max != slog.LevelError {
 		t.Fatalf("a real sweep failure must log at Error, got level %v", rec.max)
+	}
+}
+
+func TestSweepReturnsErrorOnRealFailure(t *testing.T) {
+	t.Parallel()
+
+	boom := context.DeadlineExceeded // a non-Canceled error stands in for a real failure
+	worker := NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), errSweeper{err: boom}, okSweeper{}, time.Hour)
+
+	if err := worker.Sweep(context.Background()); err == nil {
+		t.Fatal("Sweep must return a non-nil error when a step genuinely fails")
+	}
+}
+
+func TestSweepReturnsNilOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	worker := NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), canceledSweeper{}, canceledSweeper{}, time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := worker.Sweep(ctx); err != nil {
+		t.Fatalf("a canceled (shutdown) sweep must not be reported as failure, got %v", err)
 	}
 }

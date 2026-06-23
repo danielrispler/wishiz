@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -241,6 +242,126 @@ func TestServiceReportsProgressMonotonically(t *testing.T) {
 	}
 }
 
+func TestProcessByIDSettlesClaimedJob(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{claimedJob: productImportJob()}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:          "Desk lamp",
+				PriceAmount:   "40.00",
+				PriceCurrency: "USD",
+				ImageURL:      "https://example.com/lamp.png",
+				Verdict:       scrapeapp.VerdictAutoComplete,
+			},
+		},
+		nil,
+	)
+
+	if err := service.ProcessByID(context.Background(), "job-1"); err != nil {
+		t.Fatalf("process by id: %v", err)
+	}
+	if repo.settledID != "job-1" {
+		t.Fatalf("expected job-1 to be settled, got %q", repo.settledID)
+	}
+	if repo.settled.Status != importdomain.StatusCompleted {
+		t.Fatalf("expected completed, got %q", repo.settled.Status)
+	}
+}
+
+func TestProcessByIDIsIdempotentNoOpWhenNotClaimable(t *testing.T) {
+	t.Parallel()
+
+	// A Cloud Tasks redelivery (or a job already drained by the poller) is no
+	// longer pending: ClaimByID returns ErrNotFound. ProcessByID must succeed
+	// without settling anything so the task is acked, not retried forever.
+	repo := &fakeRepo{claimedJob: productImportJob(), claimByIDErr: ports.ErrNotFound}
+	service := NewService(testLogger(), repo, &fakeWishlistService{}, fakeScraper{}, nil)
+
+	if err := service.ProcessByID(context.Background(), "job-1"); err != nil {
+		t.Fatalf("expected idempotent no-op, got error: %v", err)
+	}
+	if repo.settledID != "" {
+		t.Fatalf("expected no settle on non-claimable job, settled %q", repo.settledID)
+	}
+}
+
+func TestProcessByIDReleasesToPendingWhenSettleFails(t *testing.T) {
+	t.Parallel()
+
+	// The scrape succeeds but the final Settle write fails, leaving the row stuck
+	// in 'processing'. ProcessByID must surface the error (so the route returns
+	// non-2xx and Cloud Tasks retries) AND release the job back to pending so the
+	// retry's ClaimByID can re-claim it promptly instead of waiting for the
+	// lease-timeout sweep.
+	repo := &fakeRepo{
+		claimedJob: productImportJob(),
+		settleErr:  errors.New("db write failed"),
+	}
+	service := NewService(
+		testLogger(),
+		repo,
+		&fakeWishlistService{},
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:          "Desk lamp",
+				PriceAmount:   "40.00",
+				PriceCurrency: "USD",
+				ImageURL:      "https://example.com/lamp.png",
+				Verdict:       scrapeapp.VerdictAutoComplete,
+			},
+		},
+		nil,
+	)
+
+	if err := service.ProcessByID(context.Background(), "job-1"); err == nil {
+		t.Fatal("expected ProcessByID to surface the Settle error")
+	}
+	if repo.releasedToPendID != "job-1" {
+		t.Fatalf("expected job released to pending, got release id %q", repo.releasedToPendID)
+	}
+}
+
+func TestProcessByIDHonorsNeedsReviewTerminalRule(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{claimedJob: productImportJob()}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:          "Desk lamp",
+				PriceAmount:   "40.00",
+				PriceCurrency: "USD",
+				ImageURL:      "https://example.com/lamp.png",
+				Verdict:       scrapeapp.VerdictNeedsReview,
+			},
+		},
+		nil,
+	)
+
+	if err := service.ProcessByID(context.Background(), "job-1"); err != nil {
+		t.Fatalf("process by id: %v", err)
+	}
+	if repo.settled.Status != importdomain.StatusNeedsReview {
+		t.Fatalf("expected needs_review, got %q", repo.settled.Status)
+	}
+	if repo.settled.Retryable {
+		t.Fatalf("needs_review is terminal human-review — must not be retryable")
+	}
+	if wishlists.added != nil {
+		t.Fatalf("expected no item creation for needs_review")
+	}
+}
+
 func TestResolveOutcomeAntiBotBlockIsUnsupportedAndNotRetryable(t *testing.T) {
 	t.Parallel()
 
@@ -381,10 +502,13 @@ func productImportJob() importdomain.Job {
 }
 
 type fakeRepo struct {
-	claimedJob importdomain.Job
-	settled    ports.JobOutcome
-	settledID  string
-	progress   []progressEvent
+	claimedJob       importdomain.Job
+	claimByIDErr     error
+	settleErr        error
+	settled          ports.JobOutcome
+	settledID        string
+	releasedToPendID string
+	progress         []progressEvent
 }
 
 func (r *fakeRepo) CreateOrGet(context.Context, ports.CreateJobParams, time.Duration) (importdomain.Job, bool, error) {
@@ -417,6 +541,13 @@ func (r *fakeRepo) ClaimNext(context.Context, ports.ClaimParams) (importdomain.J
 	return r.claimedJob, nil
 }
 
+func (r *fakeRepo) ClaimByID(context.Context, string, time.Time) (importdomain.Job, error) {
+	if r.claimByIDErr != nil {
+		return importdomain.Job{}, r.claimByIDErr
+	}
+	return r.claimedJob, nil
+}
+
 func (r *fakeRepo) UpdateProgress(_ context.Context, _ string, stage string, percent int) error {
 	r.progress = append(r.progress, progressEvent{stage, percent})
 	return nil
@@ -430,7 +561,15 @@ type progressEvent struct {
 func (r *fakeRepo) Settle(_ context.Context, id string, outcome ports.JobOutcome) (importdomain.Job, error) {
 	r.settledID = id
 	r.settled = outcome
+	if r.settleErr != nil {
+		return importdomain.Job{}, r.settleErr
+	}
 	return r.claimedJob, nil
+}
+
+func (r *fakeRepo) ReleaseToPending(_ context.Context, id string) error {
+	r.releasedToPendID = id
+	return nil
 }
 
 func (r *fakeRepo) Assign(context.Context, string, string, string) (importdomain.Job, error) {

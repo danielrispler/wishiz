@@ -83,6 +83,42 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, au
 	mux.HandleFunc("POST /product-imports/{id}/assign", authMiddleware(withAuthenticatedUser(h.assignJob)))
 }
 
+// Processor handles directed, out-of-band processing of a single import job.
+// It backs the internal route the Cloud Tasks dispatcher targets on the scraper
+// service.
+type Processor interface {
+	ProcessByID(ctx context.Context, jobID string) error
+}
+
+// RegisterInternalRoutes mounts the internal scrape-side route that processes a
+// directed import (the Cloud Tasks target on the scraper service). Access is
+// gated at the platform layer (Cloud Run IAM / OIDC), so there is no app-level
+// auth here. A non-2xx response signals Cloud Tasks to retry.
+func RegisterInternalRoutes(mux *http.ServeMux, logger *slog.Logger, processor Processor) {
+	h := internalHandler{logger: logger, processor: processor}
+	mux.HandleFunc("POST /internal/imports/{id}/process", h.processJob)
+}
+
+type internalHandler struct {
+	logger    *slog.Logger
+	processor Processor
+}
+
+func (h internalHandler) processJob(w http.ResponseWriter, r *http.Request) {
+	jobID := r.PathValue("id")
+	if jobID == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "job id is required", "")
+		return
+	}
+	if err := h.processor.ProcessByID(r.Context(), jobID); err != nil {
+		// The outcome did not persist; let Cloud Tasks retry.
+		h.logger.Error("process import job failed", "job_id", jobID, "error", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "internal server error", "")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func withAuthenticatedUser(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := authctx.UserFromContext(r.Context()); !ok {

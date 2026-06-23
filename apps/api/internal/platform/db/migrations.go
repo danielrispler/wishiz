@@ -7,13 +7,23 @@ import (
 	"io/fs"
 	"sort"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 //go:embed migrations/*.up.sql
 var migrationFiles embed.FS
 
-func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+// Execer is the minimal database surface RunMigrations needs. Both *pgxpool.Pool
+// (the all-role boot-migrate path) and *pgx.Conn (the migrate Job, via
+// ConnectSimple) satisfy it, so migrations run identically over either.
+type Execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+func RunMigrations(ctx context.Context, pool Execer) error {
 	if _, err := pool.Exec(ctx, `
 		CREATE EXTENSION IF NOT EXISTS pgcrypto;
 		CREATE EXTENSION IF NOT EXISTS citext;
@@ -72,7 +82,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func migrationApplied(ctx context.Context, pool *pgxpool.Pool, version string) (bool, error) {
+func migrationApplied(ctx context.Context, pool Execer, version string) (bool, error) {
 	var exists bool
 
 	if err := pool.QueryRow(

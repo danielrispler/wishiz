@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# Local/monolith image (SERVICE_ROLE=all): every route + all in-process
-# background loops + boot-migrate, used by docker-compose. The split production
-# images are Dockerfile.api (slim) and Dockerfile.scraper (Chromium).
+# wishiz-scraper image: the request-driven scraper service plus the
+# discover-batch and import-drain Jobs. Ships Chromium for headless rendering.
+# SERVICE_ROLE is overridden to "discover-batch" / "import-drain" on the Jobs.
 
 FROM golang:1.24-bookworm AS builder
 
@@ -33,6 +33,6 @@ COPY --from=builder /out/api /app/api
 EXPOSE 8080
 
 ENV CHROMIUM_PATH=/usr/bin/chromium
-ENV SERVICE_ROLE=all
+ENV SERVICE_ROLE=scraper
 
 ENTRYPOINT ["/app/api"]

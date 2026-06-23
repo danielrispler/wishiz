@@ -63,52 +63,71 @@ func (w *Worker) WithDiscoverSweeper(sweeper DiscoverSweeper, maxRows int) *Work
 	return w
 }
 
+// Sweep runs one housekeeping pass synchronously and returns the first sweep
+// error (if any) so the api role's POST /internal/maintenance endpoint (driven by
+// Cloud Scheduler) can report failure instead of always 200. A canceled context
+// (graceful shutdown) is not treated as a failure. The in-process ticker is only
+// started in the all role.
+func (w *Worker) Sweep(ctx context.Context) error {
+	return w.sweep(ctx)
+}
+
 // Start runs an immediate sweep, then sweeps every interval until ctx is done.
 func (w *Worker) Start(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(w.interval)
 		defer ticker.Stop()
 
-		w.sweep(ctx)
+		_ = w.sweep(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				w.sweep(ctx)
+				_ = w.sweep(ctx)
 			}
 		}
 	}()
 }
 
-func (w *Worker) sweep(ctx context.Context) {
+// sweep runs each housekeeping step, logging failures, and returns the joined
+// non-shutdown errors so callers can surface a real failure. Context-cancel
+// (shutdown) is downgraded to Debug and excluded from the returned error.
+func (w *Worker) sweep(ctx context.Context) error {
+	var errs []error
+
 	if sessions, err := w.sessions.DeleteExpiredSessions(ctx); err != nil {
-		w.logSweepError(ctx, "sweep expired sessions failed", err)
+		errs = append(errs, w.logSweepError(ctx, "sweep expired sessions failed", err))
 	} else if sessions > 0 {
 		w.logger.Info("swept expired sessions", "deleted", sessions)
 	}
 
 	if invites, err := w.invites.DeleteExpiredInvites(ctx); err != nil {
-		w.logSweepError(ctx, "sweep expired invites failed", err)
+		errs = append(errs, w.logSweepError(ctx, "sweep expired invites failed", err))
 	} else if invites > 0 {
 		w.logger.Info("swept expired invites", "deleted", invites)
 	}
 
 	if w.discover != nil {
 		if expired, evicted, err := w.discover.SweepDiscoverProducts(ctx, w.discoverMaxRows); err != nil {
-			w.logSweepError(ctx, "sweep discover products failed", err)
+			errs = append(errs, w.logSweepError(ctx, "sweep discover products failed", err))
 		} else if expired > 0 || evicted > 0 {
 			w.logger.Info("swept discover products", "expired", expired, "over_cap_evicted", evicted)
 		}
 	}
+
+	return errors.Join(errs...)
 }
 
 // logSweepError logs a sweep failure, downgrading to Debug when it is just the
-// context being canceled (graceful shutdown is expected, not a real failure).
-func (w *Worker) logSweepError(ctx context.Context, msg string, err error) {
+// context being canceled (graceful shutdown is expected, not a real failure). It
+// returns nil for the shutdown case and the error otherwise, so the caller only
+// aggregates genuine failures.
+func (w *Worker) logSweepError(ctx context.Context, msg string, err error) error {
 	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 		w.logger.Debug(msg+" (shutting down)", "error", err)
-		return
+		return nil //nolint:nilerr // graceful shutdown is expected, not a sweep failure
 	}
 	w.logger.Error(msg, "error", err)
+	return err
 }

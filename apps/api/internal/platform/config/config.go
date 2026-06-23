@@ -7,19 +7,36 @@ import (
 	"time"
 )
 
+// Service roles select which slice of the binary runs. The same image is
+// deployed several ways and SERVICE_ROLE branches the wiring in cmd/api/main.go.
+//   - all            local docker-compose / tests: the monolith (every route +
+//     all in-process background loops + boot-migrate).
+//   - api            request-driven service: user/read routes, import enqueue
+//     (+ Cloud Tasks dispatch), maintenance endpoint. No scrape engine, no loops.
+//   - scraper        request-driven service: scrape engine + internal scrape
+//     routes (live import process, discover seed). No loops.
+//   - migrate        run-to-completion Job: apply migrations, then exit.
+//   - discover-batch run-to-completion Job: one discover sitemap refresh, exit.
+//   - import-drain   run-to-completion Job: drain pending imports, exit.
+const (
+	RoleAll           = "all"
+	RoleAPI           = "api"
+	RoleScraper       = "scraper"
+	RoleMigrate       = "migrate"
+	RoleDiscoverBatch = "discover-batch"
+	RoleImportDrain   = "import-drain"
+)
+
 type Config struct {
 	AppEnv                              string
+	ServiceRole                         string
 	HTTPAddr                            string
 	DatabaseURL                         string
+	DBMaxConns                          int
 	RunDBMigrations                     bool
 	UploadsEnabled                      bool
-	StorageS3Endpoint                   string
-	StorageS3Region                     string
-	StorageS3Bucket                     string
-	StorageS3AccessKeyID                string
-	StorageS3SecretAccessKey            string
-	StorageS3UsePathStyle               bool
-	StoragePublicBaseURL                string
+	GCSBucket                           string
+	GCSPublicBaseURL                    string
 	ChromiumPath                        string
 	ScrapeBudget                        time.Duration
 	ScrapeRenderTimeout                 time.Duration
@@ -40,22 +57,36 @@ type Config struct {
 	ShareBaseURL                        string
 	AndroidAppLinkSHA256CertFingerprint string
 	InternalAPIKey                      string
+	// Cloud Tasks live-import dispatch (api role). When ImportTasksQueue and
+	// ScraperURL are both set, enqueuing an import creates a Cloud Task that
+	// targets the scraper's process route with an OIDC token. Empty (all/local)
+	// disables the dispatcher and the in-process poller drains imports instead.
+	ImportTasksQueue string
+	ScraperURL       string
+	ScraperAudience  string
+	ScraperInvokerSA string
+	ImportDrainLimit int
+}
+
+// LiveImportDispatchEnabled reports whether Cloud Tasks live-import dispatch is
+// configured (queue + scraper URL both set). When true the dispatcher must also
+// have ScraperInvokerSA, else it would enqueue unauthenticated tasks the scraper
+// rejects — callers enforce that as a fail-fast boot check.
+func (c Config) LiveImportDispatchEnabled() bool {
+	return c.ImportTasksQueue != "" && c.ScraperURL != ""
 }
 
 func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:                     getEnv("APP_ENV", "development"),
+		ServiceRole:                getEnv("SERVICE_ROLE", RoleAll),
 		HTTPAddr:                   getEnv("HTTP_ADDR", ":8080"),
 		DatabaseURL:                os.Getenv("DATABASE_URL"),
+		DBMaxConns:                 getEnvInt("DB_MAX_CONNS", 5),
 		RunDBMigrations:            getEnvBool("RUN_DB_MIGRATIONS", false),
 		UploadsEnabled:             getEnvBool("UPLOADS_ENABLED", false),
-		StorageS3Endpoint:          getEnv("STORAGE_S3_ENDPOINT", ""),
-		StorageS3Region:            getEnv("STORAGE_S3_REGION", "us-east-1"),
-		StorageS3Bucket:            getEnv("STORAGE_S3_BUCKET", ""),
-		StorageS3AccessKeyID:       getEnv("STORAGE_S3_ACCESS_KEY_ID", ""),
-		StorageS3SecretAccessKey:   getEnv("STORAGE_S3_SECRET_ACCESS_KEY", ""),
-		StorageS3UsePathStyle:      getEnvBool("STORAGE_S3_USE_PATH_STYLE", true),
-		StoragePublicBaseURL:       getEnv("STORAGE_PUBLIC_BASE_URL", ""),
+		GCSBucket:                  getEnv("BUCKET_NAME", ""),
+		GCSPublicBaseURL:           getEnv("GCS_PUBLIC_BASE_URL", "https://storage.googleapis.com"),
 		ChromiumPath:               getEnv("CHROMIUM_PATH", ""),
 		ScrapeBudget:               getEnvDuration("SCRAPE_BUDGET", 30*time.Second),
 		ScrapeRenderTimeout:        getEnvDuration("SCRAPE_RENDER_TIMEOUT", 26*time.Second),
@@ -84,7 +115,21 @@ func Load() (Config, error) {
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
 			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",
 		),
-		InternalAPIKey: os.Getenv("INTERNAL_API_KEY"),
+		InternalAPIKey:   os.Getenv("INTERNAL_API_KEY"),
+		ImportTasksQueue: getEnv("IMPORT_TASKS_QUEUE", ""),
+		ScraperURL:       getEnv("SCRAPER_URL", ""),
+		ScraperInvokerSA: getEnv("SCRAPER_INVOKER_SA", ""),
+		ImportDrainLimit: getEnvInt("IMPORT_DRAIN_LIMIT", 20),
+	}
+
+	// SCRAPER_AUDIENCE defaults to the scraper URL: an OIDC token's audience must
+	// match the receiving Cloud Run service's URL unless explicitly overridden.
+	cfg.ScraperAudience = getEnv("SCRAPER_AUDIENCE", cfg.ScraperURL)
+
+	// Cloud Run injects PORT and crashes the instance if the server does not bind
+	// it. PORT takes precedence over HTTP_ADDR so an injected port always wins.
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		cfg.HTTPAddr = ":" + port
 	}
 
 	return cfg, nil

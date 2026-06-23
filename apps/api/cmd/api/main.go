@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	applinkshttp "github.com/danielrispler/wishiz/apps/api/internal/features/applinks/adapters/http"
 	authhttp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/http"
@@ -36,6 +39,7 @@ import (
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/config"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 	httpx "github.com/danielrispler/wishiz/apps/api/internal/platform/http"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/importdispatch"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/logger"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/maintenance"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/storage"
@@ -57,11 +61,187 @@ func run() error {
 	}
 
 	appLogger := logger.New(cfg.AppEnv)
+	appLogger.Info("starting", "role", cfg.ServiceRole, "env", cfg.AppEnv)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	role := cfg.ServiceRole
+
+	// migrate Job: own simple-protocol connection, apply migrations, exit.
+	if role == config.RoleMigrate {
+		return runMigrate(ctx, cfg, appLogger)
+	}
+
+	// Every other role uses the tuned pool when a database is configured.
+	var pool *pgxpool.Pool
+	if cfg.DatabaseURL != "" {
+		p, connErr := db.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
+		if connErr != nil {
+			return fmt.Errorf("connect postgres: %w", connErr)
+		}
+		defer p.Close()
+		pool = p
+
+		// Boot-migrate only in the single-instance all role; deployed roles rely on
+		// the migrate Job so concurrent instances never race on migrations.
+		if role == config.RoleAll && cfg.RunDBMigrations {
+			appLogger.Info("running database migrations (dev-only)")
+			if migErr := db.RunMigrations(ctx, pool); migErr != nil {
+				return fmt.Errorf("run database migrations: %w", migErr)
+			}
+		}
+	}
+
+	// Scrape engine for roles that scrape. discover-batch never fires the paid
+	// ZenRows backstop (it uses Scrape, not ScrapeImport), so it is built without.
+	var scrape *scrapeBundle
+	if roleNeedsScrape(role) {
+		scrape = setupScrape(cfg, appLogger, role != config.RoleDiscoverBatch)
+		defer scrape.close()
+	}
+
+	// Job roles that need the pool + scrape engine: run their one task, exit.
+	switch role {
+	case config.RoleDiscoverBatch:
+		return runDiscoverBatch(ctx, cfg, appLogger, pool, scrape)
+	case config.RoleImportDrain:
+		return runImportDrain(ctx, cfg, appLogger, pool, scrape)
+	}
+
+	// Service roles (api, scraper, all): build the HTTP server.
 	mux := http.NewServeMux()
+	registerBaseRoutes(mux, cfg)
+
+	if roleServesScrape(role) {
+		scrapehttp.RegisterRoutes(mux, appLogger, scrape.service)
+	}
+
+	if pool != nil {
+		cleanup, err := registerDBRoutes(ctx, cfg, appLogger, role, mux, pool, scrape)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+	} else {
+		appLogger.Info("starting api without database-backed routes")
+	}
+
+	return serve(ctx, cfg, appLogger, mux)
+}
+
+// registerDBRoutes wires the database-backed features and, in the all role,
+// starts the in-process background loops. It is shared by api/scraper/all; which
+// routes mount is gated by the role. It returns a cleanup that closes any
+// long-lived clients it opened (Cloud Tasks dispatcher, GCS uploader) and an
+// error when a required dependency is misconfigured, so boot fails fast rather
+// than silently disabling a feature.
+func registerDBRoutes(
+	ctx context.Context,
+	cfg config.Config,
+	appLogger *slog.Logger,
+	role string,
+	mux *http.ServeMux,
+	pool *pgxpool.Pool,
+	scrape *scrapeBundle,
+) (func(), error) {
+	var closers []func()
+	cleanup := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+	}
+	authRepo := authpostgres.NewRepository(pool)
+	authService := authapp.NewService(authRepo)
+	authMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
+		return authhttp.RequireAuth(authService, next)
+	}
+
+	wishlistRepo := wishlistpostgres.NewRepository(pool)
+	wishlistService := wishlistapp.NewService(wishlistRepo)
+
+	// The scrape service is only present on scrape-capable roles. api builds its
+	// import/discover services with a nil scraper — the code paths that would
+	// deref it (processing, discover seed) are never registered on api.
+	var scrapeService *scrapeapp.Service
+	if scrape != nil {
+		scrapeService = scrape.service
+	}
+
+	productImportRepo := productimportpostgres.NewRepository(pool)
+	productImportService := productimportapp.NewService(
+		appLogger, productImportRepo, wishlistService, scrapeImporter(scrapeService), net.DefaultResolver,
+	)
+
+	discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
+	discoverService := discoverapp.NewService(discoverRepo, scrapeService)
+
+	maintenanceWorker := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval).
+		WithDiscoverSweeper(discoverRepo, cfg.DiscoverMaxProducts)
+
+	if roleServesAPI(role) {
+		authhttp.RegisterRoutes(mux, appLogger, authService)
+
+		if cfg.UploadsEnabled {
+			// Misconfigured uploads has no safe fallback (routes would 404), so fail
+			// boot instead of starting healthy with uploads silently off.
+			uploader, err := storage.NewGCSUploader(ctx, cfg.GCSBucket, cfg.GCSPublicBaseURL)
+			if err != nil {
+				cleanup()
+				return nil, fmt.Errorf("configure image storage: %w", err)
+			}
+			closers = append(closers, func() { _ = uploader.Close() })
+			uploadshttp.RegisterRoutes(mux, appLogger, uploader, authMiddleware)
+		}
+
+		// Cloud Tasks dispatch (live import). Absent locally/all -> in-process poller
+		// drains. When enabled it requires an invoker SA, else it would enqueue
+		// unauthenticated tasks the scraper IAM rejects — fail boot rather than
+		// silently degrade to the drain Job.
+		if cfg.LiveImportDispatchEnabled() {
+			if cfg.ScraperInvokerSA == "" {
+				cleanup()
+				return nil, fmt.Errorf("live import dispatch requires SCRAPER_INVOKER_SA")
+			}
+			dispatcher, err := importdispatch.New(ctx, importdispatch.Config{
+				QueuePath:      cfg.ImportTasksQueue,
+				ScraperBaseURL: cfg.ScraperURL,
+				Audience:       cfg.ScraperAudience,
+				InvokerSA:      cfg.ScraperInvokerSA,
+			})
+			if err != nil {
+				cleanup()
+				return nil, fmt.Errorf("configure import dispatcher: %w", err)
+			}
+			closers = append(closers, func() { _ = dispatcher.Close() })
+			productImportService = productImportService.WithDispatcher(dispatcher)
+		}
+
+		productimporthttp.RegisterRoutes(mux, appLogger, productImportService, authMiddleware)
+		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService, authMiddleware)
+		discoverhttp.RegisterRoutes(mux, appLogger, discoverService, authService, authMiddleware, cfg.InternalAPIKey)
+		maintenance.RegisterRoutes(mux, maintenanceWorker)
+	}
+
+	if roleServesScrape(role) {
+		productimporthttp.RegisterInternalRoutes(mux, appLogger, productImportService)
+		discoverhttp.RegisterSeedRoutes(mux, appLogger, discoverService, cfg.InternalAPIKey)
+	}
+
+	if role == config.RoleAll {
+		productimportapp.NewWorker(
+			appLogger, productImportService, cfg.ProductImportWorkerCount, cfg.ProductImportPollInterval,
+		).Start(ctx)
+		discoverapp.NewSitemapWorker(
+			appLogger, discoverRepo, scrapeService, cfg.DiscoverSitemapRefreshInterval,
+		).Start(ctx)
+		maintenanceWorker.Start(ctx)
+	}
+
+	return cleanup, nil
+}
+
+func registerBaseRoutes(mux *http.ServeMux, cfg config.Config) {
 	applinkshttp.RegisterRoutes(mux, applinkshttp.Options{
 		ShareBaseURL:                 cfg.ShareBaseURL,
 		AndroidPackageName:           "com.example.wishiz",
@@ -69,156 +249,13 @@ func run() error {
 		IOSAppID:                     "P46VR4C98R.com.wishiz.beta",
 	})
 	healthhttp.RegisterRoutes(mux)
+}
 
-	resolver := net.DefaultResolver
-	staticFetcher := scrapehttpfetch.New(resolver)
-	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath, resolver, cfg.ScrapeRenderTimeout)
-	defer headlessScraper.Close()
-
-	var shopifyProbe scrapeapp.CandidateSource
-	if cfg.ScrapeShopifyProbe {
-		shopifyProbe = scrapeshopify.NewProbe(resolver)
-	}
-
-	// Paid last-resort backstop (presence-gated): active only when ZENROWS_API_KEY
-	// is set. It fires solely on the product-import path (ScrapeImport) — never for
-	// discover or the synchronous /scrape route.
-	var scrapeBackstop scrapeapp.Backstop
-	if cfg.ZenRowsAPIKey != "" {
-		scrapeBackstop = scrapezenrows.New(cfg.ZenRowsAPIKey, appLogger)
-	}
-
-	scrapeEngine := scrapeapp.NewEngine(scrapeapp.EngineConfig{
-		InferDotComUSD: cfg.ScrapeInferDotComUSD,
-		MaxPrice:       cfg.ScrapeMaxPrice,
-	})
-
-	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
-	exchangeStop := make(chan struct{})
-	defer close(exchangeStop)
-	exchangeConverter.Start(exchangeStop)
-	// Fill the rate cache in the background so a slow ECB feed never blocks startup.
-	// Prices imported before the first refresh lands are simply not converted yet.
-	go func() {
-		if err := exchangeConverter.Refresh(); err != nil {
-			appLogger.Warn("initial exchange rate refresh failed", "error", err)
-		}
-	}()
-
-	scrapeService := scrapeapp.NewService(
-		appLogger, scrapeEngine, staticFetcher, headlessScraper, shopifyProbe, resolver, exchangeConverter,
-		scrapeapp.ServiceConfig{
-			Budget:               cfg.ScrapeBudget,
-			MaxConcurrentRenders: cfg.ScrapeMaxConcurrentRenders,
-			Backstop:             scrapeBackstop,
-			BackstopTimeout:      cfg.ZenRowsTimeout,
-		},
-	)
-	scrapehttp.RegisterRoutes(mux, appLogger, scrapeService)
-
-	if cfg.DatabaseURL != "" {
-		pool, err := db.Connect(ctx, cfg.DatabaseURL)
-		if err != nil {
-			return fmt.Errorf("connect postgres: %w", err)
-		}
-		defer pool.Close()
-
-		if cfg.RunDBMigrations {
-			appLogger.Info("running database migrations (dev-only)")
-			if err := db.RunMigrations(ctx, pool); err != nil {
-				return fmt.Errorf("run database migrations: %w", err)
-			}
-		}
-
-		authRepo := authpostgres.NewRepository(pool)
-		authService := authapp.NewService(authRepo)
-		authhttp.RegisterRoutes(mux, appLogger, authService)
-
-		if cfg.UploadsEnabled {
-			imageUploader, err := storage.NewS3Uploader(storage.S3Config{
-				Endpoint:        cfg.StorageS3Endpoint,
-				Region:          cfg.StorageS3Region,
-				Bucket:          cfg.StorageS3Bucket,
-				AccessKeyID:     cfg.StorageS3AccessKeyID,
-				SecretAccessKey: cfg.StorageS3SecretAccessKey,
-				UsePathStyle:    cfg.StorageS3UsePathStyle,
-				PublicBaseURL:   cfg.StoragePublicBaseURL,
-			})
-			if err != nil {
-				return fmt.Errorf("configure image storage: %w", err)
-			}
-			uploadshttp.RegisterRoutes(
-				mux,
-				appLogger,
-				imageUploader,
-				func(next http.HandlerFunc) http.HandlerFunc {
-					return authhttp.RequireAuth(authService, next)
-				},
-			)
-		}
-
-		wishlistRepo := wishlistpostgres.NewRepository(pool)
-		wishlistService := wishlistapp.NewService(wishlistRepo)
-		productImportRepo := productimportpostgres.NewRepository(pool)
-		productImportService := productimportapp.NewService(appLogger, productImportRepo, wishlistService, scrapeService, resolver)
-		productImportWorker := productimportapp.NewWorker(
-			appLogger,
-			productImportService,
-			cfg.ProductImportWorkerCount,
-			cfg.ProductImportPollInterval,
-		)
-		productImportWorker.Start(ctx)
-		productimporthttp.RegisterRoutes(
-			mux,
-			appLogger,
-			productImportService,
-			func(next http.HandlerFunc) http.HandlerFunc {
-				return authhttp.RequireAuth(authService, next)
-			},
-		)
-		wishlisthttp.RegisterRoutes(
-			mux,
-			appLogger,
-			wishlistService,
-			func(next http.HandlerFunc) http.HandlerFunc {
-				return authhttp.RequireAuth(authService, next)
-			},
-		)
-
-		discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
-		discoverService := discoverapp.NewService(discoverRepo, scrapeService)
-		discoverSitemapWorker := discoverapp.NewSitemapWorker(
-			appLogger,
-			discoverRepo,
-			scrapeService,
-			cfg.DiscoverSitemapRefreshInterval,
-		)
-		discoverSitemapWorker.Start(ctx)
-
-		maintenanceWorker := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval).
-			WithDiscoverSweeper(discoverRepo, cfg.DiscoverMaxProducts)
-		maintenanceWorker.Start(ctx)
-
-		discoverhttp.RegisterRoutes(
-			mux,
-			appLogger,
-			discoverService,
-			authService,
-			func(next http.HandlerFunc) http.HandlerFunc {
-				return authhttp.RequireAuth(authService, next)
-			},
-			cfg.InternalAPIKey,
-		)
-	} else {
-		appLogger.Info("starting api without database-backed wishlist routes")
-	}
-
+func serve(ctx context.Context, cfg config.Config, appLogger *slog.Logger, mux *http.ServeMux) error {
 	server := httpx.NewServer(cfg.HTTPAddr, mux)
-
 	serverErr := make(chan error, 1)
-
 	go func() {
-		appLogger.Info("starting api server", "addr", cfg.HTTPAddr, "env", cfg.AppEnv)
+		appLogger.Info("starting api server", "addr", cfg.HTTPAddr, "role", cfg.ServiceRole)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -233,10 +270,170 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	if err := httpx.Shutdown(shutdownCtx, server, appLogger); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
 	}
-
 	return nil
+}
+
+// ---- Job roles ----
+
+func runMigrate(ctx context.Context, cfg config.Config, appLogger *slog.Logger) error {
+	if cfg.DatabaseURL == "" {
+		return errors.New("migrate role requires DATABASE_URL")
+	}
+	conn, err := db.ConnectSimple(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connect postgres (migrate): %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	if err := db.RunMigrations(ctx, conn); err != nil {
+		return fmt.Errorf("run database migrations: %w", err)
+	}
+	appLogger.Info("migrations applied")
+	return nil
+}
+
+func runDiscoverBatch(
+	ctx context.Context, cfg config.Config, appLogger *slog.Logger, pool *pgxpool.Pool, scrape *scrapeBundle,
+) error {
+	if pool == nil {
+		return errors.New("discover-batch role requires DATABASE_URL")
+	}
+	discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
+	worker := discoverapp.NewSitemapWorker(
+		appLogger, discoverRepo, scrape.service, cfg.DiscoverSitemapRefreshInterval,
+	)
+	worker.Refresh(ctx)
+	return nil
+}
+
+func runImportDrain(
+	ctx context.Context, cfg config.Config, appLogger *slog.Logger, pool *pgxpool.Pool, scrape *scrapeBundle,
+) error {
+	if pool == nil {
+		return errors.New("import-drain role requires DATABASE_URL")
+	}
+	wishlistRepo := wishlistpostgres.NewRepository(pool)
+	wishlistService := wishlistapp.NewService(wishlistRepo)
+	productImportRepo := productimportpostgres.NewRepository(pool)
+	service := productimportapp.NewService(
+		appLogger, productImportRepo, wishlistService, scrape.service, net.DefaultResolver,
+	)
+
+	processed, err := service.DrainPending(ctx, cfg.ImportDrainLimit)
+	if err != nil {
+		return fmt.Errorf("drain pending imports: %w", err)
+	}
+	appLogger.Info("import drain finished", "processed", processed)
+	return nil
+}
+
+// ---- Scrape engine bundle ----
+
+type scrapeBundle struct {
+	service *scrapeapp.Service
+	close   func()
+}
+
+// setupScrape builds the scrape engine, headless allocator and exchange-rate
+// converter. The exchange cache is filled by one async refresh on cold start;
+// the periodic refresh ticker is started only in the all role. withBackstop
+// controls whether the paid ZenRows backstop is wired (import paths only).
+func setupScrape(cfg config.Config, appLogger *slog.Logger, withBackstop bool) *scrapeBundle {
+	resolver := net.DefaultResolver
+	staticFetcher := scrapehttpfetch.New(resolver)
+	headlessScraper := scrapeheadless.NewScraper(cfg.ChromiumPath, resolver, cfg.ScrapeRenderTimeout)
+
+	var shopifyProbe scrapeapp.CandidateSource
+	if cfg.ScrapeShopifyProbe {
+		shopifyProbe = scrapeshopify.NewProbe(resolver)
+	}
+
+	var scrapeBackstop scrapeapp.Backstop
+	if withBackstop && cfg.ZenRowsAPIKey != "" {
+		scrapeBackstop = scrapezenrows.New(cfg.ZenRowsAPIKey, appLogger)
+	}
+
+	scrapeEngine := scrapeapp.NewEngine(scrapeapp.EngineConfig{
+		InferDotComUSD: cfg.ScrapeInferDotComUSD,
+		MaxPrice:       cfg.ScrapeMaxPrice,
+	})
+
+	exchangeConverter := scrapeapp.NewCachedExchangeConverter(cfg.ExchangeRatesURL, cfg.ExchangeRateRefreshInterval)
+	switch cfg.ServiceRole {
+	case config.RoleDiscoverBatch:
+		// discover-batch never converts currency (it uses Scrape, not ScrapeImport),
+		// so skip the ECB fetch entirely — it would be pure wasted I/O.
+	case config.RoleImportDrain:
+		// The import-drain Job is short-lived and DOES convert; warm the rate cache
+		// synchronously so its imports don't race a cold cache and get forced to
+		// needs_review. A failed fetch still degrades gracefully (review, not panic).
+		if err := exchangeConverter.Refresh(); err != nil {
+			appLogger.Warn("initial exchange rate refresh failed", "error", err)
+		}
+	default:
+		// Long-lived roles (all, scraper): fill the cache in the background so a slow
+		// ECB feed never blocks cold start; prices imported before the first refresh
+		// lands are simply not yet converted (a failed conversion forces review).
+		go func() {
+			if err := exchangeConverter.Refresh(); err != nil {
+				appLogger.Warn("initial exchange rate refresh failed", "error", err)
+			}
+		}()
+	}
+	var exchangeStop chan struct{}
+	if cfg.ServiceRole == config.RoleAll {
+		exchangeStop = make(chan struct{})
+		exchangeConverter.Start(exchangeStop)
+	}
+
+	scrapeService := scrapeapp.NewService(
+		appLogger, scrapeEngine, staticFetcher, headlessScraper, shopifyProbe, resolver, exchangeConverter,
+		scrapeapp.ServiceConfig{
+			Budget:               cfg.ScrapeBudget,
+			MaxConcurrentRenders: cfg.ScrapeMaxConcurrentRenders,
+			Backstop:             scrapeBackstop,
+			BackstopTimeout:      cfg.ZenRowsTimeout,
+		},
+	)
+
+	return &scrapeBundle{
+		service: scrapeService,
+		close: func() {
+			headlessScraper.Close()
+			if exchangeStop != nil {
+				close(exchangeStop)
+			}
+		},
+	}
+}
+
+// scrapeImporter adapts the concrete scrape service to the productimports
+// Scraper port, returning a typed-nil-safe value when there is no engine.
+func scrapeImporter(s *scrapeapp.Service) productimportapp.Scraper {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+// ---- Role predicates ----
+
+func roleNeedsScrape(role string) bool {
+	switch role {
+	case config.RoleScraper, config.RoleDiscoverBatch, config.RoleImportDrain, config.RoleAll:
+		return true
+	default:
+		return false
+	}
+}
+
+func roleServesAPI(role string) bool {
+	return role == config.RoleAPI || role == config.RoleAll
+}
+
+func roleServesScrape(role string) bool {
+	return role == config.RoleScraper || role == config.RoleAll
 }

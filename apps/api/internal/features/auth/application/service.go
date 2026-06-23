@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/auth/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/auth/ports"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/randhex"
 )
 
 const sessionDuration = 30 * 24 * time.Hour
@@ -373,11 +373,7 @@ func hashPassword(password string) (string, error) {
 }
 
 func randomToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	return randhex.String(32)
 }
 
 func tokenHash(token string) string {

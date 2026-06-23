@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
-# Local/monolith image (SERVICE_ROLE=all): every route + all in-process
-# background loops + boot-migrate, used by docker-compose. The split production
-# images are Dockerfile.api (slim) and Dockerfile.scraper (Chromium).
+# wishiz-api image: the request-driven api service and the migrate Job. Slim, no
+# Chromium (it never scrapes). SERVICE_ROLE is overridden to "migrate" on the Job.
 
 FROM golang:1.24-bookworm AS builder
 
@@ -25,14 +24,13 @@ FROM debian:bookworm-slim
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium ca-certificates fonts-liberation \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/api /app/api
 
 EXPOSE 8080
 
-ENV CHROMIUM_PATH=/usr/bin/chromium
-ENV SERVICE_ROLE=all
+ENV SERVICE_ROLE=api
 
 ENTRYPOINT ["/app/api"]

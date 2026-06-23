@@ -33,6 +33,10 @@ const (
 	defaultLeaseTimeout    = 2 * time.Minute
 	defaultMaxAttempts     = 3
 	defaultClaimBatchLimit = 1
+	defaultDrainLimit      = 20
+	// dispatchTimeout bounds the detached Cloud Tasks enqueue RPC kicked off after
+	// a new import is created (it runs off the request path).
+	dispatchTimeout = 10 * time.Second
 )
 
 type WishlistService interface {
@@ -52,11 +56,20 @@ type Scraper interface {
 	) (scrapeapp.Product, error)
 }
 
+// Dispatcher hands a freshly-enqueued import off to be processed out-of-band
+// (Cloud Tasks -> the scraper service's process route). It is optional: when nil
+// (local/all role) the in-process poller drains the queue instead. A dispatch
+// failure must never fail the enqueue — the import-drain Job recovers the job.
+type Dispatcher interface {
+	Dispatch(ctx context.Context, jobID string) error
+}
+
 type Service struct {
 	logger       *slog.Logger
 	repo         ports.Repository
 	wishlists    WishlistService
 	scraper      Scraper
+	dispatcher   Dispatcher
 	resolver     scrapeapp.HostResolver
 	nowFn        func() time.Time
 	dedupeWindow time.Duration
@@ -99,6 +112,14 @@ func NewService(logger *slog.Logger, repo ports.Repository, wishlists WishlistSe
 	}
 }
 
+// WithDispatcher wires an out-of-band dispatcher (Cloud Tasks) used by the api
+// role to hand new imports to the scraper service. Returns the service for
+// chaining. Leaving it unset keeps the in-process poller as the drain path.
+func (s *Service) WithDispatcher(d Dispatcher) *Service {
+	s.dispatcher = d
+	return s
+}
+
 func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdomain.Job, bool, error) {
 	if input == nil {
 		return importdomain.Job{}, false, ValidationError("input", "input is required")
@@ -127,9 +148,9 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 
 	var wishlistIDPtr *string
 	if wishlistID != "" {
-		wishlist, err := s.wishlists.GetByID(ctx, wishlistID)
-		if err != nil {
-			return importdomain.Job{}, false, err
+		wishlist, getErr := s.wishlists.GetByID(ctx, wishlistID)
+		if getErr != nil {
+			return importdomain.Job{}, false, getErr
 		}
 		if !canEditWishlist(user.ID, wishlist) {
 			return importdomain.Job{}, false, wishlistapp.WishlistNotFound()
@@ -137,7 +158,7 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 		wishlistIDPtr = &wishlistID
 	}
 
-	return s.repo.CreateOrGet(ctx, ports.CreateJobParams{
+	job, existing, err := s.repo.CreateOrGet(ctx, ports.CreateJobParams{
 		UserID:             user.ID,
 		WishlistID:         wishlistIDPtr,
 		ClientRequestID:    clientRequestID,
@@ -145,6 +166,29 @@ func (s *Service) Create(ctx context.Context, input *CreateJobInput) (importdoma
 		Domain:             normalizedURL.Hostname(),
 		TargetCurrencyCode: targetCurrency,
 	}, s.dedupeWindow)
+	if err != nil {
+		return importdomain.Job{}, false, err
+	}
+
+	// Only a brand-new pending job needs dispatch; an existing/deduped job is
+	// already in flight. Dispatch failures are logged, not surfaced: the import
+	// returns success and the import-drain Job recovers an undispatched job. The
+	// Cloud Tasks RPC runs on a detached goroutine so its latency never blocks the
+	// user's enqueue response; it uses a fresh context (the request ctx is canceled
+	// once the response is written) with its own short timeout.
+	if !existing && s.dispatcher != nil {
+		jobID := job.ID
+		dispatchCtx := context.WithoutCancel(ctx)
+		go func() {
+			ctx, cancel := context.WithTimeout(dispatchCtx, dispatchTimeout)
+			defer cancel()
+			if derr := s.dispatcher.Dispatch(ctx, jobID); derr != nil {
+				s.logger.Warn("dispatch product import task failed", "job_id", jobID, "error", derr)
+			}
+		}()
+	}
+
+	return job, existing, nil
 }
 
 func (s *Service) List(ctx context.Context, input ListJobsInput) ([]importdomain.Job, error) {
@@ -266,6 +310,69 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	}
 	s.logger.Info("product import job processed", "job_id", job.ID, "domain", job.Domain, "duration_ms", time.Since(started).Milliseconds())
 	return true, nil
+}
+
+// ProcessByID claims and processes one specific job (the Cloud Tasks directed
+// dispatch path on the scraper service). It is idempotent: a job that is absent
+// or no longer pending (already processed, terminal, or a Cloud Tasks redelivery)
+// is a successful no-op so the task is not retried. A non-nil error means the
+// outcome could not be persisted — the caller returns non-2xx and Cloud Tasks
+// retries. The needs_review/failed terminal rules are honored via processClaimed.
+func (s *Service) ProcessByID(ctx context.Context, jobID string) error {
+	job, err := s.repo.ClaimByID(ctx, strings.TrimSpace(jobID), s.nowFn().UTC())
+	if errors.Is(err, ports.ErrNotFound) {
+		s.logger.Info("product import job not claimable, skipping", "job_id", jobID)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	started := s.nowFn()
+	if err := s.processClaimed(ctx, job); err != nil {
+		s.logger.Error("product import job processing failed", "job_id", job.ID, "domain", job.Domain, "error", err)
+		// processClaimed only errors when the final Settle write failed, leaving the
+		// row stuck in 'processing'. Release it back to pending so the Cloud Tasks
+		// retry (triggered by the non-2xx below) re-claims it promptly via ClaimByID
+		// instead of waiting for the lease-timeout sweep. Best-effort: if this also
+		// fails, ReleaseStuck still recovers the row. A re-process re-runs scrape +
+		// AddItem; that duplicate-item risk exists on every recovery path and is out
+		// of scope here.
+		if relErr := s.repo.ReleaseToPending(ctx, job.ID); relErr != nil {
+			s.logger.Warn("release product import job to pending failed", "job_id", job.ID, "error", relErr)
+		}
+		return err
+	}
+	s.logger.Info(
+		"product import job processed",
+		"job_id", job.ID, "domain", job.Domain, "duration_ms", time.Since(started).Milliseconds(),
+	)
+	return nil
+}
+
+// DrainPending processes up to limit pending jobs and returns how many it
+// settled. It is the import-drain Job's entry point: each iteration reuses
+// ProcessNext (RecoverStuck + ClaimNext + processClaimed), so it also recovers
+// jobs whose Cloud Task was never created or whose scraper instance died
+// mid-process. It stops early when the queue is empty.
+func (s *Service) DrainPending(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = defaultDrainLimit
+	}
+	processed := 0
+	for processed < limit {
+		if ctx.Err() != nil {
+			return processed, ctx.Err()
+		}
+		did, err := s.ProcessNext(ctx)
+		if err != nil {
+			return processed, err
+		}
+		if !did {
+			break
+		}
+		processed++
+	}
+	return processed, nil
 }
 
 func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) error {

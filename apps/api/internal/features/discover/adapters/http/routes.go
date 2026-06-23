@@ -33,6 +33,10 @@ type authGetter interface {
 	GetCurrentUser(ctx context.Context, userID string) (authdomain.User, error)
 }
 
+// RegisterRoutes mounts the user-facing discover routes plus the internal
+// starter-pack route, all of which are pure DB reads/writes. It does NOT touch
+// the scraper, so the api role can build its Service with a nil scrapeService.
+// The scraper-only seed route lives in RegisterSeedRoutes.
 func RegisterRoutes(
 	mux *http.ServeMux,
 	logger *slog.Logger,
@@ -52,8 +56,15 @@ func RegisterRoutes(
 	mux.HandleFunc("POST /discover/products/{id}/save", authMiddleware(h.toggleSave))
 	mux.HandleFunc("POST /discover/starter-packs/{id}/grab", authMiddleware(h.grabStarterPack))
 
-	mux.HandleFunc("POST /internal/discover/products", h.requireInternalKey(h.seedProduct))
 	mux.HandleFunc("POST /internal/discover/starter-packs", h.requireInternalKey(h.createStarterPack))
+}
+
+// RegisterSeedRoutes mounts the internal discover seed route, which scrapes the
+// supplied URL and therefore requires a Service backed by a real scrapeService.
+// It is registered only on the scraper (and all) role.
+func RegisterSeedRoutes(mux *http.ServeMux, logger *slog.Logger, service Service, internalKey string) {
+	h := handler{logger: logger, service: service, internalKey: internalKey}
+	mux.HandleFunc("POST /internal/discover/products", h.requireInternalKey(h.seedProduct))
 }
 
 func (h handler) requireInternalKey(next http.HandlerFunc) http.HandlerFunc {

@@ -246,6 +246,62 @@ func (r *Repository) ClaimNext(ctx context.Context, params ports.ClaimParams) (d
 	return job, nil
 }
 
+// ClaimByID atomically claims a single pending job by id, mirroring ClaimNext's
+// state transition but targeting one row. The inner SELECT ... FOR UPDATE SKIP
+// LOCKED keeps it race-free against the in-process poller and concurrent Cloud
+// Task deliveries: only a still-pending row is claimed; anything else yields no
+// row (-> ErrNotFound) and the caller treats it as an idempotent no-op.
+func (r *Repository) ClaimByID(ctx context.Context, id string, now time.Time) (domain.Job, error) {
+	job, err := scanJob(r.pool.QueryRow(ctx, `
+		UPDATE product_import_jobs
+		SET status = 'processing',
+			locked_at = $2,
+			last_attempted_at = $2,
+			attempt_count = attempt_count + 1,
+			retryable = FALSE,
+			progress_stage = 'validating',
+			progress_percent = 0
+		WHERE id = (
+			SELECT id
+			FROM product_import_jobs
+			WHERE id = $1::uuid
+				AND status = 'pending'
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING `+jobColumns,
+		id,
+		now,
+	))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Job{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.Job{}, fmt.Errorf("claim product import job %s: %w", id, err)
+	}
+	return job, nil
+}
+
+// ReleaseToPending reverts a still-processing job back to pending so the Cloud
+// Tasks retry can promptly re-claim it via ClaimByID after a Settle write failed.
+// It is guarded by status='processing' so a terminal/already-settled row is a
+// no-op (never resurrected), and is best-effort: the lease-timeout sweep recovers
+// the row if this write also fails.
+func (r *Repository) ReleaseToPending(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE product_import_jobs
+		SET status = 'pending',
+			locked_at = NULL,
+			retryable = TRUE
+		WHERE id = $1::uuid AND status = 'processing'`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("release product import job %s to pending: %w", id, err)
+	}
+	return nil
+}
+
 // UpdateProgress records the live scrape progress for a processing job. It is a
 // single best-effort UPDATE guarded by status='processing' so a settled job is
 // never resurrected by a late progress write.

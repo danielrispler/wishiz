@@ -86,6 +86,42 @@ func TestClaimNextSkipsPendingAtMaxAttempts(t *testing.T) {
 	}
 }
 
+// ClaimByID is the Cloud Tasks directed-dispatch path. It must claim a specific
+// pending job and reject anything else (terminal, already-claimed, redelivered)
+// with ErrNotFound so the dispatcher treats redelivery as an idempotent no-op.
+func TestClaimByIDClaimsPendingThenIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	r := NewRepository()
+	seeded := r.Seed(domain.Job{Status: domain.StatusPending, CreatedAt: now.Add(-time.Minute)})
+
+	job, err := r.ClaimByID(context.Background(), seeded.ID, now)
+	if err != nil {
+		t.Fatalf("claim by id: %v", err)
+	}
+	if job.ID != seeded.ID || job.Status != domain.StatusProcessing || job.AttemptCount != 1 {
+		t.Fatalf("expected claimed processing attempt=1, got id=%q status=%q attempt=%d", job.ID, job.Status, job.AttemptCount)
+	}
+
+	// Second delivery: the job is now processing, not pending -> no-op.
+	if _, err := r.ClaimByID(context.Background(), seeded.ID, now); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound on redelivery of claimed job, got %v", err)
+	}
+}
+
+func TestClaimByIDRejectsTerminalJob(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	r := NewRepository()
+	seeded := r.Seed(domain.Job{Status: domain.StatusNeedsReview, CreatedAt: now.Add(-time.Minute)})
+
+	if _, err := r.ClaimByID(context.Background(), seeded.ID, now); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("expected terminal job to be rejected, got %v", err)
+	}
+}
+
 func TestRetryRequeuesNeedsReviewForClaiming(t *testing.T) {
 	t.Parallel()
 

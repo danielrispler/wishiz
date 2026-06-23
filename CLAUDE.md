@@ -43,11 +43,11 @@ Platform note: iOS simulator uses `127.0.0.1`, Android emulator uses `10.0.2.2`.
 Hexagonal/Clean Architecture, feature-based modules under `internal/features/`:
 
 - `auth/` — signup, login, logout, 30-day session tokens
-- `discover/` — curated/trending product discovery backed by PostgreSQL. Ingestion (background `SitemapWorker` over ~80 brand sitemaps + the internal seed endpoint) calls **`Scrape` only, never `ScrapeImport`** — so the paid ZenRows backstop never fires for discover. It persists **only `auto_complete` products** (the `isSeedable` gate in `application/gate.go`: confident verdict + name + image); `needs_review`/`failed` are dropped, never queued for human review. Each row carries a TTL (`expires_at`, `DISCOVER_ITEM_TTL`, default 30d) that **extends on every re-scrape** (upsert), and the total is capped (`DISCOVER_MAX_PRODUCTS`, default 2000). The maintenance worker's `SweepDiscoverProducts` deletes expired rows then evicts over-cap rows least-saved/oldest first (cascades to `discover_product_saves`).
+- `discover/` — curated/trending product discovery backed by PostgreSQL. Ingestion (`SitemapWorker` over ~80 brand sitemaps + the internal seed endpoint) calls **`Scrape` only, never `ScrapeImport`** — so the paid ZenRows backstop never fires for discover. In prod the worker runs as the **weekly `discover-batch` Cloud Run Job** (`SitemapWorker.Refresh`); the in-process 24h ticker (`Start`) runs only in the `all` role (TTL 720h ≫ 7d, so nothing expires between runs). Routes are role-split: read/user routes + `POST /internal/discover/starter-packs` (`RegisterRoutes`, api role, nil-safe `scrapeService`) vs the scrape-backed seed route `POST /internal/discover/products` (`RegisterSeedRoutes`, scraper role). It persists **only `auto_complete` products** (the `isSeedable` gate in `application/gate.go`: confident verdict + name + image); `needs_review`/`failed` are dropped, never queued for human review. Each row carries a TTL (`expires_at`, `DISCOVER_ITEM_TTL`, default 30d) that **extends on every re-scrape** (upsert), and the total is capped (`DISCOVER_MAX_PRODUCTS`, default 2000). The maintenance worker's `SweepDiscoverProducts` deletes expired rows then evicts over-cap rows least-saved/oldest first (cascades to `discover_product_saves`).
 - `wishlists/` — CRUD, shared access (viewer/editor roles), invite tokens
-- `productimports/` — async job queue (workers poll DB every 2s). `needs_review` is a **terminal, non-retryable** outcome (human review), not a transient failure — `ClaimNext` only re-claims retryable rows, so a review job is never re-scraped. Only `failed` is retryable. The single `needsReviewOutcome` helper enforces this.
+- `productimports/` — async job queue. `needs_review` is a **terminal, non-retryable** outcome (human review), not a transient failure — `ClaimNext` only re-claims retryable rows, so a review job is never re-scraped. Only `failed` is retryable. The single `needsReviewOutcome` helper enforces this. Two drain paths: in the `all` role an in-process poller (`ProcessNext`, every 2s) drains; in prod the api enqueues + creates a **Cloud Tasks** task (`internal/platform/importdispatch`, gated on `IMPORT_TASKS_QUEUE`+`SCRAPER_URL`) targeting the scraper's `POST /internal/imports/{id}/process` → `ProcessByID`, which `ClaimByID`-claims one job atomically (idempotent no-op on redelivery/terminal). The route returns 2xx only after the outcome persists (non-2xx → Cloud Tasks retries). If the final `Settle` write fails, `ProcessByID` calls `ReleaseToPending` (best-effort, no-op on terminal rows) to revert the row back to `pending` so the Cloud Tasks retry re-claims it promptly via `ClaimByID` rather than waiting for the lease-timeout sweep. Dispatch runs off the request path on a detached goroutine so its Cloud Tasks RPC latency never blocks the user's enqueue. Live dispatch requires `SCRAPER_INVOKER_SA` (else it would enqueue unauthenticated tasks) — a missing SA when dispatch is enabled **fails boot**. The **hourly `import-drain` Job** (`DrainPending`) recovers undispatched/stuck jobs.
 - `scrape/` — ONE concurrent pipeline (≤30s): static HTTP fetch + Shopify probe + headless render launch together, early-aborting the render once cheap sources clear the verdict gate (the gate's reconciliation is the auto-complete result — no second reconcile). Multi-extractor → field-level consensus (`application/extractors/` + `consensus.go`) → validation gate → calibrated `Verdict` (auto_complete/needs_review/failed). Adapters: `httpfetch` (static; uses `bogdanfinn/tls-client` via `httpx.NewChromeClient` for a FULL Chrome fingerprint — JA3/JA4 **and** HTTP/2 SETTINGS/header-order — aligned to the UA pool's Chrome 124; follows HTTP 3xx **and** meta-refresh/JS-location redirects with per-hop SSRF re-validation, builds one client+jar per Fetch so cookies carry hop→hop), `headless` (render), `shopify` (probe). Two utls forks coexist **by design**: `bogdanfinn/utls` (via tls-client) for the anti-bot fetcher, and `refraction-networking/utls` (`httpx.NewUTLSTransport`, TLS-only + HTTP/1.1-pinned) for the discover sitemap worker — do NOT consolidate them (noted in go.mod too). The static fetcher disables tls-client's own gzip handling (`DisableCompression`) and decodes the body itself. This fingerprint does NOT beat JS-challenge/datacenter-IP blocks (aritzia/crate&barrel) on its own — those are rescued by the **ZenRows paid backstop** (`adapters/zenrows`, ADR-0002): a presence-gated (`ZENROWS_API_KEY`) second pass that fires ONLY on the product-import path (`Service.ScrapeImport`, called by the import worker — never discover or the synchronous `/scrape` route, which use `Scrape`/`ScrapeWithProgress`) when the own verdict is not `auto_complete`. It makes ONE residential-proxy + headless ZenRows fetch (`js_render`+`premium_proxy`, 25× cost), folds the rendered HTML through the SAME extractors (transport, NOT a source: no new `SourceName`, no migration, no drift/trust-matrix change) and re-reconciles. A **verdict-floor guard** (`verdictRank`) keeps the re-reconcile only when it does not lower the verdict, so a geo-priced exit can never degrade the outcome; the exit is pinned to the site's ccTLD (`inferProxyCountry`; `.com`/`.eu`→unpinned). Its timeout (`ZENROWS_TIMEOUT`, default 30s) is ON TOP of `SCRAPE_BUDGET` (derived from the inbound ctx, worst case ~60s/job). Any ZenRows error soft-fails to the own product, never retried (ADR-0001). Live backstop proof: `ZENROWS_API_KEY=… go test -tags scrapelive -run ZenRows ./internal/features/scrape/adapters/zenrows/`. Live fingerprint proof: `go test -tags scrapelive -run Fingerprint ./internal/features/scrape/adapters/httpfetch/` (hits tls.peet.ws). The set of `price_source` strings is owned by `extractors.AllSourceNames()`; the `price_source` CHECK in `000001_init_wishlists.up.sql` must mirror it exactly (a drift test reading the SQL enforces this). Currency policy is SAFE: a bare `$` is ambiguous and never auto-assigns USD — it falls to locale/TLD inference or `needs_review`. **Auto-complete gate** (`verdict.go`, relaxed): name+price ≥ MEDIUM (price NOT `conflict`/LOW/MISSING) and currency HIGH-or-inferred-MEDIUM; **image is display-only and does not gate**. A failed currency conversion forces review via an explicit override in `service.applyConversion` (a MEDIUM downgrade would now still auto-complete). **Brand-image fallback** (`extractors/brandimage.go`): when no product image survives, `ImageURL` falls back to the site brand asset (apple-touch-icon → favicon → rejected og:image) on its own `FieldBrandImage` candidate — applied AFTER the verdict so it never forces review, never votes in consensus, and adds no `SourceName`. The `eval/` harness (`go test -tags eval`) asserts a <1% false-auto-complete ceiling.
-- `uploads/` — authenticated image upload endpoints backed by S3-compatible storage
+- `uploads/` — authenticated image upload endpoints backed by **native GCS** (`storage.GCSUploader`, ADC). Bucket is uniform-access + public-read; objects are served directly from GCS (`https://storage.googleapis.com/<bucket>/<key>`), no read proxy. Keys are unguessable 16-byte hex (via the shared `platform/randhex` helper, also used by auth/wishlists tokens). Local dev can point the Go SDK at a fake-gcs-server via `STORAGE_EMULATOR_HOST`. When `UPLOADS_ENABLED` but the uploader can't be built (empty bucket / broken ADC) the api **fails boot** (no silent fallback — uploads have none). `GCSUploader.Close` and the Cloud Tasks dispatcher are closed on graceful shutdown via the cleanup `registerDBRoutes` returns.
 - `applinks/` — Android App Links + iOS Universal Links
 - `health/` — health check endpoint
 
@@ -55,9 +55,24 @@ Each feature follows: `domain/` → `ports/` → `application/` → `adapters/`
 
 Cross-cutting concerns in `internal/platform/`: config, HTTP server, DB connection, logger, authctx context helpers, storage.
 
-**Startup sequence** (`cmd/api/main.go`): config → logger → base routes (`applinks`, `health`) → scraper + exchange-rate setup → optional DB connection → optional migrations → conditional registration of auth/wishlists/productimports/discover/uploads → background workers (product-import, discover sitemap, maintenance sweep) → HTTP server on `HTTP_ADDR` (default `:8080`) → graceful shutdown (10s).
+**`SERVICE_ROLE`** (read in `config.go`, branched in `cmd/api/main.go`) selects which slice of the one binary runs. Cloud Run scale-to-zero kills background goroutines, so all periodic work is externally triggered in prod (ADR-0003):
 
-The **maintenance worker** (`internal/platform/maintenance`) is a ticker (default `CLEANUP_INTERVAL` = 1h) that deletes expired `app_sessions` and expired/unaccepted `wishlist_invites` — rows nothing else removes once they lapse — and, when the DB is up (`WithDiscoverSweeper`), sweeps TTL-expired and over-cap `discover_products`.
+| Role | Host | Chromium | Work |
+|------|------|----------|------|
+| `all` (default) | local docker-compose / tests | yes | every route + all 3 in-process loops + boot-migrate |
+| `api` | `wishiz-api` service | no | applinks, health, auth, wishlists, uploads, discover read routes, import enqueue (+ Cloud Tasks dispatch), `POST /internal/maintenance`. No scrape engine, no loops |
+| `scraper` | `wishiz-scraper` service | yes | health, scrape engine + `GET /scrape`, `POST /internal/imports/{id}/process` (live), `POST /internal/discover/products` (seed). No loops |
+| `migrate` | `wishiz-migrate` Job | no | `ConnectSimple` (simple protocol over the pooler) → `RunMigrations` → exit |
+| `discover-batch` | `wishiz-discover-batch` Job | yes | engine (no ZenRows) → `SitemapWorker.Refresh` → exit |
+| `import-drain` | `wishiz-import-drain` Job | yes | engine → `Service.DrainPending` → exit |
+
+Images: `Dockerfile.api` (slim) → `api`+`migrate`; `Dockerfile.scraper` (Chromium) → `scraper`+`discover-batch`+`import-drain`; `Dockerfile` → local `all`.
+
+**Startup sequence** (`cmd/api/main.go`): config → logger → `migrate` role returns early (`runMigrate`) → tuned DB pool (when `DATABASE_URL` set; boot-migrate only in `all`) → scrape engine for scrape-capable roles (`setupScrape`; exchange refresh is per-role — `discover-batch` skips it (never converts), the short-lived `import-drain` Job warms rates **synchronously** before draining so its imports don't race a cold cache, long-lived `all`/`scraper` refresh async on cold start; the refresh ticker `Start` runs only in `all`) → `discover-batch`/`import-drain` roles run their task and exit → otherwise build the HTTP server: base routes always, scrape routes for scraper/all, DB-backed routes role-gated (`registerDBRoutes`), in-process loops only in `all` → serve on `HTTP_ADDR` (overridden by `PORT` when Cloud Run injects it) → graceful shutdown (10s).
+
+The **DB pool** (`db.Connect`) is tuned for the Supabase transaction pooler: `QueryExecModeExec` with statement/description caches disabled (PgBouncer-safe), `MinConns=0`, `MaxConns=DB_MAX_CONNS`. No-arg `Exec` still uses the simple protocol, so multi-statement migrations work through it.
+
+The **maintenance worker** (`internal/platform/maintenance`) deletes expired `app_sessions` and expired/unaccepted `wishlist_invites` — rows nothing else removes once they lapse — and, when the DB is up (`WithDiscoverSweeper`), sweeps TTL-expired and over-cap `discover_products`. The ticker (`CLEANUP_INTERVAL`, default 1h) runs only in the `all` role; in prod it is driven by `POST /internal/maintenance` (api role, hourly Cloud Scheduler) calling `Worker.Sweep`, which now **returns an error** (ctx-cancel/shutdown excluded) so the route returns 500 on a genuine sweep failure instead of a misleading 200.
 
 ## Mobile Architecture
 
@@ -79,6 +94,8 @@ PostgreSQL 16. Migrations in `internal/platform/db/migrations/`. Extensions: pgc
 
 Pre-launch (0 users) the convention is to **edit the existing migration SQL in place** rather than add new migration files. Because migrations are versioned and `000001` uses `CREATE TABLE IF NOT EXISTS`, an in-place column add will **not** re-run on a DB that already has the table — **drop & recreate the local dev DB** after such a change (e.g. `docker compose down -v && docker compose up --build`). `product_import_jobs` carries `progress_stage`/`progress_percent` for the live import progress bar.
 
+Migrations apply via the **pre-deploy `migrate` Cloud Run Job** in prod (`ConnectSimple` → `RunMigrations`, simple-query-protocol over the transaction pooler so multi-statement DDL works PgBouncer-safe); boot-migrate (`RUN_DB_MIGRATIONS=true`) runs only in the single-instance `all` role. `RunMigrations` takes a minimal `Execer` interface so both `*pgxpool.Pool` and `*pgx.Conn` drive it.
+
 Core tables: `app_users`, `app_sessions`, `wishlists`, `wishlist_items`, `wishlist_members`, `wishlist_invites`. All have TIMESTAMPTZ timestamps with auto `updated_at` trigger. `wishlist_items` keeps both the display `price_label` and structured `price_amount`/`price_currency_code` (written at import time from the scraper, preserved on item edits).
 
 Full schema: `docs/postgres_schema.md`.
@@ -87,18 +104,21 @@ Full schema: `docs/postgres_schema.md`.
 
 | Var | Default | Notes |
 |-----|---------|-------|
-| `DATABASE_URL` | — | Required in prod |
+| `DATABASE_URL` | — | Required in prod (Supabase pooler, port 6543) |
+| `SERVICE_ROLE` | `all` | `all`/`api`/`scraper`/`migrate`/`discover-batch`/`import-drain` |
 | `APP_ENV` | `development` | |
-| `HTTP_ADDR` | `:8080` | |
-| `RUN_DB_MIGRATIONS` | `false` | Set `true` in dev |
-| `UPLOADS_ENABLED` | `false` | Enable S3-backed upload routes |
-| `STORAGE_S3_ENDPOINT` | `""` | S3-compatible endpoint |
-| `STORAGE_S3_REGION` | `us-east-1` | Storage region |
-| `STORAGE_S3_BUCKET` | `""` | Upload bucket name |
-| `STORAGE_S3_ACCESS_KEY_ID` | `""` | Storage access key |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | `""` | Storage secret key |
-| `STORAGE_S3_USE_PATH_STYLE` | `true` | Path-style S3 URLs |
-| `STORAGE_PUBLIC_BASE_URL` | `""` | Public asset base URL |
+| `HTTP_ADDR` | `:8080` | `PORT` (Cloud Run) overrides it |
+| `PORT` | — | Cloud Run-injected; takes precedence over `HTTP_ADDR` |
+| `DB_MAX_CONNS` | `5` | Pool size/instance; keep Σ(instances × this) under pooler cap |
+| `RUN_DB_MIGRATIONS` | `false` | Boot-migrate; honored only in `all` (prod uses the migrate Job) |
+| `UPLOADS_ENABLED` | `false` | Enable GCS-backed upload routes (api role) |
+| `BUCKET_NAME` | `""` | GCS upload bucket |
+| `GCS_PUBLIC_BASE_URL` | `https://storage.googleapis.com` | Public object URL base |
+| `IMPORT_TASKS_QUEUE` | `""` | Full Cloud Tasks queue path; with `SCRAPER_URL` enables live dispatch |
+| `SCRAPER_URL` | `""` | Scraper service base URL (Cloud Tasks target) |
+| `SCRAPER_AUDIENCE` | =`SCRAPER_URL` | OIDC token audience for the live-import task |
+| `SCRAPER_INVOKER_SA` | `""` | SA email Cloud Tasks mints the OIDC token as. **Required** when live dispatch is enabled (`IMPORT_TASKS_QUEUE`+`SCRAPER_URL` set) — empty → api fails boot |
+| `IMPORT_DRAIN_LIMIT` | `20` | Max jobs the `import-drain` Job processes per run |
 | `CHROMIUM_PATH` | `""` | Optional path for headless scraping |
 | `SCRAPE_BUDGET` | `30s` | Total wall-clock budget per scrape |
 | `SCRAPE_RENDER_TIMEOUT` | `26s` | Headless render sub-timeout (< budget) |

@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"testing"
-	"time"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/authctx"
 	"github.com/danielrispler/wishiz/apps/api/internal/platform/storage"
@@ -38,7 +37,7 @@ func TestUploadImageReturnsCreatedObject(t *testing.T) {
 
 			return storage.Object{
 				Key: "wishlists/object.png",
-				URL: "http://127.0.0.1:9000/wishiz-images/wishlists/object.png",
+				URL: "https://storage.googleapis.com/wishiz-images/wishlists/object.png",
 			}, nil
 		},
 	}
@@ -72,85 +71,12 @@ func TestUploadImageRejectsUnsupportedContentType(t *testing.T) {
 	}
 }
 
-func TestProxyStorageObjectForwardsCacheHeaders(t *testing.T) {
-	t.Parallel()
-
-	lastModified := time.Date(2026, time.May, 16, 12, 30, 0, 0, time.UTC)
-	uploader := stubUploader{
-		getObject: func(_ context.Context, key string) (storage.ObjectData, error) {
-			if key != "wishlists/object.png" {
-				t.Fatalf("expected key to be passed through, got %q", key)
-			}
-			return storage.ObjectData{
-				Body:          io.NopCloser(bytes.NewReader([]byte("image-bytes"))),
-				ContentType:   "image/png",
-				ContentLength: int64(len("image-bytes")),
-				CacheControl:  "public, max-age=31536000, immutable",
-				ETag:          "\"abc123\"",
-				LastModified:  lastModified,
-			}, nil
-		},
-	}
-
-	recorder := performStorageRequest(t, uploader, nil)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", recorder.Code)
-	}
-	if got := recorder.Header().Get("Content-Type"); got != "image/png" {
-		t.Fatalf("expected content type to be forwarded, got %q", got)
-	}
-	if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
-		t.Fatalf("expected cache-control to be forwarded, got %q", got)
-	}
-	if got := recorder.Header().Get("ETag"); got != "\"abc123\"" {
-		t.Fatalf("expected etag to be forwarded, got %q", got)
-	}
-	if got := recorder.Header().Get("Last-Modified"); got != lastModified.Format(http.TimeFormat) {
-		t.Fatalf("expected last-modified to be forwarded, got %q", got)
-	}
-	if got := recorder.Body.String(); got != "image-bytes" {
-		t.Fatalf("expected proxy to stream response body, got %q", got)
-	}
-}
-
-func TestProxyStorageObjectReturnsNotModifiedWhenETagMatches(t *testing.T) {
-	t.Parallel()
-
-	uploader := stubUploader{
-		getObject: func(_ context.Context, _ string) (storage.ObjectData, error) {
-			return storage.ObjectData{
-				Body:         io.NopCloser(bytes.NewReader([]byte("image-bytes"))),
-				ETag:         "\"abc123\"",
-				LastModified: time.Date(2026, time.May, 16, 12, 30, 0, 0, time.UTC),
-			}, nil
-		},
-	}
-
-	headers := make(http.Header)
-	headers.Set("If-None-Match", "\"abc123\"")
-	recorder := performStorageRequest(t, uploader, headers)
-	if recorder.Code != http.StatusNotModified {
-		t.Fatalf("expected 304, got %d", recorder.Code)
-	}
-	if recorder.Body.Len() != 0 {
-		t.Fatalf("expected empty body for 304, got %q", recorder.Body.String())
-	}
-}
-
 type stubUploader struct {
 	uploadImage func(context.Context, storage.UploadImageParams) (storage.Object, error)
-	getObject   func(context.Context, string) (storage.ObjectData, error)
 }
 
 func (s stubUploader) UploadImage(ctx context.Context, params storage.UploadImageParams) (storage.Object, error) {
 	return s.uploadImage(ctx, params)
-}
-
-func (s stubUploader) GetObject(ctx context.Context, key string) (storage.ObjectData, error) {
-	if s.getObject == nil {
-		return storage.ObjectData{}, nil
-	}
-	return s.getObject(ctx, key)
 }
 
 func performUploadRequest(
@@ -200,36 +126,6 @@ func performUploadRequest(
 
 	request := httptest.NewRequest(http.MethodPost, "/uploads/images", requestBody)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	if contentType != "" {
-		request.Header.Set("X-Test-Content-Type", contentType)
-	}
-
-	recorder := httptest.NewRecorder()
-	mux.ServeHTTP(recorder, request)
-	return recorder
-}
-
-func performStorageRequest(
-	t *testing.T,
-	uploader Uploader,
-	headers http.Header,
-) *httptest.ResponseRecorder {
-	t.Helper()
-
-	mux := http.NewServeMux()
-	RegisterRoutes(
-		mux,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		uploader,
-		nil,
-	)
-
-	request := httptest.NewRequest(http.MethodGet, "/storage/wishlists/object.png", http.NoBody)
-	for key, values := range headers {
-		for _, value := range values {
-			request.Header.Add(key, value)
-		}
-	}
 
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, request)

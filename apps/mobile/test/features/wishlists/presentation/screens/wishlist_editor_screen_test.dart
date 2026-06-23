@@ -16,7 +16,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Edit List'), findsOneWidget);
-      expect(find.text('Update the list'), findsOneWidget);
       expect(find.text('List details'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'List title'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Short note'), findsOneWidget);

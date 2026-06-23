@@ -9,7 +9,7 @@ Treat this file as living documentation. If you change the repo in a way that ma
 ## What This Is
 
 Wishiz — editorial-style wishlist manager. Monorepo with:
-- `apps/api/` — Go 1.23 REST API + PostgreSQL
+- `apps/api/` — Go 1.25 REST API + PostgreSQL
 - `apps/mobile/` — Flutter 3.35+ app (iOS, Android, web)
 - `contracts/openapi/` — OpenAPI specs
 

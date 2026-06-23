@@ -4,7 +4,7 @@
 # background loops + boot-migrate, used by docker-compose. The split production
 # images are Dockerfile.api (slim) and Dockerfile.scraper (Chromium).
 
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /src
 

@@ -113,11 +113,16 @@ $G iam service-accounts add-iam-policy-binding "${TASKS_INVOKER_SA}" \
 # ---- 3. Build + push both images (Cloud Build) ------------------------------
 # Build context is apps/api (this script's dir) because the Dockerfiles COPY
 # go.mod/go.sum then the source relative to it.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-log "Building images via Cloud Build (tag ${TAG})"
-CB_CFG="$(mktemp)"
-trap 'rm -f "${CB_CFG}"' EXIT
-cat >"${CB_CFG}" <<YAML
+# Set SKIP_BUILD=1 to reuse the images already in Artifact Registry at this TAG
+# (e.g. resuming a partial run after the build already succeeded).
+if [[ -n "${SKIP_BUILD:-}" ]]; then
+  log "SKIP_BUILD set — reusing existing images at tag ${TAG}"
+else
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  log "Building images via Cloud Build (tag ${TAG})"
+  CB_CFG="$(mktemp)"
+  trap 'rm -f "${CB_CFG}"' EXIT
+  cat >"${CB_CFG}" <<YAML
 steps:
   - name: gcr.io/cloud-builders/docker
     args: ['build', '-t', '${API_IMG}', '-f', 'Dockerfile.api', '.']
@@ -129,7 +134,8 @@ images:
 options:
   logging: CLOUD_LOGGING_ONLY
 YAML
-$G builds submit "${SCRIPT_DIR}" --config="${CB_CFG}"
+  $G builds submit "${SCRIPT_DIR}" --config="${CB_CFG}"
+fi
 
 # ---- 4. Migrate Job (pre-deploy) --------------------------------------------
 log "Reconciling + executing the migrate Job"

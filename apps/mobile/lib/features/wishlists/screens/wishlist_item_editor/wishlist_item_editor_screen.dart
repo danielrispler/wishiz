@@ -8,7 +8,6 @@ import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/shared_product_repository.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_field_card.dart';
-import 'package:wishiz/features/wishlists/shared/widgets/editor_intro_card.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_page_layout.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_primary_button.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_section_card.dart';
@@ -319,12 +318,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
             ? 'Review Item'
             : 'Add Item',
         children: [
-          EditorIntroCard(
-            title: _buildIntroTitle(isReviewingImportedDetails),
-            description: _buildIntroDescription(isReviewingImportedDetails),
-            icon: _buildIntroIcon(isReviewingImportedDetails),
-          ),
-          const SizedBox(height: AppConstants.sectionGap),
           ItemPreviewCard(
             title: _titleController.text.trim(),
             notes: _notesController.text.trim(),
@@ -411,28 +404,6 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
         ),
       ),
     );
-  }
-
-  String _buildIntroTitle(bool isReviewingImportedDetails) {
-    if (widget.isEditing) return 'Update the item';
-    if (isReviewingImportedDetails) return 'Review imported details';
-    return 'Add an item people can scan quickly';
-  }
-
-  String _buildIntroDescription(bool isReviewingImportedDetails) {
-    if (widget.isEditing) {
-      return 'Refresh the title, notes, image, and status without losing the original context.';
-    }
-    if (isReviewingImportedDetails) {
-      return 'Check the imported title, price, and image, then fix anything that looks wrong before saving.';
-    }
-    return 'Clear title first, short notes second, optional extras last. The form is ordered to reduce friction.';
-  }
-
-  IconData _buildIntroIcon(bool isReviewingImportedDetails) {
-    if (widget.isEditing) return Icons.edit_outlined;
-    if (isReviewingImportedDetails) return Icons.fact_check_outlined;
-    return Icons.add_task_outlined;
   }
 
   String? _optionalValue(String value) {

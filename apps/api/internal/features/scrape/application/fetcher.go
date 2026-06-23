@@ -27,3 +27,13 @@ type FetchResult struct {
 type Fetcher interface {
 	Fetch(ctx context.Context, rawURL string) (FetchResult, error)
 }
+
+// Backstop is a paid last-resort fetcher (e.g. ZenRows) consulted only on the
+// product-import path when the own pipeline cannot auto-complete. Unlike Fetcher
+// it takes a proxyCountry hint so the caller can pin the residential exit to the
+// site's country (pass "" to leave the exit to the provider). It returns the same
+// FetchResult, so its HTML feeds the identical Extract → consensus → verdict path:
+// the backstop is a transport, not an extraction source.
+type Backstop interface {
+	Fetch(ctx context.Context, rawURL, proxyCountry string) (FetchResult, error)
+}

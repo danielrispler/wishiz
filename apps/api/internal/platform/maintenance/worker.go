@@ -20,13 +20,21 @@ type InviteSweeper interface {
 	DeleteExpiredInvites(ctx context.Context) (int64, error)
 }
 
+// DiscoverSweeper removes stale (TTL-expired) and overflow discover products,
+// returning how many were expired and evicted by the global cap.
+type DiscoverSweeper interface {
+	SweepDiscoverProducts(ctx context.Context, maxRows int) (expired, evicted int64, err error)
+}
+
 // Worker periodically sweeps expired sessions and invites on a ticker. It mirrors
 // the other background workers (product import, sitemap) and stops on ctx cancel.
 type Worker struct {
-	logger   *slog.Logger
-	sessions SessionSweeper
-	invites  InviteSweeper
-	interval time.Duration
+	logger          *slog.Logger
+	sessions        SessionSweeper
+	invites         InviteSweeper
+	discover        DiscoverSweeper
+	discoverMaxRows int
+	interval        time.Duration
 }
 
 // NewWorker builds a maintenance worker. A non-positive interval falls back to 1h.
@@ -43,6 +51,16 @@ func NewWorker(logger *slog.Logger, sessions SessionSweeper, invites InviteSweep
 		invites:  invites,
 		interval: interval,
 	}
+}
+
+// WithDiscoverSweeper wires the discover-product sweep (TTL + global cap) into
+// the worker. It is only available when the DB is up, so it is set separately
+// from the required session/invite sweepers. A non-positive maxRows disables the
+// cap, leaving only the TTL sweep. Returns the worker for chaining.
+func (w *Worker) WithDiscoverSweeper(sweeper DiscoverSweeper, maxRows int) *Worker {
+	w.discover = sweeper
+	w.discoverMaxRows = maxRows
+	return w
 }
 
 // Start runs an immediate sweep, then sweeps every interval until ctx is done.
@@ -74,6 +92,14 @@ func (w *Worker) sweep(ctx context.Context) {
 		w.logSweepError(ctx, "sweep expired invites failed", err)
 	} else if invites > 0 {
 		w.logger.Info("swept expired invites", "deleted", invites)
+	}
+
+	if w.discover != nil {
+		if expired, evicted, err := w.discover.SweepDiscoverProducts(ctx, w.discoverMaxRows); err != nil {
+			w.logSweepError(ctx, "sweep discover products failed", err)
+		} else if expired > 0 || evicted > 0 {
+			w.logger.Info("swept discover products", "expired", expired, "over_cap_evicted", evicted)
+		}
 	}
 }
 

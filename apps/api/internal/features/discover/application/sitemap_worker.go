@@ -295,12 +295,19 @@ func (w *SitemapWorker) refreshBrand(ctx context.Context, brand sitemapBrand) (i
 			continue
 		}
 
+		// Discover MUST use Scrape (own pipeline only) and never ScrapeImport: only the
+		// import path triggers the paid ZenRows backstop. Keep this call on Scrape.
 		product, err := w.scrapeService.Scrape(ctx, cleanURL, "USD")
 		if err != nil && product.Name == "" && product.ImageURL == "" {
 			w.logger.Warn("discover scrape failed", "brand", brand.Name, "url", cleanURL, "error", err)
 			continue
 		}
-		if strings.TrimSpace(product.Name) == "" || strings.TrimSpace(product.ImageURL) == "" {
+		// Only seed products the scraper is sure about (auto_complete + name + image).
+		if !isSeedable(product) {
+			w.logger.Debug(
+				"discover scrape not confident, skipping",
+				"brand", brand.Name, "url", cleanURL, "verdict", string(product.Verdict),
+			)
 			continue
 		}
 

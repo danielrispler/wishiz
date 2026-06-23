@@ -151,7 +151,8 @@ Expired, unaccepted rows are swept periodically by the maintenance worker.
 - `gender TEXT` — CHECK `IS NULL OR IN ('men','women')` (product target audience; ingestion lowercases)
 - `product_type TEXT`
 - `created_at` / `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- Indexes: `(category)`, `(brand)`, `(save_count DESC, created_at DESC)`, UNIQUE `(product_url)`
+- `expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 days'` — per-item TTL; app-supplied on write and extended on every re-scrape (upsert). The maintenance worker deletes rows past `expires_at` and evicts over the `DISCOVER_MAX_PRODUCTS` cap (least-saved/oldest first).
+- Indexes: `(category)`, `(brand)`, `(save_count DESC, created_at DESC)`, `(expires_at)`, UNIQUE `(product_url)`
 
 ### `discover_product_saves`
 

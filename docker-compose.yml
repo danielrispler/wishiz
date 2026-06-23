@@ -62,6 +62,8 @@ services:
       STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-https://storage.example.com}
       UPLOADS_ENABLED: ${UPLOADS_ENABLED:-true}
       SHARE_BASE_URL: ${SHARE_BASE_URL:-https://wishiz.app}
+      ZENROWS_API_KEY: ${ZENROWS_API_KEY:-}
+      ZENROWS_TIMEOUT: ${ZENROWS_TIMEOUT:-30s}
     ports:
       - "${API_BIND_ADDR:-0.0.0.0}:8080:8080"
 

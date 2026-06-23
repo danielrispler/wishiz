@@ -90,13 +90,19 @@ func (s *Service) SeedProduct(ctx context.Context, rawURL, category string) (dom
 		return domain.DiscoverProduct{}, ValidationError("category", "category is required")
 	}
 
+	// Discover MUST use Scrape (own pipeline only) and never ScrapeImport: only the
+	// import path triggers the paid ZenRows backstop. Keep this call on Scrape.
 	scraped, err := s.scrapeService.Scrape(ctx, rawURL, "USD")
 	if err != nil {
 		return domain.DiscoverProduct{}, err
 	}
 
-	if scraped.Name == "" || scraped.ImageURL == "" {
-		return domain.DiscoverProduct{}, ValidationError("url", "could not extract product name or image from URL")
+	// Only seed products the scraper is sure about (auto_complete + name + image).
+	if !isSeedable(scraped) {
+		return domain.DiscoverProduct{}, ValidationError(
+			"url",
+			"could not confidently extract a product (name, image, and price) from URL",
+		)
 	}
 
 	var productURL *string

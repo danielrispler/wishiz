@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,10 +29,17 @@ func savedWishlistItemLateral(userParam string) string {
 
 type Repository struct {
 	pool *pgxpool.Pool
+	ttl  time.Duration
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+// NewRepository builds the discover Postgres repository. ttl is the lifetime
+// stamped onto each seeded product's expires_at (extended on every re-scrape);
+// a non-positive ttl falls back to 30 days.
+func NewRepository(pool *pgxpool.Pool, ttl time.Duration) *Repository {
+	if ttl <= 0 {
+		ttl = 30 * 24 * time.Hour
+	}
+	return &Repository{pool: pool, ttl: ttl}
 }
 
 func (r *Repository) GetTrending(ctx context.Context, userID string, limit int) ([]domain.DiscoverProduct, error) {
@@ -370,9 +378,11 @@ func (r *Repository) GrabStarterPack(ctx context.Context, userID, packID, wishli
 }
 
 func (r *Repository) SeedProduct(ctx context.Context, in ports.SeedProductInput) (domain.DiscoverProduct, error) {
+	expiresAt := time.Now().Add(r.ttl)
 	row := r.pool.QueryRow(ctx, `
-		INSERT INTO discover_products (title, brand, category, image_url, product_url, price_label, gender, product_type)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO discover_products
+			(title, brand, category, image_url, product_url, price_label, gender, product_type, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (product_url) DO UPDATE
 		SET
 			title = EXCLUDED.title,
@@ -382,11 +392,12 @@ func (r *Repository) SeedProduct(ctx context.Context, in ports.SeedProductInput)
 			price_label = EXCLUDED.price_label,
 			gender = EXCLUDED.gender,
 			product_type = EXCLUDED.product_type,
+			expires_at = EXCLUDED.expires_at,
 			updated_at = NOW()
 		RETURNING
 			id::text, title, brand, category, image_url, product_url, save_count, created_at,
 			price_label, gender, product_type
-	`, in.Title, in.Brand, in.Category, in.ImageURL, in.ProductURL, in.PriceLabel, in.Gender, in.ProductType)
+	`, in.Title, in.Brand, in.Category, in.ImageURL, in.ProductURL, in.PriceLabel, in.Gender, in.ProductType, expiresAt)
 
 	var p domain.DiscoverProduct
 	err := row.Scan(&p.ID, &p.Title, &p.Brand, &p.Category, &p.ImageURL, &p.ProductURL, &p.SaveCount, &p.CreatedAt,
@@ -395,6 +406,37 @@ func (r *Repository) SeedProduct(ctx context.Context, in ports.SeedProductInput)
 		return domain.DiscoverProduct{}, fmt.Errorf("seed product: %w", err)
 	}
 	return p, nil
+}
+
+// SweepDiscoverProducts removes stale and overflow discover products. It first
+// deletes everything past its TTL (expires_at < now), then enforces the global
+// row cap by evicting the least valuable rows beyond maxRows — least-saved
+// first, oldest as the tiebreak — keeping the popular, freshest feed. Deletes
+// cascade to discover_product_saves (FK ON DELETE CASCADE). A non-positive
+// maxRows disables the cap (only the TTL sweep runs).
+func (r *Repository) SweepDiscoverProducts(ctx context.Context, maxRows int) (expired, evicted int64, err error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM discover_products WHERE expires_at < NOW()`)
+	if err != nil {
+		return 0, 0, fmt.Errorf("sweep expired discover products: %w", err)
+	}
+	expired = tag.RowsAffected()
+
+	if maxRows <= 0 {
+		return expired, 0, nil
+	}
+
+	capTag, err := r.pool.Exec(ctx, `
+		DELETE FROM discover_products
+		WHERE id IN (
+			SELECT id FROM discover_products
+			ORDER BY save_count ASC, created_at ASC
+			OFFSET $1
+		)
+	`, maxRows)
+	if err != nil {
+		return expired, 0, fmt.Errorf("enforce discover product cap: %w", err)
+	}
+	return expired, capTag.RowsAffected(), nil
 }
 
 func (r *Repository) CreateStarterPack(ctx context.Context, title, subtitle, coverImageURL string, productIDs []string) (domain.StarterPack, error) {

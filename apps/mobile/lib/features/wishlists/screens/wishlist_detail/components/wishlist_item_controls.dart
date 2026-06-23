@@ -63,11 +63,23 @@ class WishlistItemControls extends StatelessWidget {
                               : colorScheme.outlineVariant,
                         ),
                       ),
+                      padding: WidgetStateProperty.all(
+                        const EdgeInsets.symmetric(horizontal: AppConstants.spacing1),
+                      ),
                     ),
                     segments: const [
-                      ButtonSegment(value: WishlistItemFilter.all, label: Text('All')),
-                      ButtonSegment(value: WishlistItemFilter.active, label: Text('Active')),
-                      ButtonSegment(value: WishlistItemFilter.purchased, label: Text('Purchased')),
+                      ButtonSegment(
+                        value: WishlistItemFilter.all,
+                        label: FittedBox(fit: BoxFit.scaleDown, child: Text('All', softWrap: false)),
+                      ),
+                      ButtonSegment(
+                        value: WishlistItemFilter.active,
+                        label: FittedBox(fit: BoxFit.scaleDown, child: Text('Active', softWrap: false)),
+                      ),
+                      ButtonSegment(
+                        value: WishlistItemFilter.purchased,
+                        label: FittedBox(fit: BoxFit.scaleDown, child: Text('Purchased', softWrap: false)),
+                      ),
                     ],
                     selected: {selectedFilter},
                     onSelectionChanged: (selection) => onFilterChanged(selection.first),

@@ -8,7 +8,6 @@ import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/repositories/wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_field_card.dart';
-import 'package:wishiz/features/wishlists/shared/widgets/editor_intro_card.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_page_layout.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_primary_button.dart';
 import 'package:wishiz/features/wishlists/shared/widgets/editor_section_card.dart';
@@ -162,18 +161,6 @@ class _WishlistEditorScreenState extends State<WishlistEditorScreen> {
       child: EditorPageLayout(
         title: widget.isEditing ? 'Edit List' : 'Create List',
         children: [
-          EditorIntroCard(
-            title: widget.isEditing
-                ? 'Update the list'
-                : 'Start with the basics',
-            description: widget.isEditing
-                ? 'Make the title and cover easier to recognize at a glance.'
-                : 'Create a list people of any age can understand quickly: clear title and an optional cover.',
-            icon: widget.isEditing
-                ? Icons.edit_outlined
-                : Icons.auto_awesome_outlined,
-          ),
-          const SizedBox(height: AppConstants.sectionGap),
           _buildPreviewCard(context),
           const SizedBox(height: AppConstants.sectionGap),
           EditorSectionCard(

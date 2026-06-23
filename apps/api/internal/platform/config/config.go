@@ -27,11 +27,15 @@ type Config struct {
 	ScrapeShopifyProbe                  bool
 	ScrapeInferDotComUSD                bool
 	ScrapeMaxPrice                      float64
+	ZenRowsAPIKey                       string
+	ZenRowsTimeout                      time.Duration
 	ExchangeRatesURL                    string
 	ExchangeRateRefreshInterval         time.Duration
 	ProductImportWorkerCount            int
 	ProductImportPollInterval           time.Duration
 	DiscoverSitemapRefreshInterval      time.Duration
+	DiscoverItemTTL                     time.Duration
+	DiscoverMaxProducts                 int
 	CleanupInterval                     time.Duration
 	ShareBaseURL                        string
 	AndroidAppLinkSHA256CertFingerprint string
@@ -59,6 +63,8 @@ func Load() (Config, error) {
 		ScrapeShopifyProbe:         getEnvBool("SCRAPE_SHOPIFY_PROBE", true),
 		ScrapeInferDotComUSD:       getEnvBool("SCRAPE_INFER_DOTCOM_USD", false),
 		ScrapeMaxPrice:             getEnvFloat("SCRAPE_MAX_PRICE", 1e7),
+		ZenRowsAPIKey:              getEnv("ZENROWS_API_KEY", ""),
+		ZenRowsTimeout:             getEnvDuration("ZENROWS_TIMEOUT", 30*time.Second),
 		ExchangeRatesURL: getEnv(
 			"EXCHANGE_RATES_URL",
 			"https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
@@ -70,8 +76,10 @@ func Load() (Config, error) {
 			"DISCOVER_SITEMAP_REFRESH_INTERVAL",
 			24*time.Hour,
 		),
-		CleanupInterval: getEnvDuration("CLEANUP_INTERVAL", time.Hour),
-		ShareBaseURL:    getEnv("SHARE_BASE_URL", "https://wishiz.app"),
+		DiscoverItemTTL:     getEnvDuration("DISCOVER_ITEM_TTL", 720*time.Hour),
+		DiscoverMaxProducts: getEnvInt("DISCOVER_MAX_PRODUCTS", 2000),
+		CleanupInterval:     getEnvDuration("CLEANUP_INTERVAL", time.Hour),
+		ShareBaseURL:        getEnv("SHARE_BASE_URL", "https://wishiz.app"),
 		AndroidAppLinkSHA256CertFingerprint: getEnv(
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
 			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",

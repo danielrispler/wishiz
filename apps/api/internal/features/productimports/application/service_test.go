@@ -447,7 +447,7 @@ func (s fakeScraper) Scrape(context.Context, string, string) (scrapeapp.Product,
 	return s.product, s.err
 }
 
-func (s fakeScraper) ScrapeWithProgress(
+func (s fakeScraper) ScrapeImport(
 	_ context.Context, _ string, _ string, reporter scrapeapp.ProgressReporter,
 ) (scrapeapp.Product, error) {
 	for _, event := range s.emit {

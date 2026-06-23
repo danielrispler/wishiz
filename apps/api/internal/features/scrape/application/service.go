@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	defaultBudget        = 30 * time.Second
-	defaultMaxRenders    = 3
-	defaultStaticTimeout = 10 * time.Second
+	defaultBudget          = 30 * time.Second
+	defaultMaxRenders      = 3
+	defaultStaticTimeout   = 10 * time.Second
+	defaultBackstopTimeout = 30 * time.Second
 )
 
 // CandidateSource is a network source that contributes candidates directly
@@ -28,6 +29,13 @@ type CandidateSource interface {
 type ServiceConfig struct {
 	Budget               time.Duration // total wall-clock budget (default 30s)
 	MaxConcurrentRenders int           // render semaphore size (default 3)
+	// Backstop is the optional paid last-resort fetcher (ZenRows). Nil disables the
+	// import second pass — every path then behaves exactly as without it.
+	Backstop Backstop
+	// BackstopTimeout bounds the backstop fetch. It is applied ON TOP of Budget
+	// (derived from the inbound ctx, not the budget ctx), so a 30s budget + 30s
+	// backstop is a 60s worst case. Zero falls back to defaultBackstopTimeout.
+	BackstopTimeout time.Duration
 }
 
 // Service runs ONE best-effort pipeline per scrape: static HTTP fetch + Shopify
@@ -35,15 +43,17 @@ type ServiceConfig struct {
 // early-aborted once the cheap sources already clear the verdict gate. It owns
 // the Engine and extracts once over each source's HTML.
 type Service struct {
-	logger    *slog.Logger
-	engine    *Engine
-	static    Fetcher
-	render    Fetcher
-	probe     CandidateSource
-	resolver  HostResolver
-	converter PriceConverter
-	budget    time.Duration
-	renderSem chan struct{}
+	logger          *slog.Logger
+	engine          *Engine
+	static          Fetcher
+	render          Fetcher
+	probe           CandidateSource
+	resolver        HostResolver
+	converter       PriceConverter
+	budget          time.Duration
+	renderSem       chan struct{}
+	backstop        Backstop
+	backstopTimeout time.Duration
 }
 
 func NewService(
@@ -74,30 +84,60 @@ func NewService(
 	if cfg.MaxConcurrentRenders <= 0 {
 		cfg.MaxConcurrentRenders = defaultMaxRenders
 	}
+	if cfg.BackstopTimeout <= 0 {
+		cfg.BackstopTimeout = defaultBackstopTimeout
+	}
 	return &Service{
-		logger:    logger,
-		engine:    engine,
-		static:    static,
-		render:    render,
-		probe:     probe,
-		resolver:  resolver,
-		converter: converter,
-		budget:    cfg.Budget,
-		renderSem: make(chan struct{}, cfg.MaxConcurrentRenders),
+		logger:          logger,
+		engine:          engine,
+		static:          static,
+		render:          render,
+		probe:           probe,
+		resolver:        resolver,
+		converter:       converter,
+		budget:          cfg.Budget,
+		renderSem:       make(chan struct{}, cfg.MaxConcurrentRenders),
+		backstop:        cfg.Backstop,
+		backstopTimeout: cfg.BackstopTimeout,
 	}
 }
 
-// Scrape satisfies the productimports Scraper port (no progress reporting).
+// Scrape runs the pipeline with no progress reporting and no paid backstop. Used
+// by discover and the synchronous /scrape route — neither pays for ZenRows.
 func (s *Service) Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (Product, error) {
-	return s.ScrapeWithProgress(ctx, rawURL, targetCurrencyCode, nil)
+	return s.scrape(ctx, rawURL, targetCurrencyCode, nil, false)
 }
 
-// ScrapeWithProgress runs the pipeline and emits progress to reporter (nil ok).
+// ScrapeWithProgress runs the pipeline and emits progress to reporter (nil ok),
+// without the paid backstop.
 func (s *Service) ScrapeWithProgress(
 	ctx context.Context,
 	rawURL string,
 	targetCurrencyCode string,
 	reporter ProgressReporter,
+) (Product, error) {
+	return s.scrape(ctx, rawURL, targetCurrencyCode, reporter, false)
+}
+
+// ScrapeImport runs the pipeline for a user-initiated product import: it reports
+// progress AND, when configured, fires the paid ZenRows backstop as a last resort
+// on a non-auto_complete outcome. Only the product-import worker calls this — the
+// backstop never runs for discover or the synchronous /scrape route.
+func (s *Service) ScrapeImport(
+	ctx context.Context,
+	rawURL string,
+	targetCurrencyCode string,
+	reporter ProgressReporter,
+) (Product, error) {
+	return s.scrape(ctx, rawURL, targetCurrencyCode, reporter, true)
+}
+
+func (s *Service) scrape(
+	ctx context.Context,
+	rawURL string,
+	targetCurrencyCode string,
+	reporter ProgressReporter,
+	enableBackstop bool,
 ) (Product, error) {
 	targetCurrency, err := NormalizeCurrencyCode(targetCurrencyCode)
 	if err != nil {
@@ -213,6 +253,11 @@ func (s *Service) ScrapeWithProgress(
 	}
 	renderWG.Wait()
 
+	if enableBackstop && s.backstop != nil && product.Verdict != VerdictAutoComplete {
+		proxyCountry := inferProxyCountry(validatedURL.Hostname())
+		product = s.applyBackstop(ctx, reporter, product, proxyCountry, pageURL, noteHTML, add, snapshot)
+	}
+
 	reporter.report(StageCrossChecking, percentCrossChecking)
 	product = s.applyConversion(product, targetCurrency)
 
@@ -234,6 +279,47 @@ func (s *Service) ScrapeWithProgress(
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
 	return product, nil
+}
+
+// applyBackstop runs the paid ZenRows second pass: ONE residential-proxy +
+// headless fetch (its timeout is ON TOP of the scrape budget — bsCtx is derived
+// from the inbound ctx, NOT budgetCtx), folds the rendered HTML's candidates into
+// the same consensus, and re-reconciles. The verdict-floor guard keeps the new
+// product only when it does not lower the verdict, so a geo-priced exit can never
+// degrade the outcome. Any ZenRows error soft-fails to the own product (logged,
+// never retried — a settled job re-enters only via user Retry, per ADR-0001).
+func (s *Service) applyBackstop(
+	ctx context.Context,
+	reporter ProgressReporter,
+	product Product,
+	proxyCountry string,
+	pageURL string,
+	noteHTML func(string),
+	add func([]extractors.Candidate),
+	snapshot func() []extractors.Candidate,
+) Product {
+	reporter.report(StageBackstop, percentBackstop)
+	bsCtx, bsCancel := context.WithTimeout(ctx, s.backstopTimeout)
+	defer bsCancel()
+
+	result, err := s.backstop.Fetch(bsCtx, pageURL, proxyCountry)
+	if err != nil {
+		s.logger.Warn("zenrows backstop failed", "url", pageURL, "error", err.Error())
+		return product
+	}
+
+	noteHTML(result.HTML)
+	add(s.engine.Extract(result.HTML, finalURLOr(result.FinalURL, pageURL), result.Headers))
+	candidate := s.engine.Reconcile(snapshot(), pageURL)
+	if verdictRank(candidate.Verdict) < verdictRank(product.Verdict) {
+		s.logger.Info(
+			"zenrows backstop discarded (would degrade verdict)",
+			"url", pageURL, "own", string(product.Verdict), "backstop", string(candidate.Verdict),
+		)
+		return product
+	}
+	s.logger.Info("zenrows backstop applied", "url", pageURL, "verdict", string(candidate.Verdict))
+	return candidate
 }
 
 // applyConversion converts the price to the target currency. On failure it keeps

@@ -42,7 +42,9 @@ type WishlistService interface {
 
 type Scraper interface {
 	Scrape(ctx context.Context, rawURL string, targetCurrencyCode string) (scrapeapp.Product, error)
-	ScrapeWithProgress(
+	// ScrapeImport is the import path: it reports progress AND fires the paid
+	// ZenRows backstop on a non-auto_complete outcome (when configured).
+	ScrapeImport(
 		ctx context.Context,
 		rawURL string,
 		targetCurrencyCode string,
@@ -267,7 +269,7 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) error {
-	product, scrapeErr := s.scraper.ScrapeWithProgress(
+	product, scrapeErr := s.scraper.ScrapeImport(
 		ctx, job.NormalizedURL, job.TargetCurrencyCode, s.progressReporter(ctx, job.ID),
 	)
 	snap := snapshotFromProduct(product)

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -220,7 +221,155 @@ func TestServiceEmitsProgressStagesInOrder(t *testing.T) {
 	}
 }
 
+// --- ZenRows backstop second pass ---
+
+// needsReviewHTML extracts a name + image but no price → needs_review (reviewable
+// but not auto-completable). The backstop's stronger HTML can rescue it.
+const needsReviewHTML = `<html><head>
+	<meta property="og:title" content="Backstop Lamp">
+	<meta property="og:image" content="https://x/lamp.png"></head><body></body></html>`
+
+// backstopAutoHTML is full JSON-LD (name agrees with the own data) → auto_complete.
+const backstopAutoHTML = `<html><head>
+	<script type="application/ld+json">{"@type":"Product","name":"Backstop Lamp","image":"https://x/lamp.png",
+		"offers":{"@type":"Offer","price":"40","priceCurrency":"USD"}}</script></head><body></body></html>`
+
+// backstopConflictHTML disagrees on the name and adds a foreign-currency price →
+// a consensus conflict. It must NOT degrade the own needs_review into failed.
+const backstopConflictHTML = `<html><head>
+	<script type="application/ld+json">{"@type":"Product","name":"Totally Different Product","image":"",
+		"offers":{"@type":"Offer","price":"999","priceCurrency":"EUR"}}</script></head><body></body></html>`
+
+func backstopService(t *testing.T, static Fetcher, backstop Backstop) *Service {
+	t.Helper()
+	return NewService(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		NewEngine(EngineConfig{}),
+		static, nil, nil, publicResolver(), nil,
+		ServiceConfig{
+			Budget: 5 * time.Second, MaxConcurrentRenders: 2,
+			Backstop: backstop, BackstopTimeout: 2 * time.Second,
+		},
+	)
+}
+
+func TestBackstopSkippedWhenOwnAutoCompletes(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: autoCompleteHTML, FinalURL: "https://shop.example/p"}}
+	backstop := &fakeBackstop{result: FetchResult{HTML: backstopAutoHTML}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://shop.example/p", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("verdict = %q, want auto_complete", product.Verdict)
+	}
+	if backstop.called.Load() {
+		t.Fatal("backstop must NOT fire when the own pipeline already auto-completes")
+	}
+}
+
+func TestBackstopRescuesNeedsReviewToAutoComplete(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://shop.de/p"}}
+	backstop := &fakeBackstop{result: FetchResult{HTML: backstopAutoHTML}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://shop.de/p", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !backstop.called.Load() {
+		t.Fatal("backstop should fire on a non-auto_complete own verdict")
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("verdict = %q, want backstop to rescue to auto_complete", product.Verdict)
+	}
+	if backstop.gotCountry != "de" {
+		t.Fatalf("proxy_country = %q, want it pinned to the .de ccTLD", backstop.gotCountry)
+	}
+}
+
+func TestBackstopErrorSoftFailsToOwnProduct(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://shop.example/p"}}
+	backstop := &fakeBackstop{err: errTest}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://shop.example/p", "USD", nil)
+	if err != nil {
+		t.Fatalf("backstop error must be soft-failed, not propagated: %v", err)
+	}
+	if !backstop.called.Load() {
+		t.Fatal("backstop should have been attempted")
+	}
+	if product.Verdict != VerdictNeedsReview || product.Name != "Backstop Lamp" {
+		t.Fatalf("want the own needs_review product preserved, got %+v", product)
+	}
+}
+
+func TestBackstopNeverDegradesBelowOwnVerdict(t *testing.T) {
+	t.Parallel()
+	// A geo-priced / conflicting backstop must never drop needs_review → failed.
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://shop.example/p"}}
+	backstop := &fakeBackstop{result: FetchResult{HTML: backstopConflictHTML}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://shop.example/p", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if product.Verdict == VerdictFailed {
+		t.Fatalf("backstop conflict degraded the verdict to failed: %+v", product)
+	}
+	if !product.HasAnyData() {
+		t.Fatal("expected the own product data to be preserved")
+	}
+}
+
+func TestScrapeAndProgressDoNotFireBackstop(t *testing.T) {
+	t.Parallel()
+	// discover (and the synchronous /scrape route) use Scrape/ScrapeWithProgress —
+	// neither path may ever incur the paid backstop.
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://shop.example/p"}}
+
+	scrapeBackstop := &fakeBackstop{result: FetchResult{HTML: backstopAutoHTML}}
+	if _, err := backstopService(t, static, scrapeBackstop).
+		Scrape(context.Background(), "https://shop.example/p", "USD"); err != nil {
+		t.Fatalf("Scrape error: %v", err)
+	}
+	if scrapeBackstop.called.Load() {
+		t.Fatal("Scrape (discover path) must NOT fire the backstop")
+	}
+
+	progressBackstop := &fakeBackstop{result: FetchResult{HTML: backstopAutoHTML}}
+	if _, err := backstopService(t, static, progressBackstop).
+		ScrapeWithProgress(context.Background(), "https://shop.example/p", "USD", nil); err != nil {
+		t.Fatalf("ScrapeWithProgress error: %v", err)
+	}
+	if progressBackstop.called.Load() {
+		t.Fatal("ScrapeWithProgress must NOT fire the backstop")
+	}
+}
+
 // --- fakes ---
+
+var errTest = errors.New("backstop boom")
+
+type fakeBackstop struct {
+	result     FetchResult
+	err        error
+	called     atomic.Bool
+	gotCountry string
+}
+
+func (b *fakeBackstop) Fetch(_ context.Context, _, proxyCountry string) (FetchResult, error) {
+	b.called.Store(true)
+	b.gotCountry = proxyCountry
+	return b.result, b.err
+}
 
 type fakeFetcher struct {
 	result FetchResult

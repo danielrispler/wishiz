@@ -53,3 +53,8 @@ coverage/
 # Misc
 .DS_Store
 .docker-cache/
+
+# Secrets — never commit real env files (.env.example is the tracked template)
+.env
+.env.local
+!.env.example

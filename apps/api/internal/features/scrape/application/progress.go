@@ -11,6 +11,7 @@ const (
 	StageRendering     = "rendering"
 	StagePageLoaded    = "page_loaded"
 	StageExtracting    = "extracting"
+	StageBackstop      = "backstop" // paid ZenRows second pass (import miss-path only)
 	StageCrossChecking = "cross_checking"
 	StageDone          = "done"
 )
@@ -21,6 +22,7 @@ const (
 	percentRendering     = 20
 	percentPageLoaded    = 50
 	percentExtracting    = 70
+	percentBackstop      = 80
 	percentCrossChecking = 90
 	percentDone          = 100
 )

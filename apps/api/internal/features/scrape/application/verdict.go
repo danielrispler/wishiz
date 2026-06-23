@@ -46,6 +46,25 @@ func isReviewable(product Product) bool {
 	return nameAvailable && (priceAvailable || imageAvailable)
 }
 
+// verdictRank orders verdicts so the ZenRows backstop second pass can only RAISE
+// or HOLD the verdict, never lower it: a re-reconcile that would degrade the
+// outcome is discarded (see ScrapeImport). auto_complete > needs_review > failed.
+//
+// Given append-only candidates (the backstop adds evidence; a consensus conflict
+// keeps the field value, only flagging confidence) the discard branch is not
+// reachable through current extraction — this is a defensive invariant that holds
+// even if consensus later changes to drop conflicted values.
+func verdictRank(v Verdict) int {
+	switch v {
+	case VerdictAutoComplete:
+		return 2
+	case VerdictNeedsReview:
+		return 1
+	default: // VerdictFailed
+		return 0
+	}
+}
+
 func reasonFor(field string, confidence FieldConfidence) string {
 	if confidence == "" {
 		confidence = ConfidenceMissing

@@ -27,6 +27,7 @@ import (
 	scrapehttp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/http"
 	scrapehttpfetch "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/httpfetch"
 	scrapeshopify "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/shopify"
+	scrapezenrows "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/adapters/zenrows"
 	scrapeapp "github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application"
 	uploadshttp "github.com/danielrispler/wishiz/apps/api/internal/features/uploads/adapters/http"
 	wishlisthttp "github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/adapters/http"
@@ -79,6 +80,14 @@ func run() error {
 		shopifyProbe = scrapeshopify.NewProbe(resolver)
 	}
 
+	// Paid last-resort backstop (presence-gated): active only when ZENROWS_API_KEY
+	// is set. It fires solely on the product-import path (ScrapeImport) — never for
+	// discover or the synchronous /scrape route.
+	var scrapeBackstop scrapeapp.Backstop
+	if cfg.ZenRowsAPIKey != "" {
+		scrapeBackstop = scrapezenrows.New(cfg.ZenRowsAPIKey, appLogger)
+	}
+
 	scrapeEngine := scrapeapp.NewEngine(scrapeapp.EngineConfig{
 		InferDotComUSD: cfg.ScrapeInferDotComUSD,
 		MaxPrice:       cfg.ScrapeMaxPrice,
@@ -101,6 +110,8 @@ func run() error {
 		scrapeapp.ServiceConfig{
 			Budget:               cfg.ScrapeBudget,
 			MaxConcurrentRenders: cfg.ScrapeMaxConcurrentRenders,
+			Backstop:             scrapeBackstop,
+			BackstopTimeout:      cfg.ZenRowsTimeout,
 		},
 	)
 	scrapehttp.RegisterRoutes(mux, appLogger, scrapeService)
@@ -174,7 +185,7 @@ func run() error {
 			},
 		)
 
-		discoverRepo := discoverpostgres.NewRepository(pool)
+		discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
 		discoverService := discoverapp.NewService(discoverRepo, scrapeService)
 		discoverSitemapWorker := discoverapp.NewSitemapWorker(
 			appLogger,
@@ -184,7 +195,8 @@ func run() error {
 		)
 		discoverSitemapWorker.Start(ctx)
 
-		maintenanceWorker := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval)
+		maintenanceWorker := maintenance.NewWorker(appLogger, authRepo, wishlistRepo, cfg.CleanupInterval).
+			WithDiscoverSweeper(discoverRepo, cfg.DiscoverMaxProducts)
 		maintenanceWorker.Start(ctx)
 
 		discoverhttp.RegisterRoutes(

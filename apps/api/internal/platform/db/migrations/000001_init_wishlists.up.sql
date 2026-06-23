@@ -245,6 +245,10 @@ CREATE TABLE IF NOT EXISTS discover_products (
     product_type TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Per-item TTL. The maintenance sweep deletes rows past expires_at; every
+    -- successful re-scrape (upsert) pushes this forward, so only stale/delisted
+    -- products age out. App-supplied on write; this DEFAULT is a safety net.
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 days',
     CONSTRAINT discover_products_category_check CHECK (
         category IN ('fashion','beauty','home','accessories','gifts','travel')
     ),
@@ -258,6 +262,7 @@ CREATE INDEX IF NOT EXISTS discover_products_category_idx ON discover_products (
 CREATE INDEX IF NOT EXISTS discover_products_brand_idx ON discover_products (brand);
 CREATE INDEX IF NOT EXISTS discover_products_trending_idx ON discover_products (save_count DESC, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS discover_products_product_url_uidx ON discover_products (product_url);
+CREATE INDEX IF NOT EXISTS discover_products_expires_at_idx ON discover_products (expires_at);
 
 CREATE TRIGGER discover_products_set_updated_at
     BEFORE UPDATE ON discover_products

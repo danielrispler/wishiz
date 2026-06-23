@@ -65,7 +65,7 @@ Cross-cutting concerns in `internal/platform/`: config, HTTP server, DB connecti
 | `migrate` | `wishiz-migrate` Job | no | `ConnectSimple` (simple protocol over the pooler) → `RunMigrations` → exit |
 | `weekly-batch` | `wishiz-weekly-batch` Job | yes | three sequential steps then exit: maintenance `Sweep` → `SitemapWorker.Refresh` (crawl) → `Service.DrainPending` (import recovery). Aggregates step errors → non-zero exit if any failed |
 
-Images: `Dockerfile.api` (slim) → `api`+`migrate`; `Dockerfile.scraper` (Chromium) → `scraper`+`weekly-batch`; `Dockerfile` → local `all`.
+Images: `Dockerfile.api` (distroless-static, non-root) → `api`+`migrate`; `Dockerfile.scraper` (debian+Chromium, non-root `app` UID 10001) → `scraper`+`weekly-batch`; `Dockerfile` → local `all` (debian+Chromium, non-root). All build a static `CGO_ENABLED=0` binary with `-trimpath -ldflags="-s -w"`; `apps/api/.dockerignore` keeps the build context source-only.
 
 **Startup sequence** (`cmd/api/main.go`): config → logger → `migrate` role returns early (`runMigrate`) → tuned DB pool (when `DATABASE_URL` set; boot-migrate only in `all`) → scrape engine for scrape-capable roles (`setupScrape`; exchange refresh is per-role — the `weekly-batch` Job warms rates **synchronously** before its drain step so imports don't race a cold cache, long-lived `all`/`scraper` refresh async on cold start; the refresh ticker `Start` runs only in `all`) → the `weekly-batch` role runs its three-step task (`runWeeklyBatch`) and exits → otherwise build the HTTP server: base routes always, scrape routes for scraper/all, DB-backed routes role-gated (`registerDBRoutes`), in-process loops only in `all` → serve on `HTTP_ADDR` (overridden by `PORT` when Cloud Run injects it) → graceful shutdown (10s).
 

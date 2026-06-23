@@ -16,17 +16,23 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM debian:bookworm-slim
 
 WORKDIR /app
 
+# Chromium runs --no-sandbox + --disable-dev-shm-usage (writes to /tmp), so the
+# headless render needs no root privileges; run as an unprivileged user.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium ca-certificates fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --create-home --shell /usr/sbin/nologin app
 
 COPY --from=builder /out/api /app/api
+
+USER app
 
 EXPOSE 8080
 

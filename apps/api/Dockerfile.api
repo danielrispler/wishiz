@@ -2,6 +2,8 @@
 #
 # wishiz-api image: the request-driven api service and the migrate Job. Slim, no
 # Chromium (it never scrapes). SERVICE_ROLE is overridden to "migrate" on the Job.
+# The binary is fully static (CGO_ENABLED=0), so the final stage is distroless
+# static (CA certs + zoneinfo baked in) and runs non-root by default.
 
 FROM golang:1.25-bookworm AS builder
 
@@ -15,15 +17,12 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/api /app/api
 

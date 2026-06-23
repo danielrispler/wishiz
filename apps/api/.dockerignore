@@ -1,0 +1,21 @@
+# Keep the build context lean: source only. Anything not needed by `go build`
+# is excluded so it never uploads to Cloud Build nor busts the `COPY . .` cache.
+
+# Build artifacts (notably the stale 35MB `api` binary)
+/api
+*.test
+*.out
+coverage*
+
+# VCS / tooling
+.git
+.gitignore
+.golangci.yml
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# Docs / OS
+*.md
+.DS_Store

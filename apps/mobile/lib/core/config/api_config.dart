@@ -1,7 +1,8 @@
 class ApiConfig {
   static const String baseUrlDefineKey = 'WISHIZ_API_BASE_URL';
   static const String shareBaseUrlDefineKey = 'WISHIZ_SHARE_BASE_URL';
-  static const String defaultBaseUrl = 'https://wishiz.app';
+  static const String defaultBaseUrl =
+      'https://wishiz-api-pdst26qeja-ey.a.run.app';
   static const String defaultShareBaseUrl = 'https://wishiz.app';
 
   static String get baseUrl {

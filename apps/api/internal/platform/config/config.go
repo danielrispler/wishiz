@@ -109,7 +109,7 @@ func Load() (Config, error) {
 		DiscoverItemTTL:     getEnvDuration("DISCOVER_ITEM_TTL", 720*time.Hour),
 		DiscoverMaxProducts: getEnvInt("DISCOVER_MAX_PRODUCTS", 2000),
 		CleanupInterval:     getEnvDuration("CLEANUP_INTERVAL", time.Hour),
-		ShareBaseURL:        getEnv("SHARE_BASE_URL", "https://wishiz.app"),
+		ShareBaseURL:        getEnv("SHARE_BASE_URL", "https://wishiz-api-pdst26qeja-ey.a.run.app"),
 		AndroidAppLinkSHA256CertFingerprint: getEnv(
 			"ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT",
 			"BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",

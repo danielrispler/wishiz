@@ -13,7 +13,7 @@ void main() {
 
       expect(lines, [
         'Open this Wishiz list.',
-        'https://wishiz.app/lists/wishlist-42',
+        'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42',
       ]);
       expect(text, isNot(contains('Hosting')));
       expect(text, isNot(contains('2026')));
@@ -37,7 +37,7 @@ void main() {
       final lines = text.split('\n');
       expect(lines, [
         'Take a look at this item in my Wishiz list.',
-        'https://wishiz.app/lists/wishlist-42',
+        'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42',
       ]);
       expect(text, isNot(contains('Espresso Cups')));
       expect(text, isNot(contains('Hosting')));
@@ -55,7 +55,7 @@ void main() {
 
       expect(text.split('\n'), [
         'Join my Wishiz list.',
-        'https://wishiz.app/lists/wishlist-42?token=invite-token',
+        'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42?token=invite-token',
       ]);
     });
   });

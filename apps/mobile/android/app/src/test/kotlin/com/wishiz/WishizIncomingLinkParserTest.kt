@@ -8,10 +8,10 @@ class WishizIncomingLinkParserTest {
     @Test
     fun `returns route payload for action view wishiz app links`() {
         assertEquals(
-            "https://wishiz.app/lists/wishlist-42",
+            "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42",
             WishizIncomingLinkParser.extractPendingValue(
                 action = WishizIncomingLinkParser.actionView,
-                dataString = "https://wishiz.app/lists/wishlist-42",
+                dataString = "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42",
             ),
         )
     }
@@ -30,11 +30,11 @@ class WishizIncomingLinkParserTest {
     @Test
     fun `normalizes shared text for action send`() {
         assertEquals(
-            "https://wishiz.app/lists/wishlist-42\nJoin my list",
+            "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42\nJoin my list",
             WishizIncomingLinkParser.extractPendingValue(
                 action = WishizIncomingLinkParser.actionSend,
                 subject = "Join my list",
-                text = "https://wishiz.app/lists/wishlist-42",
+                text = "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42",
             ),
         )
     }
@@ -44,7 +44,7 @@ class WishizIncomingLinkParserTest {
         assertNull(
             WishizIncomingLinkParser.extractPendingValue(
                 action = "android.intent.action.MAIN",
-                dataString = "https://wishiz.app/lists/wishlist-42",
+                dataString = "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42",
             ),
         )
     }

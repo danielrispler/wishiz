@@ -13,7 +13,7 @@ void main() {
     test('builds a stable https wishlist share link', () {
       expect(
         WishizAppLink.wishlistShareLink('wishlist-42'),
-        'https://wishiz.app/lists/wishlist-42',
+        'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42',
       );
     });
 
@@ -23,7 +23,7 @@ void main() {
           'wishlist-42',
           inviteToken: 'invite token',
         ),
-        'https://wishiz.app/lists/wishlist-42?token=invite+token',
+        'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42?token=invite+token',
       );
     });
 
@@ -36,7 +36,7 @@ void main() {
 
     test('extracts a wishlist id from a direct https share link', () {
       expect(
-        WishizAppLink.extractWishlistId('https://wishiz.app/lists/wishlist-42'),
+        WishizAppLink.extractWishlistId('https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42'),
         'wishlist-42',
       );
     });
@@ -44,7 +44,7 @@ void main() {
     test('extracts an invite token from a wishlist share link', () {
       expect(
         WishizAppLink.extractInviteToken(
-          'https://wishiz.app/lists/wishlist-42?token=invite-token',
+          'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42?token=invite-token',
         ),
         'invite-token',
       );
@@ -62,7 +62,7 @@ void main() {
     test('extracts a wishlist id from share text that embeds the link', () {
       expect(
         WishizAppLink.extractWishlistId(
-          'https://wishiz.app/lists/wishlist-42\n\n'
+          'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42\n\n'
           'Open this Wishiz list in the app.\n'
           'Join my Wishiz list "Hosting" for 2026.',
         ),
@@ -73,7 +73,7 @@ void main() {
     test('ignores trailing punctuation around embedded links', () {
       expect(
         WishizAppLink.extractWishlistId(
-          'Join here: https://wishiz.app/lists/wishlist-42.',
+          'Join here: https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42.',
         ),
         'wishlist-42',
       );

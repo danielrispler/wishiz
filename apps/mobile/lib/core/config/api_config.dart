@@ -3,7 +3,9 @@ class ApiConfig {
   static const String shareBaseUrlDefineKey = 'WISHIZ_SHARE_BASE_URL';
   static const String defaultBaseUrl =
       'https://wishiz-api-pdst26qeja-ey.a.run.app';
-  static const String defaultShareBaseUrl = 'https://wishiz.app';
+  // Share/deep-link landing, assetlinks.json and apple-app-site-association are
+  // all served by the API itself, so the share base is the same Cloud Run host.
+  static const String defaultShareBaseUrl = defaultBaseUrl;
 
   static String get baseUrl {
     const configuredValue = String.fromEnvironment(baseUrlDefineKey);

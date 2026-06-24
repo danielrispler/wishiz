@@ -4,11 +4,11 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:wishiz.app</string>
+		<string>applinks:wishiz-api-pdst26qeja-ey.a.run.app</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.wishiz.shared</string>
+		<string>group.com.wishiz.app.shared</string>
 	</array>
 </dict>
 </plist>

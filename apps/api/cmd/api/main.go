@@ -23,6 +23,7 @@ import (
 	discoverpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/discover/adapters/postgres"
 	discoverapp "github.com/danielrispler/wishiz/apps/api/internal/features/discover/application"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
+	legalhttp "github.com/danielrispler/wishiz/apps/api/internal/features/legal/adapters/http"
 	productimporthttp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/http"
 	productimportpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/postgres"
 	productimportapp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/application"
@@ -245,6 +246,7 @@ func registerBaseRoutes(mux *http.ServeMux, cfg config.Config) {
 		AndroidSHA256CertFingerprint: cfg.AndroidAppLinkSHA256CertFingerprint,
 		IOSAppID:                     "P46VR4C98R.com.wishiz",
 	})
+	legalhttp.RegisterRoutes(mux, legalhttp.Options{SupportEmail: "danielrispler@gmail.com"})
 	healthhttp.RegisterRoutes(mux)
 }
 

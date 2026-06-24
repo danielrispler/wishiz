@@ -280,10 +280,10 @@ void main() {
         final productImportRepository = FakeProductImportRepository();
         final shareIntakeService = FakeShareIntakeService(
           pendingResponses: [
-            'https://wishiz.app/lists/wishlist-1',
+            'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-1',
             'https://example.com/products/mug',
             'https://example.com/products/chair',
-            'https://wishiz.app/lists/wishlist-2',
+            'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-2',
           ],
         );
 
@@ -500,7 +500,7 @@ void main() {
         final sharedProductRepository = FakeSharedProductRepository();
         final shareIntakeService = FakeShareIntakeService(
           pendingResponses: [
-            'https://wishiz.app/lists/wishlist-1\n\n'
+            'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-1\n\n'
                 'Open this Wishiz list in the app.\n'
                 'Join my Wishiz list "Birthdays" for 2026.',
           ],
@@ -529,7 +529,7 @@ void main() {
       final repository = CountingWishlistRepository(ownerUserId: sampleUser.id);
       final shareIntakeService = FakeShareIntakeService(
         pendingResponses: [
-          'https://wishiz.app/lists/wishlist-missing-token\n\n'
+          'https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-missing-token\n\n'
               'Open this Wishiz list in the app.',
         ],
       );

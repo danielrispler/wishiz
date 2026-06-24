@@ -39,12 +39,12 @@ class RunnerTests: XCTestCase {
 
   func testNormalizerPreservesHttpsWishizListLinkPayload() {
     let payload = WishizSharePayloadNormalizer.normalize(
-      rawSegments: ["https://wishiz.app/lists/wishlist-42", "Open this list in Wishiz"]
+      rawSegments: ["https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42", "Open this list in Wishiz"]
     )
 
     XCTAssertEqual(
       payload,
-      "Open this list in Wishiz\nhttps://wishiz.app/lists/wishlist-42"
+      "Open this list in Wishiz\nhttps://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42"
     )
   }
 
@@ -60,8 +60,8 @@ class RunnerTests: XCTestCase {
     let store = makeStore()
     let handler = WishizIncomingLinkHandler(storeProvider: { store })
 
-    XCTAssertTrue(handler.handle(webpageURL: URL(string: "https://wishiz.app/lists/wishlist-42")))
-    XCTAssertEqual(store.consumePendingSharedText(), "https://wishiz.app/lists/wishlist-42")
+    XCTAssertTrue(handler.handle(webpageURL: URL(string: "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42")))
+    XCTAssertEqual(store.consumePendingSharedText(), "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42")
   }
 
   func testStoreQueuesPayloadsInFifoOrder() {

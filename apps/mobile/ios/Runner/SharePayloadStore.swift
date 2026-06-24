@@ -1,7 +1,7 @@
 import Foundation
 
 enum WishizSharePayloadConfiguration {
-  static let appGroupIdentifier = "group.com.wishiz.shared"
+  static let appGroupIdentifier = "group.com.wishiz.app.shared"
   static let pendingPayloadFilename = "wishiz-pending-share.json"
 }
 

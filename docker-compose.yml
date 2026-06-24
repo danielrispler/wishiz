@@ -35,7 +35,7 @@ services:
       BUCKET_NAME: ${BUCKET_NAME:-}
       GCS_PUBLIC_BASE_URL: ${GCS_PUBLIC_BASE_URL:-https://storage.googleapis.com}
       STORAGE_EMULATOR_HOST: ${STORAGE_EMULATOR_HOST:-}
-      SHARE_BASE_URL: ${SHARE_BASE_URL:-https://wishiz.app}
+      SHARE_BASE_URL: ${SHARE_BASE_URL:-https://wishiz-api-pdst26qeja-ey.a.run.app}
       ZENROWS_API_KEY: ${ZENROWS_API_KEY:-}
       ZENROWS_TIMEOUT: ${ZENROWS_TIMEOUT:-30s}
     ports:

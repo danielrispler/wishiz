@@ -30,7 +30,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(capturedBaseUrl, 'https://wishiz.app');
+    expect(capturedBaseUrl, 'https://wishiz-api-pdst26qeja-ey.a.run.app');
     expect(
       find.text('Could not connect to the wishlist backend.'),
       findsNothing,

@@ -14,7 +14,8 @@ the Apple App Store. Both platforms share the single id.
   Kotlin sources move to the matching `com/wishiz/` package dir).
 - **iOS**: the bundle id is renamed `com.wishiz.beta` → `com.wishiz` (Runner +
   ShareExtension `com.wishiz.ShareExtension`), and the app group
-  `group.com.wishiz.beta.shared` → `group.com.wishiz.shared`.
+  `group.com.wishiz.beta.shared` → `group.com.wishiz.app.shared` (the bare
+  `group.com.wishiz.shared` was already taken in the Apple Developer Portal).
 - **Server**: the deep-link descriptors served from `apps/api/cmd/api/main.go`
   carry `AndroidPackageName: "com.wishiz"` and `IOSAppID:
   "P46VR4C98R.com.wishiz"`, so Android App Links + iOS Universal Links keep
@@ -45,15 +46,16 @@ permanent once published on either store) and **surprising** (domain-derived
 ## Consequences
 
 - A fresh Apple App ID `com.wishiz`, App Store Connect app record, and App Group
-  `group.com.wishiz.shared` must be registered; the old `com.wishiz.beta` artifacts
+  `group.com.wishiz.app.shared` must be registered; the old `com.wishiz.beta` artifacts
   are left to rot.
 - Android deep-link verification is finalized **post-upload**: Play App Signing
   holds the app-signing cert, whose SHA-256 is only visible after the first AAB
   upload. Until `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT` is overridden in the
-  prod deploy with Google's value, `https://wishiz.app/lists/*` links do not
-  auto-verify on Android (config ships a stale built-in default that will not
-  match).
-- The associated domain stays `applinks:wishiz.app` (host-based, id-independent) —
-  the domain choice is unaffected by the app-id choice.
+  prod deploy with Google's value, `https://wishiz-api-pdst26qeja-ey.a.run.app/lists/*`
+  links do not auto-verify on Android (config ships a stale built-in default that
+  will not match).
+- The associated domain is `applinks:wishiz-api-pdst26qeja-ey.a.run.app` (host-based,
+  id-independent) — it moved to the Cloud Run `run.app` host because `wishiz.app`
+  was never DNS-mapped; the domain choice is unaffected by the app-id choice.
 - Desktop targets (macOS/Linux/Windows) still carry `com.example.wishiz`; they are
   not shipped now and would need the same rename before any desktop release.

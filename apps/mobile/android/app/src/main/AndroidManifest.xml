@@ -31,7 +31,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="https"
-                    android:host="wishiz.app"
+                    android:host="wishiz-api-pdst26qeja-ey.a.run.app"
                     android:pathPrefix="/lists/" />
             </intent-filter>
             <intent-filter>

@@ -59,7 +59,7 @@ lib/
 
 ### Backend Base URL For Local Device Testing
 
-Backend integration is now configured against `https://wishiz.app` by default.
+Backend integration is now configured against `https://wishiz-api-pdst26qeja-ey.a.run.app` by default.
 For local development you can override the API and share hosts with:
 
 - `WISHIZ_API_BASE_URL`
@@ -76,7 +76,7 @@ For local share-link testing, also pass:
 ```bash
 flutter run \
   --dart-define=WISHIZ_API_BASE_URL=http://127.0.0.1:8080 \
-  --dart-define=WISHIZ_SHARE_BASE_URL=https://wishiz.app
+  --dart-define=WISHIZ_SHARE_BASE_URL=https://wishiz-api-pdst26qeja-ey.a.run.app
 ```
 
 Use these values depending on where the app runs:
@@ -87,8 +87,8 @@ Use these values depending on where the app runs:
 
 Notes:
 
-- Default API base URL in code: `https://wishiz.app`
-- Default share base URL in code: `https://wishiz.app`
+- Default API base URL in code: `https://wishiz-api-pdst26qeja-ey.a.run.app`
+- Default share base URL in code: `https://wishiz-api-pdst26qeja-ey.a.run.app`
 - `--dart-define` still overrides the default when needed.
 - Android debug builds allow cleartext HTTP for local development.
 

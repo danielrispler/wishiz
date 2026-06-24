@@ -91,7 +91,7 @@ func TestWishlistLandingPageContainsHttpsAndCustomSchemeLinks(t *testing.T) {
 	}
 
 	body := recorder.Body.String()
-	if !strings.Contains(body, "https://wishiz.app/lists/wishlist-42") {
+	if !strings.Contains(body, "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42") {
 		t.Fatalf("expected landing page to include https share link, got %s", body)
 	}
 	if !strings.Contains(body, "wishiz://lists/wishlist-42") {
@@ -117,7 +117,7 @@ func TestWishlistLandingPagePreservesInviteToken(t *testing.T) {
 	}
 
 	body := recorder.Body.String()
-	if !strings.Contains(body, "https://wishiz.app/lists/wishlist-42?token=invite-token") {
+	if !strings.Contains(body, "https://wishiz-api-pdst26qeja-ey.a.run.app/lists/wishlist-42?token=invite-token") {
 		t.Fatalf("expected landing page to include tokenized https share link, got %s", body)
 	}
 	if !strings.Contains(body, "wishiz://lists/wishlist-42?token=invite-token") {
@@ -130,7 +130,7 @@ func TestWishlistLandingPagePreservesInviteToken(t *testing.T) {
 
 func sampleOptions() Options {
 	return Options{
-		ShareBaseURL:                 "https://wishiz.app",
+		ShareBaseURL:                 "https://wishiz-api-pdst26qeja-ey.a.run.app",
 		AndroidPackageName:           "com.wishiz",
 		AndroidSHA256CertFingerprint: "BC:00:5B:70:76:8D:1A:81:0A:82:21:CE:A1:DA:86:6B:F9:1B:0C:2E:52:A4:BD:38:4F:3D:C2:87:AB:F5:1D:3E",
 		IOSAppID:                     "P46VR4C98R.com.wishiz",

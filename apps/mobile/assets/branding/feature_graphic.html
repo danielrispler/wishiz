@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1024px; height:500px; overflow:hidden; }
+  .stage {
+    width:1024px; height:500px; position:relative;
+    background: linear-gradient(135deg, #4647D3 0%, #6E6FE0 45%, #9396FF 100%);
+    font-family:'Manrope','Avenir Next','Helvetica Neue',Arial,sans-serif;
+    overflow:hidden;
+  }
+  /* soft light blooms for depth */
+  .bloom { position:absolute; border-radius:50%; filter:blur(60px); opacity:.45; }
+  .bloom.a { width:420px;height:420px; background:#B9BBFF; top:-160px; right:-80px; }
+  .bloom.b { width:340px;height:340px; background:#3E3FB0; bottom:-180px; left:-60px; opacity:.5;}
+
+  .content { position:absolute; inset:0; display:flex; align-items:center;
+             padding:0 80px; }
+  .left { flex:1; }
+  .eyebrow { font-family:'Inter',sans-serif; font-weight:500; letter-spacing:.28em;
+             text-transform:uppercase; font-size:16px; color:#E7E8FF; opacity:.9;
+             margin-bottom:18px; }
+  .word { font-weight:800; font-size:104px; line-height:1; color:#FFFFFF;
+          letter-spacing:-0.02em; }
+  .tag { font-family:'Inter',sans-serif; font-weight:400; font-size:26px;
+         color:#EFEFFF; margin-top:20px; max-width:560px; line-height:1.35; }
+
+  /* floating editorial cards on the right */
+  .cards { position:relative; width:300px; height:380px; margin-left:20px; }
+  .card { position:absolute; background:rgba(255,255,255,.96); border-radius:24px;
+          box-shadow:0 24px 60px rgba(28,28,90,.35); padding:16px;
+          width:180px; }
+  .card .thumb { height:96px; border-radius:14px;
+                 background:linear-gradient(135deg,#EDEBFF,#D7D8FF); }
+  .card .l1 { height:12px; border-radius:6px; background:#E4E4F2; margin-top:14px; width:78%;}
+  .card .l2 { height:12px; border-radius:6px; background:#EFEFF6; margin-top:8px; width:52%;}
+  .card .price { height:14px; border-radius:6px; width:40%; margin-top:12px;
+                 background:linear-gradient(90deg,#4647D3,#9396FF); }
+  .card.c1 { top:24px; left:20px; transform:rotate(-7deg); }
+  .card.c2 { top:96px; left:120px; transform:rotate(6deg); }
+  .heart { position:absolute; top:6px; right:14px; width:64px; height:64px;
+           background:#fff; border-radius:50%; display:flex; align-items:center;
+           justify-content:center; box-shadow:0 14px 34px rgba(28,28,90,.3);
+           font-size:30px; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="bloom a"></div>
+    <div class="bloom b"></div>
+    <div class="content">
+      <div class="left">
+        <div class="eyebrow">Editorial Wishlist Manager</div>
+        <div class="word">Wishiz</div>
+        <div class="tag">Save, organize &amp; share wishlists from any store — beautifully curated.</div>
+      </div>
+      <div class="cards">
+        <div class="card c1">
+          <div class="thumb"></div>
+          <div class="l1"></div><div class="l2"></div><div class="price"></div>
+        </div>
+        <div class="card c2">
+          <div class="heart">💜</div>
+          <div class="thumb"></div>
+          <div class="l1"></div><div class="l2"></div><div class="price"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

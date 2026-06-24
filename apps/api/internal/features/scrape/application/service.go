@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -281,13 +282,15 @@ func (s *Service) scrape(
 	return product, nil
 }
 
-// applyBackstop runs the paid ZenRows second pass: ONE residential-proxy +
-// headless fetch (its timeout is ON TOP of the scrape budget — bsCtx is derived
-// from the inbound ctx, NOT budgetCtx), folds the rendered HTML's candidates into
-// the same consensus, and re-reconciles. The verdict-floor guard keeps the new
-// product only when it does not lower the verdict, so a geo-priced exit can never
-// degrade the outcome. Any ZenRows error soft-fails to the own product (logged,
-// never retried — a settled job re-enters only via user Retry, per ADR-0001).
+// applyBackstop runs the paid ZenRows second pass: ONE residential-proxy fetch
+// (its timeout is ON TOP of the scrape budget — bsCtx is derived from the inbound
+// ctx, NOT budgetCtx). For Amazon hosts (incl. a.co/amzn.* shorteners) it uses
+// autoparse (structured JSON) — Amazon serves no JSON-LD/og tags so the HTML
+// extractors find no trusted price; every other host uses the rendered-HTML pass.
+// Either way the new candidates fold into the same consensus, re-reconcile, and
+// the verdict-floor guard keeps the result only when it does not lower the verdict
+// (a geo-priced exit can never degrade the outcome). Any ZenRows error soft-fails
+// (logged, never retried — a settled job re-enters only via user Retry, ADR-0001).
 func (s *Service) applyBackstop(
 	ctx context.Context,
 	reporter ProgressReporter,
@@ -302,7 +305,68 @@ func (s *Service) applyBackstop(
 	bsCtx, bsCancel := context.WithTimeout(ctx, s.backstopTimeout)
 	defer bsCancel()
 
-	result, err := s.backstop.Fetch(bsCtx, pageURL, proxyCountry)
+	// Amazon: autoparse first. Fall through to the HTML pass when it errors or maps
+	// nothing (schema-drift safety).
+	if extractors.IsAmazonHost(hostOf(pageURL)) {
+		if rescued, handled := s.applyAutoparseBackstop(bsCtx, product, pageURL, proxyCountry, add, snapshot); handled {
+			return rescued
+		}
+	}
+	return s.applyHTMLBackstop(bsCtx, product, proxyCountry, pageURL, noteHTML, add, snapshot)
+}
+
+// applyAutoparseBackstop runs the ZenRows autoparse pass for Amazon hosts. It
+// returns handled=false (the caller falls through to the HTML pass) when the fetch
+// errors or maps no candidates; otherwise handled=true with the re-reconciled,
+// verdict-floor-guarded product. Currency is resolved from the ZenRows final-URL
+// host (the shortener is unwrapped by then), never guessed (ADR-0006).
+func (s *Service) applyAutoparseBackstop(
+	ctx context.Context,
+	product Product,
+	pageURL, proxyCountry string,
+	add func([]extractors.Candidate),
+	snapshot func() []extractors.Candidate,
+) (Product, bool) {
+	res, err := s.backstop.FetchAutoparse(ctx, pageURL, proxyCountry)
+	if err != nil {
+		s.logger.Warn("zenrows autoparse failed", "url", pageURL, "error", err.Error())
+		return product, false
+	}
+	finalURL := finalURLOr(res.FinalURL, pageURL)
+	base, _ := url.Parse(finalURL)
+	candidates := extractors.MapAutoparseProduct(res.JSON, hostOf(finalURL), base)
+	if len(candidates) == 0 {
+		s.logger.Info("zenrows autoparse mapped nothing; falling back to HTML", "url", pageURL)
+		return product, false
+	}
+
+	add(candidates)
+	rescued := s.engine.Reconcile(snapshot(), pageURL)
+	if verdictRank(rescued.Verdict) < verdictRank(product.Verdict) {
+		s.logger.Info(
+			"zenrows autoparse discarded (would degrade verdict)",
+			"url", pageURL, "own", string(product.Verdict), "backstop", string(rescued.Verdict),
+		)
+		return product, true
+	}
+	s.logger.Info(
+		"zenrows backstop applied", "url", pageURL, "mode", "autoparse", "verdict", string(rescued.Verdict),
+	)
+	return rescued, true
+}
+
+// applyHTMLBackstop runs the rendered-HTML ZenRows pass: its HTML feeds the same
+// Extract → consensus → verdict path as every other source (transport, not a
+// source). Verdict-floor-guarded; any error soft-fails to the own product.
+func (s *Service) applyHTMLBackstop(
+	ctx context.Context,
+	product Product,
+	proxyCountry, pageURL string,
+	noteHTML func(string),
+	add func([]extractors.Candidate),
+	snapshot func() []extractors.Candidate,
+) Product {
+	result, err := s.backstop.Fetch(ctx, pageURL, proxyCountry)
 	if err != nil {
 		s.logger.Warn("zenrows backstop failed", "url", pageURL, "error", err.Error())
 		return product
@@ -318,7 +382,7 @@ func (s *Service) applyBackstop(
 		)
 		return product
 	}
-	s.logger.Info("zenrows backstop applied", "url", pageURL, "verdict", string(candidate.Verdict))
+	s.logger.Info("zenrows backstop applied", "url", pageURL, "mode", "html", "verdict", string(candidate.Verdict))
 	return candidate
 }
 

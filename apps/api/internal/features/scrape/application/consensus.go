@@ -25,7 +25,7 @@ func trustFor(field extractors.Field, source extractors.SourceName) trustTier {
 	switch field {
 	case extractors.FieldName:
 		switch source {
-		case extractors.SourceJSONLD, extractors.SourceShopify:
+		case extractors.SourceJSONLD, extractors.SourceShopify, extractors.SourceZenRowsAutoparse:
 			return tierAuthoritative
 		case extractors.SourceOpenGraph, extractors.SourceH1, extractors.SourceTitle,
 			extractors.SourceMicrodata, extractors.SourceMerchant, extractors.SourceJSState:
@@ -35,7 +35,8 @@ func trustFor(field extractors.Field, source extractors.SourceName) trustTier {
 		}
 	case extractors.FieldPrice:
 		switch source {
-		case extractors.SourceJSONLD, extractors.SourceShopify, extractors.SourceOpenGraph:
+		case extractors.SourceJSONLD, extractors.SourceShopify, extractors.SourceOpenGraph,
+			extractors.SourceZenRowsAutoparse:
 			return tierAuthoritative
 		case extractors.SourceMicrodata, extractors.SourceJSState, extractors.SourceMerchant:
 			return tierDecent
@@ -44,7 +45,8 @@ func trustFor(field extractors.Field, source extractors.SourceName) trustTier {
 		}
 	case extractors.FieldImage:
 		switch source {
-		case extractors.SourceJSONLD, extractors.SourceShopify, extractors.SourceOpenGraph:
+		case extractors.SourceJSONLD, extractors.SourceShopify, extractors.SourceOpenGraph,
+			extractors.SourceZenRowsAutoparse:
 			return tierAuthoritative
 		case extractors.SourceMicrodata:
 			return tierDecent

@@ -1,5 +1,9 @@
 # ZenRows paid backstop: a last-resort second pass for blocked imports
 
+> Superseded-in-part by [ADR-0006](0006-zenrows-autoparse-rescue.md): for **Amazon** hosts the
+> backstop fetches ZenRows autoparse structured JSON (a real source, `zenrows_autoparse`) instead
+> of HTML. Everything below still describes the rendered-HTML pass used for every other host.
+
 ## Status
 
 accepted

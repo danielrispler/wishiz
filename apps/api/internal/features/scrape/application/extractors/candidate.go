@@ -42,6 +42,11 @@ const (
 	SourceCanonical  SourceName = "canonical"
 	SourceFinalURL   SourceName = "final_url"
 	SourceInferred   SourceName = "inferred"
+	// SourceZenRowsAutoparse is the ZenRows autoparse structured-product transport
+	// (Amazon rescue, ADR-0006). Unlike the HTML backstop it IS a source: its JSON
+	// is mapped directly to candidates rather than re-run through the HTML
+	// extractors, so it carries its own SourceName and trust entry.
+	SourceZenRowsAutoparse SourceName = "zenrows_autoparse"
 )
 
 // AllSourceNames is the single source of truth for the SourceName set written
@@ -63,6 +68,7 @@ func AllSourceNames() []SourceName {
 		SourceCanonical,
 		SourceFinalURL,
 		SourceInferred,
+		SourceZenRowsAutoparse,
 	}
 }
 

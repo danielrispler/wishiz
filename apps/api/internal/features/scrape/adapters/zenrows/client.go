@@ -52,10 +52,54 @@ func New(apiKey string, logger *slog.Logger) *Client {
 // leaves the exit to ZenRows. A non-200 response is returned as an error so the
 // Service can soft-fail to the own-pipeline product.
 func (c *Client) Fetch(ctx context.Context, rawURL, proxyCountry string) (scrapeapp.FetchResult, error) {
-	endpoint, err := url.Parse(c.baseURL)
+	query := c.baseQuery(rawURL, proxyCountry)
+	body, finalURL, header, err := c.do(ctx, query, rawURL)
 	if err != nil {
-		return scrapeapp.FetchResult{}, fmt.Errorf("parse zenrows base url: %w", err)
+		return scrapeapp.FetchResult{}, err
 	}
+	c.logger.Info(
+		"zenrows fetch ok",
+		"url", rawURL, "final_url", finalURL, "proxy_country", proxyCountry,
+		"cost", header.Get("X-Request-Cost"),
+	)
+	return scrapeapp.FetchResult{
+		FinalURL: finalURL,
+		HTML:     string(body),
+		Status:   http.StatusOK,
+		Headers:  header,
+	}, nil
+}
+
+// FetchAutoparse renders rawURL via ZenRows with autoparse=true (on top of
+// js_render + premium_proxy), returning the structured-product JSON instead of
+// HTML. Used for the Amazon rescue (ADR-0006): Amazon serves no JSON-LD/og tags,
+// so our HTML extractors find no trusted price — ZenRows' own parser does. Any
+// non-200 is returned as an error so the Service can soft-fail / fall back.
+func (c *Client) FetchAutoparse(
+	ctx context.Context, rawURL, proxyCountry string,
+) (scrapeapp.AutoparseResult, error) {
+	query := c.baseQuery(rawURL, proxyCountry)
+	query.Set("autoparse", "true")
+	body, finalURL, header, err := c.do(ctx, query, rawURL)
+	if err != nil {
+		return scrapeapp.AutoparseResult{}, err
+	}
+	c.logger.Info(
+		"zenrows autoparse fetch ok",
+		"url", rawURL, "final_url", finalURL, "proxy_country", proxyCountry,
+		"cost", header.Get("X-Request-Cost"),
+	)
+	return scrapeapp.AutoparseResult{
+		FinalURL: finalURL,
+		JSON:     body,
+		Status:   http.StatusOK,
+		Headers:  header,
+	}, nil
+}
+
+// baseQuery builds the shared ZenRows query: full-power js_render + premium_proxy
+// (the 25× last-resort mode), optionally pinning the residential exit country.
+func (c *Client) baseQuery(rawURL, proxyCountry string) url.Values {
 	query := url.Values{}
 	query.Set("apikey", c.apiKey)
 	query.Set("url", rawURL)
@@ -64,48 +108,48 @@ func (c *Client) Fetch(ctx context.Context, rawURL, proxyCountry string) (scrape
 	if proxyCountry != "" {
 		query.Set("proxy_country", proxyCountry)
 	}
+	return query
+}
+
+// do issues the ZenRows GET and returns the (capped) body, the resolved final URL
+// (Zr-Final-Url, falling back to rawURL), and the response headers. A non-200 is
+// an error so callers soft-fail.
+func (c *Client) do(
+	ctx context.Context, query url.Values, rawURL string,
+) (body []byte, finalURL string, header http.Header, err error) {
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("parse zenrows base url: %w", err)
+	}
 	endpoint.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
-		return scrapeapp.FetchResult{}, fmt.Errorf("build zenrows request: %w", err)
+		return nil, "", nil, fmt.Errorf("build zenrows request: %w", err)
 	}
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return scrapeapp.FetchResult{}, fmt.Errorf("zenrows request: %w", err)
+		return nil, "", nil, fmt.Errorf("zenrows request: %w", err)
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
 		// 402 no-credits / 429 account concurrency / 422 unprocessable / 5xx. All
 		// soft-fail upstream; surface the code so the rescue-miss is observable.
-		return scrapeapp.FetchResult{}, fmt.Errorf("zenrows status %d", response.StatusCode)
+		return nil, "", nil, fmt.Errorf("zenrows status %d", response.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxBodyBytes))
+	body, err = io.ReadAll(io.LimitReader(response.Body, maxBodyBytes))
 	if err != nil {
-		return scrapeapp.FetchResult{}, fmt.Errorf("read zenrows body: %w", err)
+		return nil, "", nil, fmt.Errorf("read zenrows body: %w", err)
 	}
 
-	finalURL := response.Header.Get("Zr-Final-Url")
+	finalURL = response.Header.Get("Zr-Final-Url")
 	if finalURL == "" {
 		finalURL = rawURL
 	}
-	c.logger.Info(
-		"zenrows fetch ok",
-		"url", rawURL,
-		"final_url", finalURL,
-		"proxy_country", proxyCountry,
-		"cost", response.Header.Get("X-Request-Cost"),
-	)
-
-	return scrapeapp.FetchResult{
-		FinalURL: finalURL,
-		HTML:     string(body),
-		Status:   response.StatusCode,
-		Headers:  response.Header,
-	}, nil
+	return body, finalURL, response.Header, nil
 }
 
 var _ scrapeapp.Backstop = (*Client)(nil)

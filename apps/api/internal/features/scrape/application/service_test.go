@@ -354,21 +354,169 @@ func TestScrapeAndProgressDoNotFireBackstop(t *testing.T) {
 	}
 }
 
+// --- ZenRows autoparse rescue (Amazon) ---
+
+const redkenAutoparseJSON = `{
+	"title": "Redken Acidic Bonding Concentrate Shampoo",
+	"price": "$23.80",
+	"price_without_discount": "$34.00",
+	"images": ["https://m.media-amazon.com/images/I/redken.jpg"]
+}`
+
+const boseAutoparseJSON = `{
+	"title": "Bose QuietComfort Ultra Headphones",
+	"price": "$26.99",
+	"price_without_discount": "$269.00",
+	"images": ["https://m.media-amazon.com/images/I/bose.jpg"]
+}`
+
+// An Amazon app share is an a.co short link; the own HTML pipeline yields
+// needs_review (Amazon has no JSON-LD/og). The autoparse rescue must fire on the
+// shortener host and resolve currency from the ZenRows final URL (amazon.com).
+func TestAutoparseRescuesAmazonShortLink(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://a.co/d/redken"}}
+	backstop := &fakeBackstop{autoparse: AutoparseResult{
+		JSON: []byte(redkenAutoparseJSON), FinalURL: "https://www.amazon.com/dp/B0B64RSCCV",
+	}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://a.co/d/redken", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !backstop.autoCalled.Load() {
+		t.Fatal("autoparse must fire for an a.co shortener host")
+	}
+	if backstop.called.Load() {
+		t.Fatal("HTML backstop must NOT fire when autoparse maps a product")
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("verdict = %q, want auto_complete (reasons %v)", product.Verdict, product.Reasons)
+	}
+	if product.PriceAmount != "23.80" || product.PriceCurrency != "USD" {
+		t.Fatalf("price = {%q %q}, want {23.80 USD}", product.PriceAmount, product.PriceCurrency)
+	}
+	if product.PriceSource != string(extractors.SourceZenRowsAutoparse) {
+		t.Fatalf("price source = %q, want zenrows_autoparse", product.PriceSource)
+	}
+}
+
+// The price-sanity guard holds: a deeply discounted autoparse price is dropped, so
+// the import lands in needs_review with the name (and image) prefilled.
+func TestAutoparseDropsSuspiciousPriceToReview(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://a.co/d/bose"}}
+	backstop := &fakeBackstop{autoparse: AutoparseResult{
+		JSON: []byte(boseAutoparseJSON), FinalURL: "https://www.amazon.com/dp/B0GL8FBD85",
+	}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://a.co/d/bose", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if product.Verdict != VerdictNeedsReview {
+		t.Fatalf("verdict = %q, want needs_review (suspicious price dropped)", product.Verdict)
+	}
+	if product.Name != "Bose QuietComfort Ultra Headphones" {
+		t.Fatalf("name = %q, want the autoparse title prefilled", product.Name)
+	}
+	if product.PriceAmount != "" {
+		t.Fatalf("price = %q, want it dropped", product.PriceAmount)
+	}
+}
+
+// Schema-drift safety: when autoparse maps nothing, fall through to the HTML
+// backstop, which can still rescue.
+func TestAutoparseEmptyMapFallsBackToHTML(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://www.amazon.com/dp/x"}}
+	backstop := &fakeBackstop{
+		autoparse: AutoparseResult{JSON: []byte(`{}`), FinalURL: "https://www.amazon.com/dp/x"},
+		result:    FetchResult{HTML: backstopAutoHTML},
+	}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://www.amazon.com/dp/x", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !backstop.autoCalled.Load() || !backstop.called.Load() {
+		t.Fatalf("want both autoparse (mapped nothing) and HTML fallback to fire; auto=%v html=%v",
+			backstop.autoCalled.Load(), backstop.called.Load())
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("verdict = %q, want HTML fallback to auto_complete", product.Verdict)
+	}
+}
+
+// An autoparse error falls through to the HTML backstop too.
+func TestAutoparseErrorFallsBackToHTML(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://www.amazon.com/dp/y"}}
+	backstop := &fakeBackstop{
+		autoparseErr: errTest,
+		result:       FetchResult{HTML: backstopAutoHTML},
+	}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://www.amazon.com/dp/y", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !backstop.autoCalled.Load() || !backstop.called.Load() {
+		t.Fatal("autoparse error must fall through to the HTML backstop")
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("verdict = %q, want HTML fallback to auto_complete", product.Verdict)
+	}
+}
+
+// A non-Amazon host uses the HTML backstop directly; autoparse must not fire.
+func TestNonAmazonUsesHTMLBackstopNotAutoparse(t *testing.T) {
+	t.Parallel()
+	static := fakeFetcher{result: FetchResult{HTML: needsReviewHTML, FinalURL: "https://shop.de/p"}}
+	backstop := &fakeBackstop{result: FetchResult{HTML: backstopAutoHTML}}
+
+	product, err := backstopService(t, static, backstop).
+		ScrapeImport(context.Background(), "https://shop.de/p", "USD", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if backstop.autoCalled.Load() {
+		t.Fatal("autoparse must NOT fire for a non-Amazon host")
+	}
+	if !backstop.called.Load() || product.Verdict != VerdictAutoComplete {
+		t.Fatalf("want HTML backstop to rescue, got called=%v verdict=%q",
+			backstop.called.Load(), product.Verdict)
+	}
+}
+
 // --- fakes ---
 
 var errTest = errors.New("backstop boom")
 
 type fakeBackstop struct {
-	result     FetchResult
-	err        error
-	called     atomic.Bool
-	gotCountry string
+	result       FetchResult
+	err          error
+	autoparse    AutoparseResult
+	autoparseErr error
+	called       atomic.Bool // HTML Fetch called
+	autoCalled   atomic.Bool // FetchAutoparse called
+	gotCountry   string
 }
 
 func (b *fakeBackstop) Fetch(_ context.Context, _, proxyCountry string) (FetchResult, error) {
 	b.called.Store(true)
 	b.gotCountry = proxyCountry
 	return b.result, b.err
+}
+
+func (b *fakeBackstop) FetchAutoparse(_ context.Context, _, proxyCountry string) (AutoparseResult, error) {
+	b.autoCalled.Store(true)
+	b.gotCountry = proxyCountry
+	return b.autoparse, b.autoparseErr
 }
 
 type fakeFetcher struct {

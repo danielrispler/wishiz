@@ -28,12 +28,31 @@ type Fetcher interface {
 	Fetch(ctx context.Context, rawURL string) (FetchResult, error)
 }
 
+// AutoparseResult is the raw output of a ZenRows autoparse fetch: structured
+// product JSON (NOT HTML), the resolved final URL (Zr-Final-Url), and the final
+// status/headers. Unlike FetchResult its body is mapped directly to candidates
+// (MapAutoparseProduct) rather than re-run through the HTML extractors.
+type AutoparseResult struct {
+	// FinalURL is the URL after following redirects (resolves Amazon shorteners).
+	FinalURL string
+	// JSON is the autoparse structured-product document.
+	JSON []byte
+	// Status is the HTTP status of the final response.
+	Status int
+	// Headers are the final response headers.
+	Headers http.Header
+}
+
 // Backstop is a paid last-resort fetcher (e.g. ZenRows) consulted only on the
 // product-import path when the own pipeline cannot auto-complete. Unlike Fetcher
 // it takes a proxyCountry hint so the caller can pin the residential exit to the
-// site's country (pass "" to leave the exit to the provider). It returns the same
-// FetchResult, so its HTML feeds the identical Extract → consensus → verdict path:
-// the backstop is a transport, not an extraction source.
+// site's country (pass "" to leave the exit to the provider).
+//
+// Two modes: Fetch returns rendered HTML (a transport — its HTML feeds the
+// identical Extract → consensus → verdict path); FetchAutoparse returns ZenRows'
+// structured-product JSON, used for sites our HTML extractors cannot parse
+// (Amazon — no JSON-LD/og tags). See ADR-0006.
 type Backstop interface {
 	Fetch(ctx context.Context, rawURL, proxyCountry string) (FetchResult, error)
+	FetchAutoparse(ctx context.Context, rawURL, proxyCountry string) (AutoparseResult, error)
 }

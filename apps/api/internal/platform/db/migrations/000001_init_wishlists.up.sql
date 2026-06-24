@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS product_import_jobs (
     CONSTRAINT product_import_jobs_price_source_check
         CHECK (price_source IS NULL OR price_source IN (
             'json_ld', 'shopify', 'open_graph', 'microdata', 'js_state', 'merchant',
-            'title', 'h1', 'generic_dom', 'canonical', 'final_url', 'inferred'
+            'title', 'h1', 'generic_dom', 'canonical', 'final_url', 'inferred',
+            'zenrows_autoparse'
         )),
     CONSTRAINT product_import_jobs_client_request_unique UNIQUE (user_id, client_request_id)
 );

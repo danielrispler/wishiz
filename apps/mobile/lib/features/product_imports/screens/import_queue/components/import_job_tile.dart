@@ -87,6 +87,11 @@ class ImportJobTile extends StatelessWidget {
             onPressed: () => onReview(job),
             icon: const Icon(Icons.edit_outlined, size: 20),
           ),
+          IconButton(
+            tooltip: 'Hide',
+            onPressed: () => onAcknowledge(job),
+            icon: const Icon(Icons.close, size: 20),
+          ),
         ];
       }
       return [

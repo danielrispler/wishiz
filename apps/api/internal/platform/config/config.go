@@ -94,7 +94,7 @@ func Load() (Config, error) {
 		ScrapeInferDotComUSD:       getEnvBool("SCRAPE_INFER_DOTCOM_USD", false),
 		ScrapeMaxPrice:             getEnvFloat("SCRAPE_MAX_PRICE", 1e7),
 		ZenRowsAPIKey:              getEnv("ZENROWS_API_KEY", ""),
-		ZenRowsTimeout:             getEnvDuration("ZENROWS_TIMEOUT", 30*time.Second),
+		ZenRowsTimeout:             getEnvDuration("ZENROWS_TIMEOUT", 45*time.Second),
 		ExchangeRatesURL: getEnv(
 			"EXCHANGE_RATES_URL",
 			"https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",

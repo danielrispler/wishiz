@@ -2,6 +2,7 @@ package application
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/scrape/application/extractors"
 )
@@ -170,6 +171,17 @@ func resolveField(
 		}
 	}
 
+	// A name "conflict" where one value contains the other is not a contradiction:
+	// it is the same product named at different verbosity (a clean <h1> vs an
+	// og:title/<title> carrying a brand prefix and a "… | Site" suffix). Merge them
+	// and display the clean core instead of forcing review.
+	if conflict && field == extractors.FieldName {
+		if merged := mergedNameWinner(sorted); merged != nil {
+			winner = merged
+			conflict = false
+		}
+	}
+
 	confidence := confidenceFor(field, winner)
 	warnings := winner.warnings
 	if conflict {
@@ -189,16 +201,27 @@ func resolveField(
 }
 
 // displayedPriceWinner resolves a price range using the amount rendered in the
-// visible DOM. When exactly one authoritative price group's amount equals a
-// generic-DOM (display) price, that group is what the shopper sees and wins.
-// If no displayed price matches, or several do (the displayed price is itself
-// ambiguous, e.g. a strikethrough was-price shown alongside the sale price), the
-// conflict stands. Display prices flagged non-primary ("you may also like") are
-// ignored so a carousel price can't disambiguate the wrong way.
+// visible DOM. The "displayed" anchor is the main price the shopper sees: a
+// generic-DOM price OR a host-aware Merchant price (the merchant selector reads
+// the FIRST/main price element). When exactly one eligible price group's amount
+// equals a displayed price, that group is what the shopper sees and wins. If no
+// displayed price matches, or several do (the displayed price is itself ambiguous,
+// e.g. a strikethrough was-price shown alongside the sale price), the conflict
+// stands. Display prices flagged non-primary ("you may also like") are ignored so
+// a carousel price can't disambiguate the wrong way.
+//
+// Eligibility is tier-aware: authoritative groups are always eligible (a JSON-LD
+// variant range resolved by the displayed price). When NO authoritative price is
+// present (e.g. Wayfair, whose price lives only in many decent RSC-flight
+// primaryPrice nodes), decent groups become eligible too, so the displayed main
+// price selects the right amount among the flight range.
 func displayedPriceWinner(groups []*candidateGroup, candidates []extractors.Candidate) *candidateGroup {
 	displayed := map[string]struct{}{}
 	for _, candidate := range candidates {
-		if candidate.Field != extractors.FieldPrice || candidate.Source != extractors.SourceGenericDOM {
+		if candidate.Field != extractors.FieldPrice {
+			continue
+		}
+		if candidate.Source != extractors.SourceGenericDOM && candidate.Source != extractors.SourceMerchant {
 			continue
 		}
 		if hasWarning(candidate.Warnings, extractors.WarningNonPrimaryContext) {
@@ -209,20 +232,44 @@ func displayedPriceWinner(groups []*candidateGroup, candidates []extractors.Cand
 	if len(displayed) == 0 {
 		return nil
 	}
-	var match *candidateGroup
+
+	hasAuthoritative := false
 	for _, group := range groups {
-		if group.maxTier != tierAuthoritative {
-			continue
+		if group.maxTier == tierAuthoritative {
+			hasAuthoritative = true
+			break
 		}
-		if _, ok := displayed[group.value]; !ok {
-			continue
-		}
-		if match != nil {
-			return nil // displayed price is ambiguous → keep the conflict
-		}
-		match = group
 	}
-	return match
+
+	var matches []*candidateGroup
+	for _, group := range groups {
+		eligible := group.maxTier == tierAuthoritative ||
+			(!hasAuthoritative && group.maxTier == tierDecent)
+		if !eligible {
+			continue
+		}
+		if _, ok := displayed[group.value]; ok {
+			matches = append(matches, group)
+		}
+	}
+	if len(matches) == 0 {
+		return nil
+	}
+	// Multiple matches are ambiguous ONLY if they disagree on the amount (e.g. a
+	// strikethrough was-price shown beside the sale price). Several groups sharing
+	// the SAME amount are the same price split by currency specificity (143.99 USD
+	// vs a bare-$ 143.99 merchant read) — not a conflict; prefer the one carrying a
+	// currency so the resolved price keeps its explicit code.
+	winner := matches[0]
+	for _, group := range matches[1:] {
+		if group.value != winner.value {
+			return nil
+		}
+		if winner.currency == "" && group.currency != "" {
+			winner = group
+		}
+	}
+	return winner
 }
 
 func hasWarning(warnings []string, target string) bool {
@@ -269,6 +316,16 @@ func decentSourceCount(field extractors.Field, group *candidateGroup) int {
 // authoritative source is never overruled (or flagged) by a merely-decent one,
 // so an authoritative Shopify/JSON-LD value wins outright over a junky og:title.
 func hasTrustedDisagreement(groups []*candidateGroup) bool {
+	// A conflict requires ≥2 authoritative groups that genuinely contradict; one
+	// authoritative group (even alongside decent ones) is never a conflict. With no
+	// authoritative source, two incompatible decent groups conflict.
+	return anyIncompatible(trustedConflictGroups(groups))
+}
+
+// trustedConflictGroups returns the groups that count toward a conflict: the
+// authoritative ones if any exist, otherwise the decent ones. Weaker tiers never
+// drive a conflict.
+func trustedConflictGroups(groups []*candidateGroup) []*candidateGroup {
 	var authoritative, decent []*candidateGroup
 	for _, group := range groups {
 		switch group.maxTier {
@@ -281,11 +338,64 @@ func hasTrustedDisagreement(groups []*candidateGroup) bool {
 		}
 	}
 	if len(authoritative) >= 1 {
-		// A conflict requires ≥2 authoritative groups that genuinely contradict;
-		// one authoritative group (even alongside decent ones) is never a conflict.
-		return anyIncompatible(authoritative)
+		return authoritative
 	}
-	return anyIncompatible(decent)
+	return decent
+}
+
+// mergedNameWinner resolves a name "conflict" that is really one product named at
+// different verbosity. When every trusted name group's normalized value is a
+// substring of the longest (e.g. a clean <h1> contained in an og:title that adds a
+// brand prefix and a "… | Site" suffix), they describe the same product: merge
+// their sources and return the cleanest (shortest) value as the winner. A value
+// that is NOT contained in the longest is a genuinely different name, so the
+// conflict stands (nil). The shared core must be substantial (≥3 tokens) so a
+// coincidental short common token never collapses two real products together.
+func mergedNameWinner(groups []*candidateGroup) *candidateGroup {
+	trusted := trustedConflictGroups(groups)
+	if len(trusted) < 2 {
+		return nil
+	}
+
+	longest := trusted[0]
+	for _, group := range trusted[1:] {
+		if len(normalizeNameValue(group.value)) > len(normalizeNameValue(longest.value)) {
+			longest = group
+		}
+	}
+	longestNorm := normalizeNameValue(longest.value)
+
+	merged := &candidateGroup{sources: map[extractors.SourceName]struct{}{}}
+	shortest := trusted[0]
+	for _, group := range trusted {
+		if !strings.Contains(longestNorm, normalizeNameValue(group.value)) {
+			return nil
+		}
+		for source := range group.sources {
+			merged.sources[source] = struct{}{}
+		}
+		merged.warnings = append(merged.warnings, group.warnings...)
+		if group.maxTier > merged.maxTier {
+			merged.maxTier = group.maxTier
+		}
+		if len(normalizeNameValue(group.value)) < len(normalizeNameValue(shortest.value)) {
+			shortest = group
+		}
+	}
+	if len(strings.Fields(shortest.value)) < 3 {
+		return nil
+	}
+
+	merged.value = shortest.value
+	merged.currency = shortest.currency
+	merged.rep = shortest.rep
+	return merged
+}
+
+// normalizeNameValue lowercases and collapses whitespace so name containment
+// comparisons ignore casing and the stray double-spaces sites emit.
+func normalizeNameValue(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
 
 // anyIncompatible reports whether any two groups in the set genuinely contradict.

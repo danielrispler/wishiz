@@ -429,6 +429,29 @@ func TestEngineBrandImageSkippedOnFailedVerdict(t *testing.T) {
 	}
 }
 
+// Regression (luluandgeorgia.com): Shopify serves og:image with a plain http://
+// scheme (og:image:secure_url carries the https one). When og:image wins the
+// image consensus, the http:// URL is blocked by iOS App Transport Security / web
+// mixed-content / Flutter Image.network, so the item imports "successfully" but
+// renders a broken image. The engine must upgrade the surviving image URL to
+// https so it loads on every client.
+func TestEngineUpgradesHTTPImageToHTTPS(t *testing.T) {
+	t.Parallel()
+
+	product := reconcile(t, "https://shop.example/products/stool", `<html><head>
+		<meta property="og:image" content="http://shop.example/cdn/stool_1024x.jpg">
+		<title>Stool</title>
+		<script type="application/ld+json">{
+			"@type": "Product",
+			"name": "Velvet Stool",
+			"offers": {"@type": "Offer", "price": "228.00", "priceCurrency": "USD"}
+		}</script></head><body><h1>Velvet Stool</h1></body></html>`)
+
+	if product.ImageURL != "https://shop.example/cdn/stool_1024x.jpg" {
+		t.Fatalf("expected https-upgraded image, got %q", product.ImageURL)
+	}
+}
+
 func containsStr(values []string, want string) bool {
 	for _, v := range values {
 		if v == want {

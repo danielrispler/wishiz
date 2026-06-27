@@ -26,6 +26,13 @@ var merchantPriceSelectors = map[string][]string{
 	"factory54.co.il":    {".price > .sale-price", ".sale-price"},
 	"aloyoga.com":        {".Price", `[class*="Price"]`},
 	"lululemon.com":      {`[class*="price_price__"]`},
+	// Wayfair serves no JSON-LD/og price; the real amount is in RSC flight chunks
+	// (read by JSState). But a PDP carries MANY primaryPrice flight nodes (the main
+	// listing + every add-on/related listing), so the flight prices alone conflict.
+	// The shopper-facing main price renders in the FIRST [data-test-id="PriceDisplay"]
+	// element — textOf takes .First() — which the consensus uses to disambiguate the
+	// flight range to the correct amount.
+	"wayfair.com": {`[data-test-id="PriceDisplay"]`},
 }
 
 // Merchant emits a single MEDIUM price candidate from the merchant-specific

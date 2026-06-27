@@ -6,11 +6,15 @@ import "strings"
 // ZenRows residential-proxy exit. Pinning the exit to the site's country keeps
 // the backstop's localized currency consistent with the own pipeline's locale/TLD
 // inference, so the second pass reinforces rather than conflicts (fewer wasted
-// 25× fetches). Generic TLDs (.com/.net/.org) and multi-country .eu are absent on
-// purpose: there is no single correct exit, so the fetch is left unpinned and the
-// verdict-floor guard in ScrapeImport absorbs any geo conflict. The ccTLD equals
-// the country code except .uk → gb.
+// 25× fetches). The generic gTLDs (.com/.net/.org) pin to "us": ZenRows otherwise
+// routes them through a random residential exit, and a slow/contested exit to a US
+// retailer (wayfair.com) stalls the render past ZENROWS_TIMEOUT — the main cause of
+// total-fails. US is the safest single commerce exit (USD, full content), and the
+// verdict-floor guard plus explicit-only currency assignment keep a wrong-locale
+// price from ever auto-completing. Multi-country .eu stays unpinned (no single
+// correct exit). The ccTLD equals the country code except .uk → gb.
 var proxyCountryByTLD = map[string]string{
+	"com": "us", "net": "us", "org": "us",
 	"il": "il", "uk": "gb",
 	"de": "de", "fr": "fr", "es": "es", "it": "it", "nl": "nl", "ie": "ie",
 	"ca": "ca", "au": "au", "jp": "jp", "ch": "ch",

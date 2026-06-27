@@ -115,7 +115,25 @@ func (e *Engine) Reconcile(candidates []extractors.Candidate, finalURL string) P
 				append(product.PriceWarnings, extractors.WarningBrandImageFallback))
 		}
 	}
+
+	// Upgrade the surviving image URL to https. A plain http:// image (Shopify
+	// emits og:image as http while og:image:secure_url is https) is blocked by
+	// iOS App Transport Security, web mixed-content rules, and Flutter's
+	// Image.network — the item would import fine but render a broken image. Hosts
+	// serving http product images effectively always 301 to https, so the upgrade
+	// is safe and applies to every source (consensus winner and brand fallback).
+	product.ImageURL = upgradeImageScheme(product.ImageURL)
+
 	return product
+}
+
+// upgradeImageScheme rewrites an absolute http:// image URL to https://. Leaves
+// https://, scheme-relative, relative, and data: URLs untouched.
+func upgradeImageScheme(rawURL string) string {
+	if strings.HasPrefix(rawURL, "http://") {
+		return "https://" + strings.TrimPrefix(rawURL, "http://")
+	}
+	return rawURL
 }
 
 // brandImageOf returns the display-only brand-image fallback value, if Extract

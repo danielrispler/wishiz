@@ -1,12 +1,21 @@
 package extractors
 
 import (
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// jsonString JSON-encodes s (with surrounding quotes) so a flight chunk can be
+// embedded as the escaped string argument of __next_f.push([N,"…"]), exactly as
+// Next.js serializes React Server Component payloads into the SSR HTML.
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
 
 func parse(t *testing.T, html string) *goquery.Document {
 	t.Helper()
@@ -97,6 +106,111 @@ func TestJSStateIgnoresNonProductMaps(t *testing.T) {
 	html := `<script type="application/json">{"config":{"locale":"en","theme":"dark"}}</script>`
 	if candidates := JSState(parse(t, html), html, base); len(candidates) != 0 {
 		t.Fatalf("expected no candidates from non-product json, got %+v", candidates)
+	}
+}
+
+func TestJSStateReactFlightContainerPrice(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://www.wayfair.com/p")
+
+	// Real Wayfair shape: the price lives only in RSC "flight" chunks, split
+	// across two __next_f.push calls (each chunk alone is invalid JSON; the
+	// concatenation is the product object). primaryPrice.price.value carries the
+	// amount + nested currency.code; 4 decoy amounts sit under non-allowlisted
+	// keys (listPrice, addOns) and must never surface as a price.
+	chunk1 := `2c:{"product":{"name":"Sitarski Writing Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}},` +
+		`"listPrice":{"price":{"value":{"amount":"156.99","currency":{"code":"USD"}}}}},`
+	chunk2 := `"addOns":[` +
+		`{"name":"Assembly","price":{"value":{"amount":"66.99","currency":{"code":"USD"}}}},` +
+		`{"name":"Protection","price":{"value":{"amount":"17.29","currency":{"code":"USD"}}}},` +
+		`{"name":"Pads","price":{"value":{"amount":"14.29","currency":{"code":"USD"}}}}]}}` + "\n"
+
+	html := `<!doctype html><html><body>` +
+		`<script>self.__next_f=self.__next_f||[];self.__next_f.push([0])</script>` +
+		`<script>self.__next_f.push([1,` + jsonString(chunk1) + `])</script>` +
+		`<script>self.__next_f.push([1,` + jsonString(chunk2) + `])</script>` +
+		`</body></html>`
+
+	candidates := JSState(parse(t, html), html, base)
+
+	price, ok := findPrice(candidates)
+	if !ok || price.Value != "143.99" || price.Currency != "USD" || price.Source != SourceJSState {
+		t.Fatalf("expected flight price 143.99/USD/js_state, got %+v (ok=%v)", price, ok)
+	}
+	for _, candidate := range candidates {
+		if candidate.Field == FieldPrice && candidate.Value != "143.99" {
+			t.Fatalf("decoy amount leaked as a price candidate: %+v", candidate)
+		}
+	}
+}
+
+func TestReconstructFlightBlobConcatenatesChunks(t *testing.T) {
+	t.Parallel()
+
+	chunk1 := `a:{"product":{"name":"Desk",`
+	chunk2 := `"sku":"123"}}` + "\n"
+	html := `<script>self.__next_f.push([0])</script>` +
+		`<script>self.__next_f.push([1,` + jsonString(chunk1) + `])</script>` +
+		`<script>self.__next_f.push([1,` + jsonString(chunk2) + `])</script>`
+
+	if got := reconstructFlightBlob(html); got != chunk1+chunk2 {
+		t.Fatalf("blob = %q, want concatenation of both chunks", got)
+	}
+}
+
+func TestContainerPriceIgnoresBareAmounts(t *testing.T) {
+	t.Parallel()
+
+	// A full Money under a NON-allowlisted container key must never vote on price:
+	// disambiguation is by container key, not by scanning every amount.
+	node := map[string]any{
+		"shippingPrice": map[string]any{
+			"price": map[string]any{
+				"value": map[string]any{"amount": "9.99", "currency": map[string]any{"code": "USD"}},
+			},
+		},
+	}
+	if got := containerPriceCandidates(node, map[string]struct{}{}); len(got) != 0 {
+		t.Fatalf("non-allowlisted container must not emit a price, got %+v", got)
+	}
+}
+
+func TestContainerPriceRequiresCurrency(t *testing.T) {
+	t.Parallel()
+
+	// Allowlisted container, real amount, but NO currency anywhere in the Money:
+	// the hard guard drops it (never assigns a bare $).
+	node := map[string]any{
+		"primaryPrice": map[string]any{
+			"price": map[string]any{"value": map[string]any{"amount": "143.99"}},
+		},
+	}
+	if got := containerPriceCandidates(node, map[string]struct{}{}); len(got) != 0 {
+		t.Fatalf("currency-less Money must not emit a price, got %+v", got)
+	}
+}
+
+func TestJSStateFlightGenericNamePrice(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://store.example/p")
+
+	// Part A (generic transport): a flight island that co-locates a name with a
+	// flat/one-level price benefits with zero schema knowledge — not just the
+	// container-keyed Wayfair shape.
+	chunk := `7:{"product":{"name":"Generic Widget","price":"42.00","currencyCode":"USD"}}` + "\n"
+	html := `<script>self.__next_f.push([1,` + jsonString(chunk) + `])</script>`
+
+	candidates := JSState(parse(t, html), html, base)
+
+	price, ok := findPrice(candidates)
+	if !ok || price.Value != "42.00" || price.Currency != "USD" || price.Source != SourceJSState {
+		t.Fatalf("expected generic flight price 42.00/USD, got %+v (ok=%v)", price, ok)
+	}
+	if name, ok := findField(candidates, FieldName); !ok || name.Value != "Generic Widget" {
+		t.Fatalf("expected generic flight name, got %+v (ok=%v)", name, ok)
 	}
 }
 

@@ -8,9 +8,9 @@ func TestInferProxyCountry(t *testing.T) {
 		"shop.de":           "de",
 		"www.example.co.uk": "gb", // .uk → gb (ISO), not "uk"
 		"store.fr":          "fr",
-		"brand.example.com": "", // generic TLD: unpinned (the .com ambiguity)
-		"x.net":             "",
-		"x.org":             "",
+		"brand.example.com": "us", // generic gTLD: pin US (best single commerce exit)
+		"x.net":             "us",
+		"x.org":             "us",
 		"site.eu":           "", // multi-country: no single correct exit
 		"localhost":         "", // no dot
 		"":                  "",

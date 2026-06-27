@@ -45,8 +45,175 @@ func JSState(document *goquery.Document, rawHTML string, base *url.URL) []Candid
 	for _, marker := range jsStateMarkers {
 		emit(balancedJSONAfter(rawHTML, marker))
 	}
+	candidates = append(candidates, flightCandidates(reconstructFlightBlob(rawHTML), base, seen)...)
 
 	return candidates
+}
+
+// flightMarker introduces each React Server Component "flight" chunk that
+// Next.js App Router streams inline as self.__next_f.push([N,"…"]).
+const flightMarker = "__next_f.push("
+
+// reconstructFlightBlob walks every __next_f.push([N,"…"]) call in rawHTML and
+// concatenates the decoded string argument (parts[1]) of each in document order,
+// rebuilding the streamed RSC payload. Unmarshalling parts[1] into a Go string
+// does the JS/JSON unescaping for free (\" → ", \\n → newline), so the result is
+// the raw flight text. The [0] bootstrap push (a single-element array) is skipped.
+// The blob itself is NOT valid JSON — it is line-oriented flight rows — so callers
+// scan it for balanced JSON islands rather than unmarshalling it whole.
+func reconstructFlightBlob(rawHTML string) string {
+	var blob strings.Builder
+	rest := rawHTML
+	for {
+		marker := strings.Index(rest, flightMarker)
+		if marker < 0 {
+			break
+		}
+		rest = rest[marker+len(flightMarker):]
+		start := strings.IndexByte(rest, '[')
+		if start < 0 {
+			break
+		}
+		arg := firstBalancedSpan(rest[start:], '[', ']')
+		if arg == "" {
+			continue
+		}
+		rest = rest[start+len(arg):]
+
+		var parts []json.RawMessage
+		if err := json.Unmarshal([]byte(arg), &parts); err != nil || len(parts) < 2 {
+			continue
+		}
+		var chunk string
+		if err := json.Unmarshal(parts[1], &chunk); err != nil {
+			continue
+		}
+		blob.WriteString(chunk)
+	}
+	return blob.String()
+}
+
+// strongPriceContainers are the GraphQL/commerce wrapper keys whose nested
+// {value:{amount,currency}} Money is the genuine selling price. Restricting the
+// container-price scan to this allowlist is what keeps decoy amounts (listPrice,
+// addOns, shipping) — which live under other keys — from ever voting on price.
+var strongPriceContainers = map[string]bool{
+	"primaryPrice": true,
+	"sellingPrice": true,
+	"offers":       true,
+}
+
+// flightCandidates scans a reconstructed flight blob for balanced {…} JSON
+// islands and folds each through both productShapedCandidates (Part A — any island
+// co-locating a name and a flat/one-level price benefits, with zero schema
+// knowledge) and containerPriceCandidates (Part B — the container-keyed Money the
+// generic readers miss). It threads the shared seen map so flight values dedupe
+// against the marker/script candidates already emitted.
+func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Candidate {
+	if blob == "" {
+		return nil
+	}
+	var out []Candidate
+	rest := blob
+	for {
+		start := strings.IndexByte(rest, '{')
+		if start < 0 {
+			break
+		}
+		island := firstBalancedSpan(rest[start:], '{', '}')
+		if island == "" {
+			break
+		}
+		rest = rest[start+len(island):]
+
+		var decoded any
+		if err := json.Unmarshal([]byte(island), &decoded); err != nil {
+			continue
+		}
+		for _, node := range flattenJSONMaps(decoded) {
+			out = append(out, productShapedCandidates(node, base, seen)...)
+			out = append(out, containerPriceCandidates(node, seen)...)
+		}
+	}
+	return out
+}
+
+// containerPriceCandidates emits a price candidate for each allowlisted price
+// container in node whose nested Money carries BOTH an amount and an explicit
+// currency. Disambiguation is by container key — never by first/lowest amount —
+// so amounts under non-allowlisted keys are never even scanned. A missing currency
+// emits nothing (never assigns a bare $). It votes only on price, never on name.
+func containerPriceCandidates(node map[string]any, seen map[string]struct{}) []Candidate {
+	var out []Candidate
+	for key, value := range node {
+		if !strongPriceContainers[key] {
+			continue
+		}
+		amount, currency := nestedValueAmount(value)
+		if amount == "" || currency == "" {
+			continue
+		}
+		code := strings.ToUpper(currency)
+		candidate, ok := newPriceCandidate(SourceJSState, code, joinPrice(code, amount))
+		if !ok {
+			continue
+		}
+		dedupKey := "price:" + amount + "|" + code
+		if _, dup := seen[dedupKey]; dup {
+			continue
+		}
+		seen[dedupKey] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
+// nestedValueAmount descends a price-container subtree and returns the first
+// Money it finds: a map holding BOTH an "amount" and a currency (the GraphQL
+// Money.value shape, e.g. primaryPrice.price.value). Requiring amount+currency
+// in the SAME map keeps it from latching onto a bare amount and gives the
+// container-keyed price its explicit HIGH currency.
+func nestedValueAmount(value any) (amount string, currency string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		if amt := stringValue(typed["amount"]); amt != "" {
+			if code := currencyCodeOf(typed); code != "" {
+				return amt, code
+			}
+		}
+		for _, key := range []string{"value", "price"} {
+			if amt, code := nestedValueAmount(typed[key]); amt != "" {
+				return amt, code
+			}
+		}
+		for child, nested := range typed {
+			if child == "value" || child == "price" {
+				continue
+			}
+			if amt, code := nestedValueAmount(nested); amt != "" {
+				return amt, code
+			}
+		}
+	case []any:
+		for _, entry := range typed {
+			if amt, code := nestedValueAmount(entry); amt != "" {
+				return amt, code
+			}
+		}
+	}
+	return "", ""
+}
+
+// currencyCodeOf reads an ISO-4217 code from a Money/price map, handling both the
+// object form (currency:{code:"USD"}) and the flat string forms (currencyCode /
+// currency:"USD") — the shapes jsPrice's flat lookup misses.
+func currencyCodeOf(node map[string]any) string {
+	if nested, ok := node["currency"].(map[string]any); ok {
+		if code := stringValue(nested["code"]); code != "" {
+			return code
+		}
+	}
+	return firstStringField(node, "currencyCode", "currency", "priceCurrency")
 }
 
 // productShapedCandidates emits candidates from a single JSON map only when it
@@ -195,7 +362,15 @@ func isWordByte(b byte) bool {
 // firstBalancedObject returns the first balanced {...} object in s, counting
 // braces only outside of string literals.
 func firstBalancedObject(s string) string {
-	start := strings.IndexByte(s, '{')
+	return firstBalancedSpan(s, '{', '}')
+}
+
+// firstBalancedSpan returns the first balanced open…close span in s, counting
+// delimiters only outside of string literals (so a brace/bracket inside a quoted
+// value never miscounts). Used for {…} JSON objects and the bracket-heavy
+// [N,"…"] argument of __next_f.push.
+func firstBalancedSpan(s string, open, closeByte byte) string {
+	start := strings.IndexByte(s, open)
 	if start < 0 {
 		return ""
 	}
@@ -219,9 +394,9 @@ func firstBalancedObject(s string) string {
 		switch c {
 		case '"':
 			inString = true
-		case '{':
+		case open:
 			depth++
-		case '}':
+		case closeByte:
 			depth--
 			if depth == 0 {
 				return s[start : i+1]

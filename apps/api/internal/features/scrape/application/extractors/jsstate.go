@@ -106,14 +106,24 @@ var strongPriceContainers = map[string]bool{
 // flightCandidates scans a reconstructed flight blob for balanced {…} JSON
 // islands and folds each through both productShapedCandidates (Part A — any island
 // co-locating a name and a flat/one-level price benefits, with zero schema
-// knowledge) and containerPriceCandidates (Part B — the container-keyed Money the
-// generic readers miss). It threads the shared seen map so flight values dedupe
-// against the marker/script candidates already emitted.
+// knowledge) and the container-keyed Money the generic readers miss (Part B). It
+// threads the shared seen map so flight values dedupe against the marker/script
+// candidates already emitted.
+//
+// Part B is frequency-ranked: a single page embeds many products (Wayfair-class
+// PDPs carry recommendation carousels, each with its own primaryPrice), so naively
+// emitting every allowlisted container price floods consensus with decoys and
+// deadlocks it into price_conflict. The MAIN product's amount recurs across the
+// flight payload (primaryPrice + sellingPrice + repeated Money nodes) while each
+// embedded product's price appears once, so only the most-frequent container
+// price(s) are emitted (see dominantFlightPrices).
 func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Candidate {
 	if blob == "" {
 		return nil
 	}
 	var out []Candidate
+	moneyFreq := map[string]int{}
+	var containerPrices []flightContainerPrice
 	rest := blob
 	for {
 		start := strings.IndexByte(rest, '{')
@@ -131,9 +141,53 @@ func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Ca
 			continue
 		}
 		for _, node := range flattenJSONMaps(decoded) {
+			if amount := stringValue(node["amount"]); amount != "" {
+				if code := currencyCodeOf(node); code != "" {
+					moneyFreq[amount+"|"+strings.ToUpper(code)]++
+				}
+			}
 			out = append(out, productShapedCandidates(node, base, seen)...)
-			out = append(out, containerPriceCandidates(node, seen)...)
+			containerPrices = append(containerPrices, containerPriceEntries(node)...)
 		}
+	}
+	out = append(out, dominantFlightPrices(containerPrices, moneyFreq, seen)...)
+	return out
+}
+
+// flightContainerPrice is an allowlisted container price plus its amount|CODE key,
+// used to frequency-rank flight prices before emission.
+type flightContainerPrice struct {
+	candidate Candidate
+	amount    string
+	code      string
+}
+
+// dominantFlightPrices keeps only the container price(s) whose amount recurs most
+// across the whole flight payload (moneyFreq), so a page full of recommendation /
+// add-on prices can't deadlock price consensus. An exact frequency tie keeps all
+// tied candidates — the genuinely-ambiguous case falls back to the displayed-price
+// disambiguation in consensus rather than guessing. Emission dedupes via the shared
+// seen map, matching the original "price:"+amount+"|"+code key.
+func dominantFlightPrices(
+	prices []flightContainerPrice, moneyFreq map[string]int, seen map[string]struct{},
+) []Candidate {
+	maxFreq := 0
+	for _, price := range prices {
+		if freq := moneyFreq[price.amount+"|"+price.code]; freq > maxFreq {
+			maxFreq = freq
+		}
+	}
+	var out []Candidate
+	for _, price := range prices {
+		if moneyFreq[price.amount+"|"+price.code] != maxFreq {
+			continue
+		}
+		dedupKey := "price:" + price.amount + "|" + price.code
+		if _, dup := seen[dedupKey]; dup {
+			continue
+		}
+		seen[dedupKey] = struct{}{}
+		out = append(out, price.candidate)
 	}
 	return out
 }
@@ -143,8 +197,26 @@ func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Ca
 // currency. Disambiguation is by container key — never by first/lowest amount —
 // so amounts under non-allowlisted keys are never even scanned. A missing currency
 // emits nothing (never assigns a bare $). It votes only on price, never on name.
+// (flightCandidates instead frequency-ranks via containerPriceEntries; this remains
+// the single-node entry point used directly by unit tests.)
 func containerPriceCandidates(node map[string]any, seen map[string]struct{}) []Candidate {
 	var out []Candidate
+	for _, entry := range containerPriceEntries(node) {
+		dedupKey := "price:" + entry.amount + "|" + entry.code
+		if _, dup := seen[dedupKey]; dup {
+			continue
+		}
+		seen[dedupKey] = struct{}{}
+		out = append(out, entry.candidate)
+	}
+	return out
+}
+
+// containerPriceEntries pulls every allowlisted container price out of a single
+// node, keyed by amount|CODE for frequency ranking. No dedup / seen handling — the
+// caller decides which to emit.
+func containerPriceEntries(node map[string]any) []flightContainerPrice {
+	var out []flightContainerPrice
 	for key, value := range node {
 		if !strongPriceContainers[key] {
 			continue
@@ -158,12 +230,7 @@ func containerPriceCandidates(node map[string]any, seen map[string]struct{}) []C
 		if !ok {
 			continue
 		}
-		dedupKey := "price:" + amount + "|" + code
-		if _, dup := seen[dedupKey]; dup {
-			continue
-		}
-		seen[dedupKey] = struct{}{}
-		out = append(out, candidate)
+		out = append(out, flightContainerPrice{candidate: candidate, amount: amount, code: code})
 	}
 	return out
 }

@@ -128,3 +128,59 @@ func TestEngineWayfairMultiPrimaryPriceDisambiguatedByDisplayed(t *testing.T) {
 		t.Fatalf("expected auto_complete, got %q (reasons %v)", product.Verdict, product.Reasons)
 	}
 }
+
+// Regression (wayfair.com, real failure): a Wayfair PDP embeds many
+// recommendation-carousel products, each with its own primaryPrice, so the flight
+// reader emitted ~8 competing prices. With NO visible/rendered price to
+// disambiguate (the own static fetch / raw SSR case), those decoys deadlocked
+// price consensus into price_conflict → needs_review. The MAIN product's amount
+// recurs across the flight payload (primaryPrice + sellingPrice + Money) while each
+// decoy appears once, so emitting only the most-frequent flight container price
+// leaves a single decent price group → auto_complete.
+func TestEngineWayfairFlightNoVisiblePriceAutoCompletes(t *testing.T) {
+	t.Parallel()
+
+	chunk := `2c:{"product":{"name":"Sitarski Writing Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}},` +
+		`"sellingPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}}}},` +
+		`"recommendations":[` +
+		`{"name":"Lamp","pricing":{"primaryPrice":{"price":{"value":{"amount":"46.99","currency":{"code":"USD"}}}}}},` +
+		`{"name":"Rug","pricing":{"primaryPrice":{"price":{"value":{"amount":"74.99","currency":{"code":"USD"}}}}}},` +
+		`{"name":"Chair","pricing":{"primaryPrice":{"price":{"value":{"amount":"129.99","currency":{"code":"USD"}}}}}}]}` + "\n"
+
+	// No PriceDisplay element — nothing for displayedPriceWinner to latch onto.
+	product := reconcile(t, "https://www.wayfair.com/furniture/pdp/desk-w110883108.html",
+		`<html><head></head><body><h1>Sitarski Writing Desk</h1>`+flightScript(chunk)+`</body></html>`)
+
+	if product.PriceAmount != "143.99" || product.PriceCurrency != "USD" {
+		t.Fatalf("expected main price 143.99 USD, got %q %q (reasons %v)",
+			product.PriceAmount, product.PriceCurrency, product.Reasons)
+	}
+	if product.Fields.Price == ConfidenceConflict {
+		t.Fatalf("price must not be in conflict; decoys should be dropped (reasons %v)", product.Reasons)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("expected auto_complete, got %q (reasons %v)", product.Verdict, product.Reasons)
+	}
+}
+
+// Guard: when two flight prices appear with EQUAL frequency and there is no visible
+// price to disambiguate, the fix must NOT pick one arbitrarily — it keeps both
+// (graceful fallback), so the genuinely-ambiguous case still goes to needs_review
+// rather than silently auto-completing a wrong price.
+func TestEngineWayfairFlightFrequencyTieStaysReview(t *testing.T) {
+	t.Parallel()
+
+	chunk := `2c:{"product":{"name":"Foo Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}}}},` +
+		`"related":[{"name":"Bar Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"199.99","currency":{"code":"USD"}}}}}}]}` + "\n"
+
+	product := reconcile(t, "https://www.wayfair.com/furniture/pdp/foo-w1.html",
+		`<html><head></head><body><h1>Foo Desk</h1>`+flightScript(chunk)+`</body></html>`)
+
+	if product.Verdict == VerdictAutoComplete {
+		t.Fatalf("ambiguous equal-frequency prices must not auto_complete, got %q price=%q",
+			product.Verdict, product.PriceAmount)
+	}
+}

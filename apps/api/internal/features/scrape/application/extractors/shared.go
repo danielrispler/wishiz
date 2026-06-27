@@ -72,6 +72,20 @@ var nonProductImageMarkers = map[string]bool{
 	"favicon":     true,
 }
 
+// genericImageBasenames are whole-filename generic store/share/placeholder assets
+// (e.g. a Shopify theme's default `social-image.jpg`). Unlike the single-token
+// markers above these are multi-token names, so they are matched as an ANCHORED
+// filename prefix (start of the filename, followed by end / `.` / `-` / `_`) to
+// catch size suffixes like `social-image_1024x.jpg` while never rejecting a real
+// product whose name merely contains the substring (e.g. `dog-image.jpg`,
+// `casino-image.jpg`).
+var genericImageBasenames = []string{
+	"social-image", "social_image",
+	"no-image", "noimage",
+	"default-product", "default-image",
+	"share-image", "og-image",
+}
+
 // IsNonProductImageURL reports whether rawURL looks like a logo/icon/sprite/
 // placeholder/favicon asset rather than a product image. It inspects the LAST
 // path segment (the filename) split on separator characters and matches whole
@@ -97,10 +111,19 @@ func IsNonProductImageURL(rawURL string) bool {
 	if i := strings.LastIndexByte(segment, '/'); i >= 0 {
 		segment = segment[i+1:]
 	}
-	for _, token := range strings.FieldsFunc(strings.ToLower(segment), func(r rune) bool {
+	lowerSegment := strings.ToLower(segment)
+	for _, token := range strings.FieldsFunc(lowerSegment, func(r rune) bool {
 		return r == '-' || r == '_' || r == '.'
 	}) {
 		if nonProductImageMarkers[token] {
+			return true
+		}
+	}
+	for _, name := range genericImageBasenames {
+		if lowerSegment == name ||
+			strings.HasPrefix(lowerSegment, name+".") ||
+			strings.HasPrefix(lowerSegment, name+"-") ||
+			strings.HasPrefix(lowerSegment, name+"_") {
 			return true
 		}
 	}

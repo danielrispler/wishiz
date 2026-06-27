@@ -309,3 +309,32 @@ func TestJSStateExtractsIIFEWrappedNuxt(t *testing.T) {
 		t.Fatalf("expected a price candidate from IIFE-wrapped __NUXT__, got %+v", candidates)
 	}
 }
+
+// Frequency ranking: when a flight blob embeds several products' primaryPrice, only
+// the amount that recurs most across the payload (the main product, here repeated
+// via primaryPrice + sellingPrice) is emitted as a price candidate; the
+// single-occurrence recommendation decoys are dropped.
+func TestJSStateFlightEmitsOnlyDominantPrice(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://www.wayfair.com/p")
+	chunk := `2c:{"product":{"name":"Main Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}},` +
+		`"sellingPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}}}},` +
+		`"recommendations":[` +
+		`{"name":"A","pricing":{"primaryPrice":{"price":{"value":{"amount":"46.99","currency":{"code":"USD"}}}}}},` +
+		`{"name":"B","pricing":{"primaryPrice":{"price":{"value":{"amount":"74.99","currency":{"code":"USD"}}}}}}]}` + "\n"
+	html := `<!doctype html><html><body>` +
+		`<script>self.__next_f.push([1,` + jsonString(chunk) + `])</script></body></html>`
+
+	candidates := JSState(parse(t, html), html, base)
+	for _, candidate := range candidates {
+		if candidate.Field == FieldPrice && candidate.Value != "143.99" {
+			t.Fatalf("decoy price leaked past frequency ranking: %+v", candidate)
+		}
+	}
+	price, ok := findPrice(candidates)
+	if !ok || price.Value != "143.99" {
+		t.Fatalf("expected dominant price 143.99, got %+v ok=%v", price, ok)
+	}
+}

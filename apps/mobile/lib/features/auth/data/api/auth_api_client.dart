@@ -149,7 +149,13 @@ class AuthApiClient {
     }
     if (body != null) {
       request.headers.contentType = ContentType.json;
-      request.write(jsonEncode(body));
+      // Set an explicit Content-Length (UTF-8 byte length) instead of letting
+      // dart:io fall back to chunked transfer encoding. Proxies in front of the
+      // API strip the chunked body on bodyless-by-convention methods (DELETE),
+      // which made the server see an empty body ("request body is required").
+      final encoded = utf8.encode(jsonEncode(body));
+      request.contentLength = encoded.length;
+      request.add(encoded);
     }
 
     final response = await request.close();

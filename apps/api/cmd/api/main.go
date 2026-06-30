@@ -17,6 +17,7 @@ import (
 
 	applinkshttp "github.com/danielrispler/wishiz/apps/api/internal/features/applinks/adapters/http"
 	authhttp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/http"
+	authimagegc "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/imagegc"
 	authpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/auth/adapters/postgres"
 	authapp "github.com/danielrispler/wishiz/apps/api/internal/features/auth/application"
 	discoverhttp "github.com/danielrispler/wishiz/apps/api/internal/features/discover/adapters/http"
@@ -191,17 +192,27 @@ func registerDBRoutes(
 		WithDiscoverSweeper(discoverRepo, cfg.DiscoverMaxProducts)
 
 	if roleServesAPI(role) {
-		authhttp.RegisterRoutes(mux, appLogger, authService)
-
+		// Uploads and the account-deletion image GC share one uploader. Build it
+		// before auth routes register so DeleteAccount can clean up the user's GCS
+		// objects. Misconfigured uploads has no safe fallback (routes would 404), so
+		// fail boot instead of starting healthy with uploads silently off.
+		var uploader *storage.GCSUploader
 		if cfg.UploadsEnabled {
-			// Misconfigured uploads has no safe fallback (routes would 404), so fail
-			// boot instead of starting healthy with uploads silently off.
-			uploader, err := storage.NewGCSUploader(ctx, cfg.GCSBucket, cfg.GCSPublicBaseURL)
+			built, err := storage.NewGCSUploader(ctx, cfg.GCSBucket, cfg.GCSPublicBaseURL)
 			if err != nil {
 				cleanup()
 				return nil, fmt.Errorf("configure image storage: %w", err)
 			}
+			uploader = built
 			closers = append(closers, func() { _ = uploader.Close() })
+			authService = authService.WithImageGC(
+				authimagegc.New(pool, uploader, appLogger),
+			).WithImageGCAsync()
+		}
+
+		authhttp.RegisterRoutes(mux, appLogger, authService)
+
+		if uploader != nil {
 			uploadshttp.RegisterRoutes(mux, appLogger, uploader, authMiddleware)
 		}
 

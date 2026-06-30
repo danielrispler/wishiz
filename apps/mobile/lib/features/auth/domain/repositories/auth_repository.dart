@@ -11,7 +11,7 @@ abstract class AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   });
 
@@ -20,7 +20,7 @@ abstract class AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -35,6 +35,10 @@ abstract class AuthRepository {
   });
 
   Future<void> logOut();
+
+  /// Permanently deletes the current user's account after re-authenticating with
+  /// their password. On success the local session is cleared.
+  Future<void> deleteAccount({required String password});
 }
 
 abstract class SessionTokenProvider {

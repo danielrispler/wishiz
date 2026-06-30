@@ -15,6 +15,7 @@ class AccountFormSection extends StatefulWidget {
     required this.selectedCurrencyCode,
     required this.isChangingPassword,
     required this.onSelectBirthday,
+    required this.onClearBirthday,
     required this.onGenderChanged,
     required this.onTogglePasswordEditing,
     required this.onCurrencyChanged,
@@ -35,6 +36,7 @@ class AccountFormSection extends StatefulWidget {
   final String selectedCurrencyCode;
   final bool isChangingPassword;
   final VoidCallback onSelectBirthday;
+  final VoidCallback onClearBirthday;
   final ValueChanged<String?> onGenderChanged;
   final VoidCallback onTogglePasswordEditing;
   final ValueChanged<String> onCurrencyChanged;
@@ -97,18 +99,23 @@ class _AccountFormSectionState extends State<AccountFormSection> {
                 ),
                 const SizedBox(height: AppConstants.itemGap),
                 _LabeledField(
-                  label: 'Birthday',
+                  label: 'Birthday (optional)',
                   hint: 'Helps personalize reminders and gifting moments',
                   child: TextFormField(
                     controller: widget.birthdayController,
                     readOnly: true,
                     onTap: widget.onSelectBirthday,
-                    decoration: const InputDecoration(
-                      hintText: 'Select your birthday',
-                      suffixIcon: Icon(Icons.calendar_today_outlined),
+                    decoration: InputDecoration(
+                      hintText: 'Add your birthday',
+                      suffixIcon: widget.birthdayController.text.isNotEmpty
+                          ? IconButton(
+                              tooltip: 'Clear birthday',
+                              icon: const Icon(Icons.close),
+                              onPressed: widget.onClearBirthday,
+                            )
+                          : const Icon(Icons.calendar_today_outlined),
                       border: InputBorder.none,
                     ),
-                    validator: widget.validateRequired,
                   ),
                 ),
                 const SizedBox(height: AppConstants.itemGap),

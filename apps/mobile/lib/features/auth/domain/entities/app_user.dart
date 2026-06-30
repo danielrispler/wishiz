@@ -5,7 +5,7 @@ class AppUser {
     required this.id,
     required this.email,
     required this.fullName,
-    required this.birthday,
+    this.birthday,
     this.gender,
     this.preferredCurrencyCode = 'USD',
     this.notificationsEnabled = true,
@@ -30,7 +30,7 @@ class AppUser {
   final String id;
   final String email;
   final String fullName;
-  final DateTime birthday;
+  final DateTime? birthday;
   final String? gender;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;

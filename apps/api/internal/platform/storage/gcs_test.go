@@ -37,3 +37,66 @@ func TestPublicURL(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyFromPublicURL(t *testing.T) {
+	t.Parallel()
+	// KeyFromPublicURL is a pure string reverse of publicURL, so it needs no GCS
+	// client — construct the struct directly.
+	u := &GCSUploader{bucket: "wishiz-uploads", publicBaseURL: "https://storage.googleapis.com"}
+
+	cases := []struct {
+		name    string
+		url     string
+		wantKey string
+		wantOK  bool
+	}{
+		{
+			name:    "our uploaded object",
+			url:     "https://storage.googleapis.com/wishiz-uploads/wishlists/deadbeef.jpg",
+			wantKey: "wishlists/deadbeef.jpg",
+			wantOK:  true,
+		},
+		{
+			name:   "external retailer image",
+			url:    "https://images.nordstrom.com/abc/product.jpg",
+			wantOK: false,
+		},
+		{
+			name:   "different bucket",
+			url:    "https://storage.googleapis.com/some-other-bucket/wishlists/x.jpg",
+			wantOK: false,
+		},
+		{
+			name:   "bucket root with no key",
+			url:    "https://storage.googleapis.com/wishiz-uploads/",
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			key, ok := u.KeyFromPublicURL(tc.url)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if ok && key != tc.wantKey {
+				t.Fatalf("key = %q, want %q", key, tc.wantKey)
+			}
+		})
+	}
+}
+
+// TestKeyFromPublicURLRoundTrips guards against forward/back drift: a key run
+// through publicURL must come back out of KeyFromPublicURL unchanged.
+func TestKeyFromPublicURLRoundTrips(t *testing.T) {
+	t.Parallel()
+	u := &GCSUploader{bucket: "wishiz-uploads", publicBaseURL: "https://cdn.example.com"}
+	const key = "wishlists/abc123.png"
+
+	url := publicURL(u.publicBaseURL, u.bucket, key)
+	got, ok := u.KeyFromPublicURL(url)
+	if !ok || got != key {
+		t.Fatalf("round trip: got %q ok=%v, want %q true", got, ok, key)
+	}
+}

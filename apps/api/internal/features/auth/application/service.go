@@ -18,9 +18,24 @@ import (
 
 const sessionDuration = 30 * 24 * time.Hour
 
+// ImageGarbageCollector removes the user's uploaded storage objects on account
+// deletion. It is a structural local interface (no storage/uploads import) so the
+// auth package stays decoupled, mirroring the Notifier pattern. Both methods are
+// best-effort: an account deletion must never fail because image cleanup failed.
+type ImageGarbageCollector interface {
+	// CollectOwnedImageKeys reads the user's owned image object keys. Called
+	// BEFORE the cascade delete (while the rows still exist); returns nil on error.
+	CollectOwnedImageKeys(ctx context.Context, userID string) []string
+	// DeleteObjects removes the given keys. Called AFTER the user row is gone so a
+	// failed delete never orphans live data; logs and swallows per-object errors.
+	DeleteObjects(ctx context.Context, keys []string)
+}
+
 type Service struct {
-	repo  ports.Repository
-	nowFn func() time.Time
+	repo         ports.Repository
+	nowFn        func() time.Time
+	imageGC      ImageGarbageCollector
+	imageGCAsync bool
 }
 
 func NewService(repo ports.Repository) *Service {
@@ -30,11 +45,30 @@ func NewService(repo ports.Repository) *Service {
 	}
 }
 
+// WithImageGC attaches a best-effort uploaded-image collector used during account
+// deletion. nil-safe: when unset (uploads disabled), deletion skips image cleanup.
+func (s *Service) WithImageGC(gc ImageGarbageCollector) *Service {
+	s.imageGC = gc
+	return s
+}
+
+// WithImageGCAsync runs the post-delete object removal on a detached goroutine so
+// it never blocks the DELETE /auth/me response (one GCS RPC per object, serial).
+// Enabled in the api/all role where a human waits on the request; left off in
+// tests so the collect→delete→delete-objects ordering stays deterministic. Object
+// cleanup is best-effort either way, so losing it to scale-to-zero CPU throttling
+// after the response is the same accepted tradeoff as the detached notification
+// push.
+func (s *Service) WithImageGCAsync() *Service {
+	s.imageGCAsync = true
+	return s
+}
+
 type SignUpInput struct {
 	Email                 string
 	Password              string
 	FullName              string
-	Birthday              time.Time
+	Birthday              *time.Time
 	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
@@ -49,7 +83,7 @@ type LogInInput struct {
 type UpdateCurrentUserInput struct {
 	Email                 string
 	FullName              string
-	Birthday              time.Time
+	Birthday              *time.Time
 	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool
@@ -162,9 +196,6 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 	if fullName == "" {
 		return domain.User{}, ValidationError("fullName", "full name is required")
 	}
-	if input.Birthday.IsZero() {
-		return domain.User{}, ValidationError("birthday", "birthday is required")
-	}
 
 	passwordHash := existingPasswordHash
 	if strings.TrimSpace(input.NewPassword) != "" {
@@ -184,7 +215,7 @@ func (s *Service) UpdateCurrentUser(ctx context.Context, userID string, input *U
 		ID:                    currentUser.ID,
 		Email:                 email,
 		FullName:              fullName,
-		Birthday:              input.Birthday.UTC(),
+		Birthday:              utcOrNil(input.Birthday),
 		Gender:                normalizeGender(input.Gender),
 		PasswordHash:          passwordHash,
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
@@ -221,7 +252,7 @@ func (s *Service) SavePreferences(ctx context.Context, userID string, rawBrands 
 		ID:                    user.ID,
 		Email:                 user.Email,
 		FullName:              user.FullName,
-		Birthday:              user.Birthday.UTC(),
+		Birthday:              utcOrNil(user.Birthday),
 		Gender:                normalizeGender(gender),
 		PasswordHash:          passwordHash,
 		PreferredCurrencyCode: user.PreferredCurrencyCode,
@@ -276,6 +307,53 @@ func (s *Service) LogOut(ctx context.Context, rawToken string) error {
 	return err
 }
 
+// DeleteAccount hard-deletes the user after verifying their password. The DB
+// cascade removes sessions, owned wishlists (and their items/members/invites),
+// imports, notifications, device tokens and saves. Uploaded image objects are
+// collected before the delete (rows still exist) and removed after it (so a
+// failed delete never orphans live data); image cleanup is best-effort.
+func (s *Service) DeleteAccount(ctx context.Context, userID string, password string) error {
+	if strings.TrimSpace(userID) == "" {
+		return ValidationError("userID", "userID is required")
+	}
+	if strings.TrimSpace(password) == "" {
+		return ValidationError("password", "password is required")
+	}
+
+	_, passwordHash, err := s.repo.GetUserByID(ctx, userID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return NotFound("user not found")
+	}
+	if err != nil {
+		return err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+		return Unauthorized("password is incorrect")
+	}
+
+	var imageKeys []string
+	if s.imageGC != nil {
+		imageKeys = s.imageGC.CollectOwnedImageKeys(ctx, userID)
+	}
+
+	if err := s.repo.DeleteUser(ctx, userID); err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return NotFound("user not found")
+		}
+		return err
+	}
+
+	if s.imageGC != nil {
+		if s.imageGCAsync {
+			detached := context.WithoutCancel(ctx)
+			go s.imageGC.DeleteObjects(detached, imageKeys)
+		} else {
+			s.imageGC.DeleteObjects(ctx, imageKeys)
+		}
+	}
+	return nil
+}
+
 func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserParams, error) {
 	email := normalizeEmail(input.Email)
 	if email == "" {
@@ -284,9 +362,6 @@ func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserPara
 	fullName := strings.TrimSpace(input.FullName)
 	if fullName == "" {
 		return ports.CreateUserParams{}, ValidationError("fullName", "full name is required")
-	}
-	if input.Birthday.IsZero() {
-		return ports.CreateUserParams{}, ValidationError("birthday", "birthday is required")
 	}
 	if strings.TrimSpace(input.Password) == "" {
 		return ports.CreateUserParams{}, ValidationError("password", "password is required")
@@ -300,7 +375,7 @@ func (s *Service) normalizeCreateInput(input *SignUpInput) (ports.CreateUserPara
 	return ports.CreateUserParams{
 		Email:                 email,
 		FullName:              fullName,
-		Birthday:              input.Birthday.UTC(),
+		Birthday:              utcOrNil(input.Birthday),
 		Gender:                normalizeGender(input.Gender),
 		PasswordHash:          passwordHash,
 		PreferredCurrencyCode: normalizeCurrencyCode(input.PreferredCurrencyCode),
@@ -343,6 +418,15 @@ func (s *Service) createSession(ctx context.Context, userID string) (string, err
 	}
 
 	return token, nil
+}
+
+// utcOrNil normalizes an optional birthday to UTC, preserving nil (no birthday).
+func utcOrNil(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	utc := t.UTC()
+	return &utc
 }
 
 func normalizeEmail(email string) string {

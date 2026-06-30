@@ -166,6 +166,46 @@ void main() {
       );
       expect(repository.getCurrentUser(), isNull);
     });
+
+    test('deleteAccount rejects a wrong password and keeps the session',
+        () async {
+      final storage = _FakeAuthStorage();
+      final repository = await LocalAuthRepository.createWithStorage(storage);
+
+      await repository.signUp(
+        email: 'dana@example.com',
+        password: 'password123',
+        fullName: 'Dana Rios',
+        birthday: DateTime(1995, 5, 9),
+      );
+
+      await expectLater(
+        repository.deleteAccount(password: 'wrong-password'),
+        throwsA(isA<Exception>()),
+      );
+
+      expect(repository.getCurrentUser(), isNotNull);
+      expect(repository.getCurrentUser()?.email, 'dana@example.com');
+      expect(storage.value, contains('dana@example.com'));
+    });
+
+    test('deleteAccount removes the account with the correct password',
+        () async {
+      final storage = _FakeAuthStorage();
+      final repository = await LocalAuthRepository.createWithStorage(storage);
+
+      await repository.signUp(
+        email: 'dana@example.com',
+        password: 'password123',
+        fullName: 'Dana Rios',
+        birthday: DateTime(1995, 5, 9),
+      );
+
+      await repository.deleteAccount(password: 'password123');
+
+      expect(repository.getCurrentUser(), isNull);
+      expect(storage.value ?? '', isNot(contains('dana@example.com')));
+    });
   });
 }
 

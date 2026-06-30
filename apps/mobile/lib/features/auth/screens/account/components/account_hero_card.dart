@@ -95,7 +95,8 @@ class AccountHeroCard extends StatelessWidget {
             runSpacing: AppConstants.spacing2,
             children: [
               _InfoChip(icon: Icons.mail_outline, label: email),
-              _InfoChip(icon: Icons.cake_outlined, label: birthday),
+              if (birthday.isNotEmpty)
+                _InfoChip(icon: Icons.cake_outlined, label: birthday),
               _InfoChip(icon: Icons.payments_outlined, label: currencyLabel),
             ],
           ),

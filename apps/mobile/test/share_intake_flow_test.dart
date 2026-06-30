@@ -887,6 +887,9 @@ class FakeAuthRepository implements AuthRepository {
   }) async => AuthResult.success(getCurrentUser()!);
 
   @override
+  Future<void> deleteAccount({required String password}) async {}
+
+  @override
   Future<void> logOut() async {
     setCurrentUser(null);
   }
@@ -896,7 +899,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     final user = AppUser(
@@ -913,7 +916,7 @@ class FakeAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,

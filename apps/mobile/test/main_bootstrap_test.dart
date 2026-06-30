@@ -104,6 +104,9 @@ class _FakeAuthRepository implements AuthRepository {
   }) async => AuthResult.success(getCurrentUser()!);
 
   @override
+  Future<void> deleteAccount({required String password}) async {}
+
+  @override
   Future<void> logOut() async {
     _currentUser = null;
     _notifier.value = null;
@@ -114,7 +117,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async => const AuthResult.failure('unused');
 
@@ -122,7 +125,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,

@@ -7,13 +7,10 @@ class SignupScreen extends StatefulWidget {
     super.key,
     required this.authRepository,
     required this.onShowLogin,
-    this.showBirthdayPicker,
   });
 
   final AuthRepository authRepository;
   final VoidCallback onShowLogin;
-  final Future<DateTime?> Function(BuildContext context, DateTime initialDate)?
-  showBirthdayPicker;
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -25,8 +22,6 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _fullNameController = TextEditingController();
-  final _birthdayController = TextEditingController();
-  DateTime? _selectedBirthday;
   bool _isSubmitting = false;
 
   @override
@@ -35,34 +30,11 @@ class _SignupScreenState extends State<SignupScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _fullNameController.dispose();
-    _birthdayController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectBirthday() async {
-    final initialDate =
-        _selectedBirthday ??
-        DateTime.now().subtract(const Duration(days: 365 * 18));
-    final picked =
-        await (widget.showBirthdayPicker?.call(context, initialDate) ??
-            showDatePicker(
-              context: context,
-              initialDate: initialDate,
-              firstDate: DateTime(1900),
-              lastDate: DateTime.now(),
-            ));
-    if (picked != null) {
-      setState(() {
-        _selectedBirthday = picked;
-        _birthdayController.text = _formatBirthday(picked);
-      });
-    }
-  }
-
   Future<void> _submit() async {
-    if (_isSubmitting ||
-        !_formKey.currentState!.validate() ||
-        _selectedBirthday == null) {
+    if (_isSubmitting || !_formKey.currentState!.validate()) {
       return;
     }
 
@@ -75,7 +47,6 @@ class _SignupScreenState extends State<SignupScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         fullName: _fullNameController.text.trim(),
-        birthday: _selectedBirthday!,
       );
 
       if (!mounted) {
@@ -165,23 +136,6 @@ class _SignupScreenState extends State<SignupScreen> {
                                       border: InputBorder.none,
                                     ),
                                     validator: _validateRequired,
-                                  ),
-                                ),
-                                const SizedBox(height: AppConstants.itemGap),
-                                _buildFieldCard(
-                                  context,
-                                  child: TextFormField(
-                                    controller: _birthdayController,
-                                    readOnly: true,
-                                    onTap: _selectBirthday,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Birthday',
-                                      suffixIcon: Icon(
-                                        Icons.calendar_today_outlined,
-                                      ),
-                                      border: InputBorder.none,
-                                    ),
-                                    validator: _validateBirthday,
                                   ),
                                 ),
                                 const SizedBox(height: AppConstants.itemGap),
@@ -320,18 +274,5 @@ class _SignupScreenState extends State<SignupScreen> {
       return 'Passwords do not match.';
     }
     return null;
-  }
-
-  String? _validateBirthday(String? value) {
-    if (_selectedBirthday == null) {
-      return 'Please specify your birthday.';
-    }
-    return null;
-  }
-
-  String _formatBirthday(DateTime birthday) {
-    final month = birthday.month.toString().padLeft(2, '0');
-    final day = birthday.day.toString().padLeft(2, '0');
-    return '${birthday.year}-$month-$day';
   }
 }

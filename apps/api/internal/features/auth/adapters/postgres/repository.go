@@ -255,6 +255,23 @@ func (r *Repository) DeleteSessionByTokenHash(ctx context.Context, tokenHash str
 	return nil
 }
 
+// DeleteUser hard-deletes the user row. FK cascades remove the user's sessions,
+// owned wishlists (and their items/members/invites), import jobs, notifications,
+// device tokens and discover saves. Returns ErrNotFound when no row matched.
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	commandTag, err := r.pool.Exec(ctx, `
+		DELETE FROM app_users
+		WHERE id = $1::uuid
+	`, id)
+	if err != nil {
+		return fmt.Errorf("delete user %s: %w", id, err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
 // DeleteExpiredSessions removes session rows whose expiry has passed and returns
 // the number deleted. Used by the maintenance sweep; safe to call repeatedly.
 func (r *Repository) DeleteExpiredSessions(ctx context.Context) (int64, error) {

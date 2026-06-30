@@ -70,7 +70,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     try {
@@ -108,7 +108,7 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -188,6 +188,24 @@ class ApiAuthRepository implements AuthRepository, SessionTokenProvider {
     }
   }
 
+  @override
+  Future<void> deleteAccount({required String password}) async {
+    final token = _sessionToken;
+    if (token == null) {
+      throw const AuthApiException(
+        statusCode: 401,
+        message: 'No account is signed in right now.',
+      );
+    }
+
+    // Unlike logout, the deletion must succeed server-side before we drop the
+    // local session, so a wrong-password 401 surfaces to the caller and the user
+    // stays signed in. The session is cleared only after the account is gone.
+    await _apiClient.deleteAccount(authToken: token, password: password);
+    _clearSession();
+    await _persist();
+  }
+
   void _setSession({required AppUser user, required String token}) {
     _currentUser = user;
     _sessionToken = token;
@@ -250,7 +268,7 @@ class _StoredSessionPayload {
               'id': user!.id,
               'email': user!.email,
               'fullName': user!.fullName,
-              'birthday': user!.birthday.toUtc().toIso8601String(),
+              'birthday': user!.birthday?.toUtc().toIso8601String(),
               'gender': user!.gender,
               'preferredCurrencyCode': user!.preferredCurrencyCode,
               'notificationsEnabled': user!.notificationsEnabled,

@@ -28,7 +28,7 @@ defined inside the migration SQL.
 - `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
 - `email CITEXT NOT NULL UNIQUE`
 - `full_name TEXT NOT NULL`
-- `birthday DATE NOT NULL`
+- `birthday DATE` — nullable since migration `000005` (Apple 5.1.1(v): not required at registration; still powers gifting reminders)
 - `gender TEXT` — CHECK `gender IS NULL OR gender IN ('man', 'woman')` (the user's own gender)
 - `password_hash TEXT NOT NULL`
 - `preferred_currency_code TEXT NOT NULL DEFAULT 'USD'` — CHECK `~ '^[A-Z]{3}$'`

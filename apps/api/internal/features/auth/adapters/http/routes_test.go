@@ -171,6 +171,54 @@ func TestSavePreferencesPersistsPreferredBrands(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountReturnsNoContent(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		authenticate: func(_ context.Context, _ string) (domain.User, error) {
+			return sampleUser(), nil
+		},
+		deleteAccount: func(_ context.Context, userID string, password string) error {
+			if userID != sampleUser().ID {
+				t.Fatalf("unexpected user id %q", userID)
+			}
+			if password != "secret" {
+				t.Fatalf("unexpected password %q", password)
+			}
+			return nil
+		},
+	}
+
+	response := performRequest(t, service, http.MethodDelete, "/auth/me", `{"password":"secret"}`, "Bearer session-token")
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeleteAccountWrongPasswordReturns401(t *testing.T) {
+	t.Parallel()
+	service := &stubService{
+		authenticate: func(_ context.Context, _ string) (domain.User, error) {
+			return sampleUser(), nil
+		},
+		deleteAccount: func(context.Context, string, string) error {
+			return application.Unauthorized("password is incorrect")
+		},
+	}
+
+	response := performRequest(t, service, http.MethodDelete, "/auth/me", `{"password":"wrong"}`, "Bearer session-token")
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d with body %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeleteAccountRequiresAuth(t *testing.T) {
+	t.Parallel()
+	response := performRequest(t, &stubService{}, http.MethodDelete, "/auth/me", `{"password":"secret"}`, "")
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", response.Code)
+	}
+}
+
 type stubService struct {
 	signUp            func(context.Context, *application.SignUpInput) (domain.User, string, error)
 	logIn             func(context.Context, *application.LogInInput) (domain.User, string, error)
@@ -179,6 +227,7 @@ type stubService struct {
 	updateCurrentUser func(context.Context, string, *application.UpdateCurrentUserInput) (domain.User, error)
 	savePreferences   func(context.Context, string, []string, *string) (domain.User, error)
 	logOut            func(context.Context, string) error
+	deleteAccount     func(context.Context, string, string) error
 }
 
 func (s *stubService) SignUp(ctx context.Context, input *application.SignUpInput) (domain.User, string, error) {
@@ -230,6 +279,13 @@ func (s *stubService) LogOut(ctx context.Context, rawToken string) error {
 	return s.logOut(ctx, rawToken)
 }
 
+func (s *stubService) DeleteAccount(ctx context.Context, userID string, password string) error {
+	if s.deleteAccount == nil {
+		return errors.New("unexpected DeleteAccount call")
+	}
+	return s.deleteAccount(ctx, userID, password)
+}
+
 func performRequest(t *testing.T, service Service, method string, path string, body string, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -251,11 +307,12 @@ func performRequest(t *testing.T, service Service, method string, path string, b
 
 func sampleUser() domain.User {
 	gender := "woman"
+	birthday := time.Date(1992, 6, 15, 0, 0, 0, 0, time.UTC)
 	return domain.User{
 		ID:                    "11111111-1111-1111-1111-111111111111",
 		Email:                 "maya@example.com",
 		FullName:              "Maya Hope",
-		Birthday:              time.Date(1992, 6, 15, 0, 0, 0, 0, time.UTC),
+		Birthday:              &birthday,
 		Gender:                &gender,
 		PreferredCurrencyCode: "USD",
 		NotificationsEnabled:  true,

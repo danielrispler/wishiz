@@ -4,6 +4,7 @@ import 'package:wishiz/shared/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'components/account_actions_section.dart';
+import 'components/account_delete_dialog.dart';
 import 'components/account_form_section.dart';
 import 'components/account_hero_card.dart';
 
@@ -25,7 +26,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TextEditingController _currentPasswordController;
   late final TextEditingController _newPasswordController;
 
-  late DateTime _selectedBirthday;
+  DateTime? _selectedBirthday;
   late String? _selectedGender;
   late String _selectedCurrencyCode;
   late AppUser _savedUserSnapshot;
@@ -71,9 +72,12 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _selectBirthday() async {
+    final initialDate =
+        _selectedBirthday ??
+        DateTime.now().subtract(const Duration(days: 365 * 18));
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedBirthday,
+      initialDate: initialDate,
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       helpText: 'Select your birthday',
@@ -82,6 +86,13 @@ class _AccountScreenState extends State<AccountScreen> {
     setState(() {
       _selectedBirthday = picked;
       _birthdayController.text = _formatBirthday(picked);
+    });
+  }
+
+  void _clearBirthday() {
+    setState(() {
+      _selectedBirthday = null;
+      _birthdayController.clear();
     });
   }
 
@@ -135,6 +146,19 @@ class _AccountScreenState extends State<AccountScreen> {
     FocusScope.of(context).unfocus();
     await widget.authRepository.logOut();
     if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _deleteAccount() async {
+    FocusScope.of(context).unfocus();
+    final deleted = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          AccountDeleteDialog(authRepository: widget.authRepository),
+    );
+    if (deleted != true || !mounted) return;
+    // The session is now cleared, so the auth gate shows the login screen
+    // underneath; pop this screen to reveal it.
     Navigator.of(context).pop();
   }
 
@@ -197,6 +221,7 @@ class _AccountScreenState extends State<AccountScreen> {
                           selectedCurrencyCode: _selectedCurrencyCode,
                           isChangingPassword: _isChangingPassword,
                           onSelectBirthday: _selectBirthday,
+                          onClearBirthday: _clearBirthday,
                           onGenderChanged: (gender) =>
                               setState(() => _selectedGender = gender),
                           onTogglePasswordEditing: _togglePasswordEditing,
@@ -214,6 +239,7 @@ class _AccountScreenState extends State<AccountScreen> {
                           hasChanges: _hasChanges,
                           onSave: _save,
                           onLogOut: _logOut,
+                          onDeleteAccount: _deleteAccount,
                         ),
                       ],
                     ),
@@ -227,13 +253,19 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  bool _isSameDate(DateTime left, DateTime right) {
+  bool _isSameDate(DateTime? left, DateTime? right) {
+    if (left == null || right == null) {
+      return left == right;
+    }
     return left.year == right.year &&
         left.month == right.month &&
         left.day == right.day;
   }
 
-  String _formatBirthday(DateTime value) {
+  String _formatBirthday(DateTime? value) {
+    if (value == null) {
+      return '';
+    }
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '${value.year}-$month-$day';

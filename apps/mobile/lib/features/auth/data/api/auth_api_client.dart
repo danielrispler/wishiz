@@ -17,7 +17,7 @@ class AuthApiClient {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     final response = await _requestJson(
@@ -27,7 +27,7 @@ class AuthApiClient {
         'email': email,
         'password': password,
         'fullName': fullName,
-        'birthday': birthday.toUtc().toIso8601String(),
+        if (birthday != null) 'birthday': birthday.toUtc().toIso8601String(),
         'gender': gender,
       },
       expectedStatusCodes: const {HttpStatus.created},
@@ -65,7 +65,7 @@ class AuthApiClient {
     required String authToken,
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -80,7 +80,7 @@ class AuthApiClient {
       body: {
         'email': email,
         'fullName': fullName,
-        'birthday': birthday.toUtc().toIso8601String(),
+        'birthday': birthday?.toUtc().toIso8601String(),
         'gender': gender,
         'preferredCurrencyCode': preferredCurrencyCode,
         'notificationsEnabled': notificationsEnabled,
@@ -115,6 +115,19 @@ class AuthApiClient {
       'POST',
       '/auth/logout',
       authToken: authToken,
+      expectedStatusCodes: const {HttpStatus.noContent},
+    );
+  }
+
+  Future<void> deleteAccount({
+    required String authToken,
+    required String password,
+  }) {
+    return _requestJson(
+      'DELETE',
+      '/auth/me',
+      authToken: authToken,
+      body: {'password': password},
       expectedStatusCodes: const {HttpStatus.noContent},
     );
   }
@@ -190,7 +203,7 @@ class AppUserDto {
     required this.id,
     required this.email,
     required this.fullName,
-    required this.birthday,
+    this.birthday,
     required this.gender,
     required this.preferredCurrencyCode,
     required this.notificationsEnabled,
@@ -203,7 +216,9 @@ class AppUserDto {
       id: json['id'] as String,
       email: json['email'] as String,
       fullName: json['fullName'] as String,
-      birthday: DateTime.parse(json['birthday'] as String),
+      birthday: json['birthday'] == null
+          ? null
+          : DateTime.parse(json['birthday'] as String),
       gender: json['gender'] as String?,
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',
       notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
@@ -217,7 +232,7 @@ class AppUserDto {
   final String id;
   final String email;
   final String fullName;
-  final DateTime birthday;
+  final DateTime? birthday;
   final String? gender;
   final String preferredCurrencyCode;
   final bool notificationsEnabled;

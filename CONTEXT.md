@@ -101,3 +101,13 @@ A per-(user, wishlist) record that silences a list for one user. A muted list st
 
 ## Device Token
 An FCM registration token for one physical device, owned by a user. Registered after notification permission is granted (and on token refresh / authorized launch), de-registered on logout. A token that FCM reports as permanently invalid is pruned. Tokens are how an advisory OS push reaches a recipient; they are irrelevant to the durable inbox.
+
+---
+
+## Account Deletion
+A user-initiated, **permanent hard delete** of their own account (`DELETE /auth/me`), gated by re-entering their password. It is not a deactivation or anonymization — the `app_users` row is removed and the FK cascade takes everything that hangs off it. Because a "My List" is owned via `wishlists.owner_id` with `ON DELETE CASCADE`, deleting an owner **destroys their shared lists for every collaborator** — this is deliberate, warned about in the UI, and recorded in [ADR-0008](docs/adr/0008-account-deletion-hard-delete.md). A user who is only a *member* of someone else's list just loses their membership; the list survives for its owner. Distinct from **Log out**, which only clears the local session.
+
+---
+
+## Birthday
+An **optional** profile attribute used to personalize gifting Reminders. It is never required to create an account (Apple Guideline 5.1.1(v)) — signup does not ask for it, and it can be added or left empty later in the Account screen. A user with no birthday is fully normal; absence is not an "incomplete profile".

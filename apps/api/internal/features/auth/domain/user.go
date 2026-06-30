@@ -6,7 +6,7 @@ type User struct {
 	ID                    string
 	Email                 string
 	FullName              string
-	Birthday              time.Time
+	Birthday              *time.Time
 	Gender                *string
 	PreferredCurrencyCode string
 	NotificationsEnabled  bool

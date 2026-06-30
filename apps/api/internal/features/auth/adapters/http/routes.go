@@ -21,6 +21,7 @@ type Service interface {
 	UpdateCurrentUser(ctx context.Context, userID string, input *application.UpdateCurrentUserInput) (domain.User, error)
 	SavePreferences(ctx context.Context, userID string, brands []string, gender *string) (domain.User, error)
 	LogOut(ctx context.Context, rawToken string) error
+	DeleteAccount(ctx context.Context, userID string, password string) error
 }
 
 type handler struct {
@@ -29,14 +30,14 @@ type handler struct {
 }
 
 type signUpRequest struct {
-	Email                 string    `json:"email"`
-	Password              string    `json:"password"`
-	FullName              string    `json:"fullName"`
-	Birthday              time.Time `json:"birthday"`
-	Gender                *string   `json:"gender"`
-	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
-	NotificationsEnabled  bool      `json:"notificationsEnabled"`
-	ReminderDays          int       `json:"reminderDays"`
+	Email                 string     `json:"email"`
+	Password              string     `json:"password"`
+	FullName              string     `json:"fullName"`
+	Birthday              *time.Time `json:"birthday"`
+	Gender                *string    `json:"gender"`
+	PreferredCurrencyCode string     `json:"preferredCurrencyCode"`
+	NotificationsEnabled  bool       `json:"notificationsEnabled"`
+	ReminderDays          int        `json:"reminderDays"`
 }
 
 type logInRequest struct {
@@ -45,15 +46,19 @@ type logInRequest struct {
 }
 
 type updateCurrentUserRequest struct {
-	Email                 string    `json:"email"`
-	FullName              string    `json:"fullName"`
-	Birthday              time.Time `json:"birthday"`
-	Gender                *string   `json:"gender"`
-	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
-	NotificationsEnabled  bool      `json:"notificationsEnabled"`
-	ReminderDays          int       `json:"reminderDays"`
-	CurrentPassword       string    `json:"currentPassword"`
-	NewPassword           string    `json:"newPassword"`
+	Email                 string     `json:"email"`
+	FullName              string     `json:"fullName"`
+	Birthday              *time.Time `json:"birthday"`
+	Gender                *string    `json:"gender"`
+	PreferredCurrencyCode string     `json:"preferredCurrencyCode"`
+	NotificationsEnabled  bool       `json:"notificationsEnabled"`
+	ReminderDays          int        `json:"reminderDays"`
+	CurrentPassword       string     `json:"currentPassword"`
+	NewPassword           string     `json:"newPassword"`
+}
+
+type deleteAccountRequest struct {
+	Password string `json:"password"`
 }
 
 type savePreferencesRequest struct {
@@ -67,15 +72,15 @@ type authResponse struct {
 }
 
 type userResponse struct {
-	ID                    string    `json:"id"`
-	Email                 string    `json:"email"`
-	FullName              string    `json:"fullName"`
-	Birthday              time.Time `json:"birthday"`
-	Gender                *string   `json:"gender"`
-	PreferredCurrencyCode string    `json:"preferredCurrencyCode"`
-	NotificationsEnabled  bool      `json:"notificationsEnabled"`
-	ReminderDays          int       `json:"reminderDays"`
-	PreferredBrands       []string  `json:"preferredBrands"`
+	ID                    string     `json:"id"`
+	Email                 string     `json:"email"`
+	FullName              string     `json:"fullName"`
+	Birthday              *time.Time `json:"birthday"`
+	Gender                *string    `json:"gender"`
+	PreferredCurrencyCode string     `json:"preferredCurrencyCode"`
+	NotificationsEnabled  bool       `json:"notificationsEnabled"`
+	ReminderDays          int        `json:"reminderDays"`
+	PreferredBrands       []string   `json:"preferredBrands"`
 }
 
 func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
@@ -87,6 +92,7 @@ func RegisterRoutes(mux *http.ServeMux, logger *slog.Logger, service Service) {
 	mux.HandleFunc("PATCH /auth/me", RequireAuth(service, h.updateCurrentUser))
 	mux.HandleFunc("PATCH /auth/me/onboarding", RequireAuth(service, h.savePreferences))
 	mux.HandleFunc("POST /auth/logout", RequireAuth(service, h.logOut))
+	mux.HandleFunc("DELETE /auth/me", RequireAuth(service, h.deleteAccount))
 }
 
 func RequireAuth(service Service, next http.HandlerFunc) http.HandlerFunc {
@@ -234,6 +240,27 @@ func (h handler) savePreferences(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) logOut(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.LogOut(r.Context(), bearerToken(r.Header.Get("Authorization"))); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h handler) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	user, ok := authctx.UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, http.StatusUnauthorized, string(application.ErrorCodeUnauthorized), "authorization is required", "")
+		return
+	}
+
+	var request deleteAccountRequest
+	if err := httpx.DecodeJSON(w, r, &request); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", err.Error(), "")
+		return
+	}
+
+	if err := h.service.DeleteAccount(r.Context(), user.ID, request.Password); err != nil {
 		h.writeError(w, r, err)
 		return
 	}

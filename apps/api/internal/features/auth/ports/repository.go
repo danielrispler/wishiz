@@ -22,12 +22,13 @@ type Repository interface {
 	CreateSession(ctx context.Context, params CreateSessionParams) error
 	GetUserBySessionTokenHash(ctx context.Context, tokenHash string) (domain.User, error)
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error
+	DeleteUser(ctx context.Context, id string) error
 }
 
 type CreateUserParams struct {
 	Email                 string
 	FullName              string
-	Birthday              time.Time
+	Birthday              *time.Time
 	Gender                *string
 	PasswordHash          string
 	PreferredCurrencyCode string
@@ -39,7 +40,7 @@ type UpdateUserParams struct {
 	ID                    string
 	Email                 string
 	FullName              string
-	Birthday              time.Time
+	Birthday              *time.Time
 	Gender                *string
 	PasswordHash          string
 	PreferredCurrencyCode string

@@ -155,7 +155,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) => throw UnimplementedError();
 
@@ -163,7 +163,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -177,6 +177,9 @@ class _FakeAuthRepository implements AuthRepository {
     required List<String> brandNames,
     String? gender,
   }) async => AuthResult.success(getCurrentUser()!);
+
+  @override
+  Future<void> deleteAccount({required String password}) async {}
 
   @override
   Future<void> logOut() => throw UnimplementedError();

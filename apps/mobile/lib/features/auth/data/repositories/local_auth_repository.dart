@@ -53,7 +53,7 @@ class LocalAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
@@ -122,7 +122,7 @@ class LocalAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -242,6 +242,26 @@ class LocalAuthRepository implements AuthRepository {
     await _persist();
   }
 
+  @override
+  Future<void> deleteAccount({required String password}) async {
+    final currentUser = _currentUser;
+    if (currentUser == null) {
+      return;
+    }
+
+    final index = _storedUsers.indexWhere((user) => user.id == currentUser.id);
+    // A missing stored record is a corrupt state: there is no hash to verify
+    // against, so reject rather than silently clearing the session on any
+    // password (matches the API repo, which is always password-gated).
+    if (index == -1 ||
+        _storedUsers[index].passwordHash != _hashPassword(password)) {
+      throw Exception('Password is incorrect.');
+    }
+    _storedUsers.removeAt(index);
+    _setCurrentUser(null);
+    await _persist();
+  }
+
   void _setCurrentUser(AppUser? user) {
     _currentUser = user;
     _currentUserNotifier.value = user;
@@ -301,7 +321,7 @@ class _StoredUser {
     required this.id,
     required this.email,
     required this.fullName,
-    required this.birthday,
+    this.birthday,
     this.gender,
     required this.passwordHash,
     this.preferredCurrencyCode = 'USD',
@@ -313,7 +333,7 @@ class _StoredUser {
   final String id;
   final String email;
   final String fullName;
-  final DateTime birthday;
+  final DateTime? birthday;
   final String? gender;
   final String passwordHash;
   final String preferredCurrencyCode;
@@ -367,7 +387,7 @@ class _StoredUser {
       'id': id,
       'email': email,
       'fullName': fullName,
-      'birthday': birthday.toIso8601String(),
+      'birthday': birthday?.toIso8601String(),
       'gender': gender,
       'passwordHash': passwordHash,
       'preferredCurrencyCode': preferredCurrencyCode,
@@ -388,7 +408,7 @@ class _StoredUser {
       fullName: (json['fullName'] as String? ?? fallbackFullName).trim(),
       birthday: json['birthday'] != null
           ? DateTime.parse(json['birthday'] as String)
-          : DateTime.now().subtract(const Duration(days: 365 * 18)),
+          : null,
       gender: json['gender'] as String?,
       passwordHash: json['passwordHash'] as String,
       preferredCurrencyCode: json['preferredCurrencyCode'] as String? ?? 'USD',

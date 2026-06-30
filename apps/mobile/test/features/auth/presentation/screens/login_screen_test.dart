@@ -61,6 +61,9 @@ class _FakeAuthRepository implements AuthRepository {
   }) async => AuthResult.success(getCurrentUser()!);
 
   @override
+  Future<void> deleteAccount({required String password}) async {}
+
+  @override
   Future<void> logOut() async {}
 
   @override
@@ -68,7 +71,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     return const AuthResult.failure('Not implemented in test.');
@@ -78,7 +81,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,

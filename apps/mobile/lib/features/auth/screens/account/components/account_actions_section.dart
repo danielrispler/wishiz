@@ -9,12 +9,14 @@ class AccountActionsSection extends StatelessWidget {
     required this.hasChanges,
     required this.onSave,
     required this.onLogOut,
+    required this.onDeleteAccount,
   });
 
   final bool isSaving;
   final bool hasChanges;
   final VoidCallback onSave;
   final VoidCallback onLogOut;
+  final VoidCallback onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +64,13 @@ class AccountActionsSection extends StatelessWidget {
           onPressed: isSaving ? null : onLogOut,
           icon: const Icon(Icons.logout_outlined),
           label: const Text('Log out'),
+        ),
+        const SizedBox(height: AppConstants.spacing1),
+        TextButton.icon(
+          onPressed: isSaving ? null : onDeleteAccount,
+          icon: Icon(Icons.delete_outline, color: colorScheme.error),
+          style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+          label: const Text('Delete account'),
         ),
       ],
     );

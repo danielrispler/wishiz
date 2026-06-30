@@ -7,9 +7,7 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/screens/signup/signup_screen.dart';
 
 void main() {
-  testWidgets('shows the selected birthday in a readable format', (
-    tester,
-  ) async {
+  testWidgets('does not ask for a birthday during signup', (tester) async {
     final authRepository = _FakeAuthRepository();
 
     await tester.pumpWidget(
@@ -17,20 +15,16 @@ void main() {
         home: SignupScreen(
           authRepository: authRepository,
           onShowLogin: () {},
-          showBirthdayPicker: (context, initialDate) async {
-            return DateTime(1995, 5, 9);
-          },
         ),
       ),
     );
 
-    await tester.tap(find.byType(TextFormField).at(1));
-    await tester.pumpAndSettle();
-
-    expect(find.text('1995-05-09'), findsOneWidget);
+    // Full name, email, password, confirm password — no birthday field.
+    expect(find.byType(TextFormField), findsNWidgets(4));
+    expect(find.text('Birthday'), findsNothing);
   });
 
-  testWidgets('submits signup data when the form is valid', (tester) async {
+  testWidgets('submits signup data without a birthday', (tester) async {
     final authRepository = _FakeAuthRepository();
 
     await tester.pumpWidget(
@@ -38,22 +32,14 @@ void main() {
         home: SignupScreen(
           authRepository: authRepository,
           onShowLogin: () {},
-          showBirthdayPicker: (context, initialDate) async {
-            return DateTime(1995, 5, 9);
-          },
         ),
       ),
     );
 
     await tester.enterText(find.byType(TextFormField).at(0), 'Dana Rios');
-    await tester.tap(find.byType(TextFormField).at(1));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byType(TextFormField).at(2),
-      'dana@example.com',
-    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'dana@example.com');
+    await tester.enterText(find.byType(TextFormField).at(2), 'password123');
     await tester.enterText(find.byType(TextFormField).at(3), 'password123');
-    await tester.enterText(find.byType(TextFormField).at(4), 'password123');
 
     final signUpButton = find.byType(ElevatedButton);
     await tester.scrollUntilVisible(
@@ -67,7 +53,7 @@ void main() {
     expect(authRepository.signUpCalls, hasLength(1));
     expect(authRepository.signUpCalls.single.fullName, 'Dana Rios');
     expect(authRepository.signUpCalls.single.email, 'dana@example.com');
-    expect(authRepository.signUpCalls.single.birthday, DateTime(1995, 5, 9));
+    expect(authRepository.signUpCalls.single.birthday, isNull);
   });
 }
 
@@ -96,11 +82,14 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> logOut() async {}
 
   @override
+  Future<void> deleteAccount({required String password}) async {}
+
+  @override
   Future<AuthResult> signUp({
     required String email,
     required String password,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
   }) async {
     signUpCalls.add(
@@ -125,7 +114,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AuthResult> updateCurrentUser({
     required String email,
     required String fullName,
-    required DateTime birthday,
+    DateTime? birthday,
     String? gender,
     required String preferredCurrencyCode,
     required bool notificationsEnabled,
@@ -151,5 +140,5 @@ class _SignUpCall {
   final String email;
   final String password;
   final String fullName;
-  final DateTime birthday;
+  final DateTime? birthday;
 }

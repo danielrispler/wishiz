@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -82,6 +83,23 @@ func publicURL(baseURL, bucket, key string) string {
 	return strings.TrimRight(baseURL, "/") + "/" + bucket + "/" + key
 }
 
+// KeyFromPublicURL reverses publicURL: it extracts the object key from a URL this
+// uploader would have produced, or reports ok=false for any URL outside this
+// bucket (external/scraped retailer images). It is the single reverse of publicURL
+// so the forward/back mapping can never drift — callers needing URL→key cleanup
+// (account-deletion image GC) use this rather than re-deriving the prefix.
+func (u *GCSUploader) KeyFromPublicURL(url string) (string, bool) {
+	prefix := publicURL(u.publicBaseURL, u.bucket, "")
+	if !strings.HasPrefix(url, prefix) {
+		return "", false
+	}
+	key := strings.TrimPrefix(url, prefix)
+	if key == "" {
+		return "", false
+	}
+	return key, true
+}
+
 func objectKey(prefix string, fileName string) (string, error) {
 	extension := strings.ToLower(path.Ext(strings.TrimSpace(fileName)))
 	if extension == "" {
@@ -94,6 +112,18 @@ func objectKey(prefix string, fileName string) (string, error) {
 	}
 
 	return path.Join(strings.Trim(prefix, "/"), random+extension), nil
+}
+
+// Delete removes the object at key. A missing object is treated as success
+// (idempotent) so repeated best-effort cleanup never errors on an already-gone key.
+func (u *GCSUploader) Delete(ctx context.Context, key string) error {
+	if err := u.client.Bucket(u.bucket).Object(key).Delete(ctx); err != nil {
+		if errors.Is(err, gcs.ErrObjectNotExist) {
+			return nil
+		}
+		return fmt.Errorf("delete object %s: %w", key, err)
+	}
+	return nil
 }
 
 // Close releases the underlying GCS client.

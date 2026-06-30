@@ -14,6 +14,9 @@ class ProductImportJob {
     required this.retryable,
     this.title,
     this.priceLabel,
+    this.priceAmount,
+    this.priceAmountMax,
+    this.priceCurrencyCode,
     this.priceConfidence,
     this.priceSource,
     this.priceWarnings = const [],
@@ -41,6 +44,14 @@ class ProductImportJob {
   final bool retryable;
   final String? title;
   final String? priceLabel;
+
+  /// Structured price for range-aware display. priceAmount is the low/"starting"
+  /// bound; priceAmountMax is the high bound (non-null only for a range, e.g.
+  /// configurable furniture). Both are in priceCurrencyCode and are converted to the
+  /// viewing user's currency at display time. priceLabel stays the scalar fallback.
+  final String? priceAmount;
+  final String? priceAmountMax;
+  final String? priceCurrencyCode;
   final String? priceConfidence;
   final String? priceSource;
   final List<String> priceWarnings;

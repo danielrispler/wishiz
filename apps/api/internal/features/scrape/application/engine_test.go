@@ -174,6 +174,11 @@ func TestEngineWestElmAggregatePriceRangeAutoCompletes(t *testing.T) {
 		t.Fatalf("expected starting price 579 USD (inferred), got amount=%q cur=%q inferred=%v",
 			product.PriceAmount, product.PriceCurrency, product.CurrencyInferred)
 	}
+	// The high bound is threaded through reconcile so the item can render the full
+	// range. It does NOT vote in consensus (price stays single-valued, no conflict).
+	if product.PriceAmountMax != "1598" {
+		t.Fatalf("expected high bound 1598 on the product, got %q", product.PriceAmountMax)
+	}
 	if product.Fields.Price != ConfidenceMedium {
 		t.Fatalf("expected price MEDIUM, got %q", product.Fields.Price)
 	}

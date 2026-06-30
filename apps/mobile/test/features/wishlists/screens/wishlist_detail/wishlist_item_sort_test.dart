@@ -42,6 +42,19 @@ void main() {
       expect(result.map((i) => i.id), ['c', 'b', 'a']);
     });
 
+    test('range item sorts by its structured low bound, not the label digits', () {
+      // A range label "USD 579 – 1598" would parse to a concatenated 5791598 and
+      // sort last; the structured low bound (579) places it correctly between 500
+      // and 700.
+      final items = [
+        _item('a', rank: 1, price: '\$700'),
+        _rangeItem('b', rank: 2, low: '579', high: '1598'),
+        _item('c', rank: 3, price: '\$500'),
+      ];
+      final result = sortWishlistItems(items, const [SortCriterion(SortField.price)]);
+      expect(result.map((i) => i.id), ['c', 'b', 'a']);
+    });
+
     test('date added descending puts newest first', () {
       final items = [
         _item('a', rank: 1, createdAt: DateTime(2026, 1, 1)),
@@ -69,5 +82,23 @@ WishlistItem _item(
     rank: rank,
     priceLabel: price,
     createdAt: createdAt ?? DateTime(2026, 1, 1),
+  );
+}
+
+WishlistItem _rangeItem(
+  String id, {
+  required int rank,
+  required String low,
+  required String high,
+}) {
+  return WishlistItem(
+    id: id,
+    title: 'Item $id',
+    rank: rank,
+    priceLabel: 'USD $low – $high',
+    priceAmount: low,
+    priceAmountMax: high,
+    priceCurrencyCode: 'USD',
+    createdAt: DateTime(2026, 1, 1),
   );
 }

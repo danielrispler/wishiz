@@ -76,6 +76,7 @@ func trustFor(field extractors.Field, source extractors.SourceName) trustTier {
 type resolution struct {
 	value      string
 	currency   string // FieldPrice only: the currency that travels with the amount
+	amountMax  string // FieldPrice only: the HIGH bound of a range price ("" for scalars)
 	confidence FieldConfidence
 	source     extractors.SourceName
 	raw        string
@@ -192,6 +193,7 @@ func resolveField(
 	return resolution{
 		value:      winner.value,
 		currency:   winner.currency,
+		amountMax:  winner.rep.AmountMax,
 		confidence: confidence,
 		source:     winner.rep.Source,
 		raw:        winner.rep.Raw,

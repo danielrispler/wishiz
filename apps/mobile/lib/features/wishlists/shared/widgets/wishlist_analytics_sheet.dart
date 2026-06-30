@@ -35,15 +35,28 @@ class WishlistAnalytics {
 
   WishlistItem? get mostExpensiveActiveItem {
     final active = _wishlist.activeItems
-        .where((i) => CurrencyUtils.parsePriceLabel(i.priceLabel) != null)
+        .where((i) => _itemAmount(i) != null)
         .toList();
     if (active.isEmpty) return null;
-    return active.reduce((a, b) => _toUsd(a.priceLabel) >= _toUsd(b.priceLabel) ? a : b);
+    return active.reduce((a, b) => _toUsd(a) >= _toUsd(b) ? a : b);
+  }
+
+  /// Low-bound amount + currency for analytics. Prefers the structured priceAmount +
+  /// priceCurrencyCode (the canonical low/"starting" bound — for a range this is the
+  /// floor, never the concatenated range label). Falls back to parsing the display
+  /// label for legacy / manually-entered items.
+  ParsedCurrencyAmount? _itemAmount(WishlistItem item) {
+    final amount = double.tryParse(item.priceAmount ?? '');
+    final code = item.priceCurrencyCode;
+    if (amount != null && code != null) {
+      return ParsedCurrencyAmount(currencyCode: code, amount: amount);
+    }
+    return CurrencyUtils.parsePriceLabel(item.priceLabel);
   }
 
   String get dominantCurrency {
     final currencies = _wishlist.items
-        .map((i) => CurrencyUtils.parsePriceLabel(i.priceLabel)?.currencyCode)
+        .map((i) => _itemAmount(i)?.currencyCode)
         .whereType<String>()
         .toList();
     if (currencies.isEmpty) return 'USD';
@@ -63,7 +76,7 @@ class WishlistAnalytics {
     double total = 0;
     bool hasAny = false;
     for (final item in items) {
-      final parsed = CurrencyUtils.parsePriceLabel(item.priceLabel);
+      final parsed = _itemAmount(item);
       if (parsed != null) {
         hasAny = true;
         total += CurrencyUtils.convertAmount(
@@ -77,8 +90,8 @@ class WishlistAnalytics {
     return CurrencyUtils.formatAmount(total, currency);
   }
 
-  double _toUsd(String? priceLabel) {
-    final parsed = CurrencyUtils.parsePriceLabel(priceLabel);
+  double _toUsd(WishlistItem item) {
+    final parsed = _itemAmount(item);
     if (parsed == null) return 0;
     return CurrencyUtils.convertAmount(
       parsed.amount,

@@ -431,6 +431,10 @@ func aggregatePriceRange(node map[string]any, seen map[string]struct{}) []Candid
 		if !ok {
 			return nil
 		}
+		// Carry the high bound out-of-band on the winning low candidate so the range
+		// can be displayed (low – high) without emitting high as a second price (which
+		// would deadlock consensus into price_conflict). Only the low bound votes.
+		candidate.AmountMax = high
 		dedupKey := "price:" + candidate.Value + "|" + candidate.Currency
 		if _, dup := seen[dedupKey]; dup {
 			return nil

@@ -19,6 +19,7 @@ class ItemDetailsSection extends StatelessWidget {
     required this.onPasteImageUrl,
     required this.validateTitle,
     required this.validatePrice,
+    this.priceHelperText,
   });
 
   final TextEditingController titleController;
@@ -33,6 +34,10 @@ class ItemDetailsSection extends StatelessWidget {
   final VoidCallback onPasteImageUrl;
   final String? Function(String?) validateTitle;
   final String? Function(String?) validatePrice;
+
+  /// Helper shown under the price field, e.g. the full detected range for a
+  /// range-priced item ("Detected range: $579 – $1,598"). Null hides it.
+  final String? priceHelperText;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +56,7 @@ class ItemDetailsSection extends StatelessWidget {
                     const SizedBox(height: AppConstants.itemGap),
                     _NotesField(controller: notesController),
                     const SizedBox(height: AppConstants.itemGap),
-                    _PriceField(controller: priceController, currencySymbol: preferredCurrencySymbol, validator: validatePrice),
+                    _PriceField(controller: priceController, currencySymbol: preferredCurrencySymbol, validator: validatePrice, helperText: priceHelperText),
                   ],
                 );
               }
@@ -64,7 +69,7 @@ class ItemDetailsSection extends StatelessWidget {
                       children: [
                         _TitleField(controller: titleController, autofocus: autofocusTitle, validator: validateTitle),
                         const SizedBox(height: AppConstants.itemGap),
-                        _PriceField(controller: priceController, currencySymbol: preferredCurrencySymbol, validator: validatePrice),
+                        _PriceField(controller: priceController, currencySymbol: preferredCurrencySymbol, validator: validatePrice, helperText: priceHelperText),
                       ],
                     ),
                   ),
@@ -137,11 +142,17 @@ class _NotesField extends StatelessWidget {
 }
 
 class _PriceField extends StatelessWidget {
-  const _PriceField({required this.controller, required this.currencySymbol, required this.validator});
+  const _PriceField({
+    required this.controller,
+    required this.currencySymbol,
+    required this.validator,
+    this.helperText,
+  });
 
   final TextEditingController controller;
   final String currencySymbol;
   final String? Function(String?) validator;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +164,8 @@ class _PriceField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: 'Price',
           hintText: '${currencySymbol}120',
+          helperText: helperText,
+          helperMaxLines: 2,
           border: InputBorder.none,
         ),
         validator: validator,

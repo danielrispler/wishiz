@@ -1,9 +1,13 @@
 package application
 
 type Product struct {
-	Name            string   `json:"name"`
-	PriceAmount     string   `json:"priceAmount"`
-	PriceCurrency   string   `json:"priceCurrency"`
+	Name          string `json:"name"`
+	PriceAmount   string `json:"priceAmount"`
+	PriceCurrency string `json:"priceCurrency"`
+	// PriceAmountMax is the HIGH bound of a range price ("$low – $high"), empty for
+	// a scalar price. PriceAmount holds the low/"starting at" bound. Both are in the
+	// same currency (PriceCurrency) and both are converted together by the Service.
+	PriceAmountMax  string   `json:"priceAmountMax,omitempty"`
 	ImageURL        string   `json:"imageUrl"`
 	Source          string   `json:"source"`
 	PriceConfidence string   `json:"priceConfidence"`

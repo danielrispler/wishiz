@@ -95,6 +95,50 @@ func TestServiceCompletesJobAndCreatesWishlistItem(t *testing.T) {
 	}
 }
 
+func TestServiceCompletesRangePricedJobCarryingMaxBound(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeRepo{
+		claimedJob: productImportJob(),
+	}
+	wishlists := &fakeWishlistService{}
+	service := NewService(
+		testLogger(),
+		repo,
+		wishlists,
+		fakeScraper{
+			product: scrapeapp.Product{
+				Name:            "Cozy Swivel Chair",
+				PriceAmount:     "579",
+				PriceAmountMax:  "1598",
+				PriceCurrency:   "USD",
+				PriceConfidence: scrapeapp.PriceConfidenceHigh,
+				PriceSource:     scrapeapp.PriceSourceJSONLD,
+				ImageURL:        "https://example.com/chair.png",
+			},
+		},
+		nil,
+	)
+
+	if _, err := service.ProcessNext(context.Background()); err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if repo.settled.Status != importdomain.StatusCompleted {
+		t.Fatalf("expected completed, got %q", repo.settled.Status)
+	}
+	// The high bound is preserved structurally and rendered into the fallback label.
+	if value(repo.settled.Snapshot.PriceAmount) != "579" || value(repo.settled.Snapshot.PriceAmountMax) != "1598" {
+		t.Fatalf("expected structured range 579..1598, got %+v", repo.settled.Snapshot)
+	}
+	if value(repo.settled.Snapshot.PriceLabel) != "USD 579 – 1598" {
+		t.Fatalf("expected range label, got %q", value(repo.settled.Snapshot.PriceLabel))
+	}
+	// The created wishlist item carries the max bound so the list can display the range.
+	if wishlists.added == nil || value(wishlists.added.PriceAmountMax) != "1598" {
+		t.Fatalf("expected item to carry price_amount_max=1598, got %+v", wishlists.added)
+	}
+}
+
 func TestServiceMarksNeedsReviewWhenPriceIsNotHighConfidence(t *testing.T) {
 	t.Parallel()
 

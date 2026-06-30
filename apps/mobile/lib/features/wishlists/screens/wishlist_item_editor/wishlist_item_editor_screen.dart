@@ -342,6 +342,7 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
             titleController: _titleController,
             notesController: _notesController,
             priceController: _priceController,
+            priceHelperText: _detectedRangeHelper(),
             imageUrl: _imageUrlController.text.trim(),
             isBusy: isBusy,
             autofocusTitle: !widget.isEditing,
@@ -462,10 +463,41 @@ class _WishlistItemEditorScreenState extends State<WishlistItemEditorScreen> {
   }
 
   String _normalizeExistingPrice() {
+    final item = widget.item;
+    // A range item prefills the LOW/"starting" bound (converted): the user edits to
+    // their chosen variant, and saving the single value collapses the item to a
+    // fixed price (the backend clears the stored max). The full range is surfaced as
+    // helper text. Scalar / manually-entered items keep the label path.
+    if (item != null && item.priceAmount != null && item.priceCurrencyCode != null) {
+      final low = CurrencyUtils.formatRange(
+        item.priceAmount,
+        null,
+        fromCurrencyCode: item.priceCurrencyCode!,
+        targetCurrencyCode: widget.preferredCurrencyCode,
+      );
+      if (low != null) return low;
+    }
     return CurrencyUtils.convertPriceLabel(
           widget.item?.priceLabel ?? widget.initialPriceLabel,
           targetCurrencyCode: widget.preferredCurrencyCode,
         ) ?? '';
+  }
+
+  /// Full detected range ("Detected range: $579 – $1,598", converted) shown under
+  /// the price field for a range item, so editing the price to one variant is clear.
+  /// Null for scalar items.
+  String? _detectedRangeHelper() {
+    final item = widget.item;
+    if (item == null || item.priceAmountMax == null || item.priceCurrencyCode == null) {
+      return null;
+    }
+    final range = CurrencyUtils.formatRange(
+      item.priceAmount,
+      item.priceAmountMax,
+      fromCurrencyCode: item.priceCurrencyCode!,
+      targetCurrencyCode: widget.preferredCurrencyCode,
+    );
+    return range == null ? null : 'Detected range: $range';
   }
 
   String? _inferTitleFromProductUri(Uri uri) {

@@ -341,6 +341,9 @@ func (r *Repository) settleCompleted(ctx context.Context, id string, outcome por
 			image_url = $7,
 			completeness = $8,
 			created_item_id = NULLIF($9, '')::uuid,
+			price_amount = $10::numeric,
+			price_amount_max = $11::numeric,
+			price_currency_code = $12,
 			last_error = NULL,
 			error_code = NULL,
 			retryable = FALSE,
@@ -356,6 +359,9 @@ func (r *Repository) settleCompleted(ctx context.Context, id string, outcome por
 		*outcome.Snapshot.ImageURL,
 		outcome.Snapshot.Completeness,
 		ptrOrEmpty(outcome.CreatedItemID),
+		outcome.Snapshot.PriceAmount,
+		outcome.Snapshot.PriceAmountMax,
+		outcome.Snapshot.PriceCurrencyCode,
 	)
 }
 
@@ -373,6 +379,9 @@ func (r *Repository) settleErrored(ctx context.Context, id string, outcome ports
 			last_error = $9,
 			error_code = $10,
 			retryable = $11,
+			price_amount = $13::numeric,
+			price_amount_max = $14::numeric,
+			price_currency_code = $15,
 			locked_at = NULL
 		WHERE id = $1::uuid AND status = 'processing'
 		RETURNING `+jobColumns,
@@ -388,6 +397,9 @@ func (r *Repository) settleErrored(ctx context.Context, id string, outcome ports
 		outcome.ErrorCode,
 		outcome.Retryable,
 		outcome.Status,
+		outcome.Snapshot.PriceAmount,
+		outcome.Snapshot.PriceAmountMax,
+		outcome.Snapshot.PriceCurrencyCode,
 	)
 }
 
@@ -467,6 +479,9 @@ func scanJob(row scanner) (domain.Job, error) {
 	var errorCode sql.NullString
 	var title sql.NullString
 	var priceLabel sql.NullString
+	var priceAmount sql.NullString
+	var priceAmountMax sql.NullString
+	var priceCurrencyCode sql.NullString
 	var priceConfidence sql.NullString
 	var priceSource sql.NullString
 	var imageURL sql.NullString
@@ -490,6 +505,9 @@ func scanJob(row scanner) (domain.Job, error) {
 		&job.Retryable,
 		&title,
 		&priceLabel,
+		&priceAmount,
+		&priceAmountMax,
+		&priceCurrencyCode,
 		&priceConfidence,
 		&priceSource,
 		&job.PriceWarnings,
@@ -513,6 +531,9 @@ func scanJob(row scanner) (domain.Job, error) {
 	job.ErrorCode = nullableString(errorCode)
 	job.Title = nullableString(title)
 	job.PriceLabel = nullableString(priceLabel)
+	job.PriceAmount = nullableString(priceAmount)
+	job.PriceAmountMax = nullableString(priceAmountMax)
+	job.PriceCurrencyCode = nullableString(priceCurrencyCode)
 	job.PriceConfidence = nullableString(priceConfidence)
 	job.PriceSource = nullableString(priceSource)
 	job.ImageURL = nullableString(imageURL)
@@ -559,6 +580,9 @@ const jobColumns = `
 	retryable,
 	title,
 	price_label,
+	price_amount::text,
+	price_amount_max::text,
+	price_currency_code,
 	price_confidence,
 	price_source,
 	COALESCE(price_warnings, ARRAY[]::text[]),

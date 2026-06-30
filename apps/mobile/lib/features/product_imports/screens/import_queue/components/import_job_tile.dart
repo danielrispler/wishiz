@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wishiz/core/constants/app_constants.dart';
 import 'package:wishiz/core/theme/app_colors.dart';
+import 'package:wishiz/core/utils/currency_utils.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
 import 'package:wishiz/shared/widgets/gradient_progress_bar.dart';
 import 'package:wishiz/shared/widgets/shimmer_box.dart';
@@ -247,7 +248,20 @@ class _JobBody extends StatelessWidget {
       );
     }
 
-    final priceLabel = job.priceLabel?.trim();
+    // A range item renders the structured low–high (symbol-formatted); a scalar
+    // keeps its raw label. job.priceCurrencyCode already equals the importer's
+    // target currency (price was converted at import), so from==to here.
+    final rangeText = (job.priceAmountMax != null &&
+            job.priceAmount != null &&
+            job.priceCurrencyCode != null)
+        ? CurrencyUtils.formatRange(
+            job.priceAmount,
+            job.priceAmountMax,
+            fromCurrencyCode: job.priceCurrencyCode!,
+            targetCurrencyCode: job.targetCurrencyCode,
+          )
+        : null;
+    final priceLabel = rangeText ?? job.priceLabel?.trim();
     final showPrice =
         job.isCompleted && priceLabel != null && priceLabel.isNotEmpty;
 

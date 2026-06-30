@@ -62,6 +62,7 @@ type WishlistItem struct {
 	Notes             *string
 	PriceLabel        *string
 	PriceAmount       *string
+	PriceAmountMax    *string
 	PriceCurrencyCode *string
 	Priority          string
 	Status            string

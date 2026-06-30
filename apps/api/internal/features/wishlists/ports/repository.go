@@ -53,6 +53,7 @@ type AddItemParams struct {
 	Notes             *string
 	PriceLabel        *string
 	PriceAmount       *string
+	PriceAmountMax    *string
 	PriceCurrencyCode *string
 	Priority          string
 	Status            string
@@ -61,21 +62,26 @@ type AddItemParams struct {
 	PurchasedAt       *time.Time
 }
 
-// UpdateItemParams deliberately omits PriceAmount/PriceCurrencyCode: structured
-// price is an import-time snapshot. Edits manage the display PriceLabel only, and
-// UpdateItem preserves the structured columns rather than nulling them.
+// UpdateItemParams carries the structured price amounts because editing the price
+// label of a range item collapses it to a fixed price: PatchItem clears
+// PriceAmount/PriceAmountMax (a human-entered label is no longer the import-time
+// range snapshot). PriceCurrencyCode is left frozen (UpdateItem never touches that
+// column). When the price label is NOT edited, these mirror the current row so the
+// UPDATE preserves the import snapshot. See ADR-0007.
 type UpdateItemParams struct {
-	WishlistID  string
-	ItemID      string
-	Title       string
-	Rank        int
-	Notes       *string
-	PriceLabel  *string
-	Priority    string
-	Status      string
-	ImageURL    *string
-	ProductURL  *string
-	PurchasedAt *time.Time
+	WishlistID     string
+	ItemID         string
+	Title          string
+	Rank           int
+	Notes          *string
+	PriceLabel     *string
+	PriceAmount    *string
+	PriceAmountMax *string
+	Priority       string
+	Status         string
+	ImageURL       *string
+	ProductURL     *string
+	PurchasedAt    *time.Time
 }
 
 type CreateInviteParams struct {

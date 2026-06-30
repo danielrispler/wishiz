@@ -136,6 +136,11 @@ func TestJSStateAggregatePriceRange(t *testing.T) {
 	if prices[0].Value != "579" || prices[0].Source != SourceJSState || prices[0].Currency != "" {
 		t.Fatalf("unexpected price: %+v", prices[0])
 	}
+	// The high bound rides on the winning low candidate out-of-band (it never votes
+	// in consensus) so the range can be displayed as "579 – 1598".
+	if prices[0].AmountMax != "1598" {
+		t.Fatalf("expected high bound 1598 carried on the low candidate, got %q", prices[0].AmountMax)
+	}
 }
 
 func TestJSStateAggregatePriceIgnoresLoneLowKey(t *testing.T) {

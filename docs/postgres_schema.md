@@ -71,8 +71,9 @@ Owners are not duplicated in `wishlist_members`.
 - `title TEXT NOT NULL`
 - `rank INTEGER NOT NULL` — CHECK `rank > 0`
 - `notes TEXT`
-- `price_label TEXT` — display string (e.g. `"USD 129.00"`)
-- `price_amount NUMERIC(12,2)` — structured amount captured at import time
+- `price_label TEXT` — display string (e.g. `"USD 129.00"`, or `"USD 579 – 1598"` for a range)
+- `price_amount NUMERIC(12,2)` — structured amount captured at import time (the low/"starting" bound of a range)
+- `price_amount_max NUMERIC(12,2)` — high bound of a price range (`000004`); NULL for a scalar price
 - `price_currency_code TEXT` — CHECK `IS NULL OR ~ '^[A-Z]{3}$'`
 - `priority TEXT NOT NULL DEFAULT 'medium'` — CHECK `IN ('low','medium','high')`
 - `status TEXT NOT NULL DEFAULT 'saved'` — CHECK `IN ('saved','considering','purchased')`
@@ -83,8 +84,10 @@ Owners are not duplicated in `wishlist_members`.
 - `UNIQUE (wishlist_id, rank) DEFERRABLE INITIALLY IMMEDIATE`
 - Index: `(wishlist_id)`
 
-`price_amount` / `price_currency_code` are written from the importer's structured scrape result
-and preserved on item edits (item edits manage `price_label` only).
+`price_amount` / `price_amount_max` / `price_currency_code` are written from the importer's
+structured scrape result. Editing an item's price **clears** `price_amount`/`price_amount_max`
+(keeping `price_currency_code`), collapsing a range item to a fixed price — see
+[ADR-0007](adr/0007-product-price-ranges.md).
 
 ### `product_import_jobs`
 
@@ -100,6 +103,8 @@ and preserved on item edits (item edits manage `price_label` only).
 - `last_attempted_at TIMESTAMPTZ`, `last_error TEXT`, `error_code TEXT` (free-form)
 - `retryable BOOLEAN NOT NULL DEFAULT FALSE`
 - `title TEXT`, `price_label TEXT`
+- `price_amount NUMERIC(12,2)`, `price_amount_max NUMERIC(12,2)` — structured price / range high bound (`000004`)
+- `price_currency_code TEXT` — CHECK `IS NULL OR ~ '^[A-Z]{3}$'` (`000004`)
 - `price_confidence TEXT` — CHECK `IS NULL OR IN ('high','medium','low','suspicious')`
 - `price_source TEXT` — CHECK `IS NULL OR IN ('merchant_selector','json_ld','meta','selector','generic_dom')`
 - `price_warnings TEXT[] NOT NULL DEFAULT '{}'`

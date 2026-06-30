@@ -262,9 +262,10 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			status,
 			image_url,
 			product_url,
-			purchased_at
+			purchased_at,
+			price_amount_max
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $11, $12)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $11, $12, $13::numeric)
 		RETURNING
 			id::text,
 			wishlist_id::text,
@@ -273,6 +274,7 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			notes,
 			price_label,
 			price_amount::text,
+			price_amount_max::text,
 			price_currency_code,
 			priority,
 			status,
@@ -281,7 +283,7 @@ func (r *Repository) AddItem(ctx context.Context, params ports.AddItemParams) (d
 			purchased_at,
 			created_at,
 			updated_at
-	`, params.WishlistID, params.Title, nextRank, params.Notes, params.PriceLabel, params.PriceAmount, params.PriceCurrencyCode, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt)
+	`, params.WishlistID, params.Title, nextRank, params.Notes, params.PriceLabel, params.PriceAmount, params.PriceCurrencyCode, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt, params.PriceAmountMax)
 
 	_, item, err := scanWishlistItem(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -321,7 +323,9 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 			status = $8,
 			image_url = $9,
 			product_url = $10,
-			purchased_at = $11
+			purchased_at = $11,
+			price_amount = $12::numeric,
+			price_amount_max = $13::numeric
 		WHERE wishlist_id = $1::uuid
 			AND id = $2::uuid
 		RETURNING
@@ -332,6 +336,7 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 			notes,
 			price_label,
 			price_amount::text,
+			price_amount_max::text,
 			price_currency_code,
 			priority,
 			status,
@@ -340,7 +345,7 @@ func (r *Repository) UpdateItem(ctx context.Context, params ports.UpdateItemPara
 			purchased_at,
 			created_at,
 			updated_at
-	`, params.WishlistID, params.ItemID, params.Title, params.Rank, params.Notes, params.PriceLabel, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt)
+	`, params.WishlistID, params.ItemID, params.Title, params.Rank, params.Notes, params.PriceLabel, params.Priority, params.Status, params.ImageURL, params.ProductURL, params.PurchasedAt, params.PriceAmount, params.PriceAmountMax)
 
 	_, item, err := scanWishlistItem(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -674,6 +679,7 @@ func (r *Repository) attachItems(ctx context.Context, indexByID map[string]int, 
 			i.notes,
 			i.price_label,
 			i.price_amount::text,
+			i.price_amount_max::text,
 			i.price_currency_code,
 			i.priority,
 			i.status,
@@ -814,6 +820,7 @@ func (r *Repository) listItemsByWishlistID(ctx context.Context, querier rowQuery
 			notes,
 			price_label,
 			price_amount::text,
+			price_amount_max::text,
 			price_currency_code,
 			priority,
 			status,
@@ -957,6 +964,7 @@ func scanWishlistItem(row interface{ Scan(...any) error }) (string, domain.Wishl
 		&item.Notes,
 		&item.PriceLabel,
 		&item.PriceAmount,
+		&item.PriceAmountMax,
 		&item.PriceCurrencyCode,
 		&item.Priority,
 		&item.Status,

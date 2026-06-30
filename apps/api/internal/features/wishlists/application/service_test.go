@@ -123,6 +123,53 @@ func TestServicePatchItemPurchasedStatusRefreshesPurchasedAt(t *testing.T) {
 	}
 }
 
+func TestServicePatchItemPriceLabelCollapsesRangeToFixed(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	usd := "USD"
+	low, high := "579", "1598"
+	rangeLabel := "USD 579 – 1598"
+	repo.wishlists[wishlistID1] = wishlistWithItems(ownerID, []domain.WishlistItem{
+		{
+			ID:                itemID1,
+			Title:             "Cozy Swivel Chair",
+			Rank:              1,
+			PriceLabel:        &rangeLabel,
+			PriceAmount:       &low,
+			PriceAmountMax:    &high,
+			PriceCurrencyCode: &usd,
+			Priority:          domain.ItemPriorityMedium,
+			Status:            domain.ItemStatusSaved,
+			CreatedAt:         fixedTime,
+			UpdatedAt:         fixedTime,
+		},
+	})
+
+	service := NewService(repo)
+
+	edited := "$700"
+	item, err := service.PatchItem(userContext(ownerID, "owner@example.com"), wishlistID1, itemID1, &PatchItemInput{
+		PriceLabel: PatchField[*string]{Set: true, Value: &edited},
+	})
+	if err != nil {
+		t.Fatalf("PatchItem returned error: %v", err)
+	}
+	// Editing the price collapses a range to a fixed price: the structured amounts
+	// clear so mobile falls back to the (edited) label, while the currency stays.
+	if item.PriceLabel == nil || *item.PriceLabel != "$700" {
+		t.Fatalf("expected price label $700, got %v", item.PriceLabel)
+	}
+	if item.PriceAmount != nil {
+		t.Fatalf("expected price_amount cleared, got %q", *item.PriceAmount)
+	}
+	if item.PriceAmountMax != nil {
+		t.Fatalf("expected price_amount_max cleared, got %q", *item.PriceAmountMax)
+	}
+	if item.PriceCurrencyCode == nil || *item.PriceCurrencyCode != "USD" {
+		t.Fatalf("expected price_currency_code preserved as USD, got %v", item.PriceCurrencyCode)
+	}
+}
+
 func TestServicePatchItemPreservesPurchasedAtWhenStatusStaysPurchased(t *testing.T) {
 	t.Parallel()
 	originalPurchasedAt := fixedTime.Add(-6 * time.Hour)
@@ -714,18 +761,21 @@ func (r *fakeRepository) AddItem(_ context.Context, params ports.AddItemParams) 
 	}
 
 	item := domain.WishlistItem{
-		ID:          itemID1,
-		Title:       params.Title,
-		Rank:        len(wishlist.Items) + 1,
-		Notes:       cloneString(params.Notes),
-		PriceLabel:  cloneString(params.PriceLabel),
-		Priority:    params.Priority,
-		Status:      params.Status,
-		ImageURL:    cloneString(params.ImageURL),
-		ProductURL:  cloneString(params.ProductURL),
-		PurchasedAt: cloneTime(params.PurchasedAt),
-		CreatedAt:   fixedTime,
-		UpdatedAt:   fixedTime,
+		ID:                itemID1,
+		Title:             params.Title,
+		Rank:              len(wishlist.Items) + 1,
+		Notes:             cloneString(params.Notes),
+		PriceLabel:        cloneString(params.PriceLabel),
+		PriceAmount:       cloneString(params.PriceAmount),
+		PriceAmountMax:    cloneString(params.PriceAmountMax),
+		PriceCurrencyCode: cloneString(params.PriceCurrencyCode),
+		Priority:          params.Priority,
+		Status:            params.Status,
+		ImageURL:          cloneString(params.ImageURL),
+		ProductURL:        cloneString(params.ProductURL),
+		PurchasedAt:       cloneTime(params.PurchasedAt),
+		CreatedAt:         fixedTime,
+		UpdatedAt:         fixedTime,
 	}
 
 	wishlist.Items = append(wishlist.Items, item)
@@ -749,6 +799,10 @@ func (r *fakeRepository) UpdateItem(_ context.Context, params ports.UpdateItemPa
 		item.Rank = params.Rank
 		item.Notes = cloneString(params.Notes)
 		item.PriceLabel = cloneString(params.PriceLabel)
+		// Mirror the real UPDATE: price_amount/price_amount_max are written from
+		// params (edit clears them); price_currency_code is left untouched/frozen.
+		item.PriceAmount = cloneString(params.PriceAmount)
+		item.PriceAmountMax = cloneString(params.PriceAmountMax)
 		item.Priority = params.Priority
 		item.Status = params.Status
 		item.ImageURL = cloneString(params.ImageURL)

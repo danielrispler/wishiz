@@ -64,13 +64,16 @@ type ClaimParams struct {
 }
 
 type ProductSnapshot struct {
-	Title           *string
-	PriceLabel      *string
-	PriceConfidence *string
-	PriceSource     *string
-	PriceWarnings   []string
-	ImageURL        *string
-	Completeness    int
+	Title             *string
+	PriceLabel        *string
+	PriceAmount       *string
+	PriceAmountMax    *string
+	PriceCurrencyCode *string
+	PriceConfidence   *string
+	PriceSource       *string
+	PriceWarnings     []string
+	ImageURL          *string
+	Completeness      int
 }
 
 type JobOutcome struct {

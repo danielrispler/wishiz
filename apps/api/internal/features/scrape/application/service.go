@@ -393,7 +393,8 @@ func (s *Service) applyConversion(product Product, targetCurrency string) Produc
 	if product.PriceAmount == "" || product.PriceCurrency == "" {
 		return product
 	}
-	amount, currency, err := s.converter.Convert(product.PriceAmount, product.PriceCurrency, targetCurrency)
+	fromCurrency := product.PriceCurrency
+	amount, currency, err := s.converter.Convert(product.PriceAmount, fromCurrency, targetCurrency)
 	if err != nil {
 		product.PriceWarnings = uniqueStrings(append(product.PriceWarnings, extractors.WarningCurrencyUnconverted))
 		// Keep the legacy price-confidence string below "trusted" for the
@@ -415,6 +416,17 @@ func (s *Service) applyConversion(product Product, targetCurrency string) Produc
 	}
 	product.PriceAmount = amount
 	product.PriceCurrency = currency
+	// Convert the range high bound with the SAME from/to as the low bound. If only
+	// the max fails to convert, drop it (show the converted low as a single price)
+	// rather than failing the item — the low already converted fine, so the item is
+	// still useful. A low-bound failure is handled above (force review).
+	if product.PriceAmountMax != "" {
+		if maxAmount, _, maxErr := s.converter.Convert(product.PriceAmountMax, fromCurrency, targetCurrency); maxErr == nil {
+			product.PriceAmountMax = maxAmount
+		} else {
+			product.PriceAmountMax = ""
+		}
+	}
 	// Recompute the verdict for symmetry with the failure branch: the price field
 	// changed, so the verdict must be derived from the post-conversion product.
 	product.Verdict, product.Reasons = ComputeVerdict(product)

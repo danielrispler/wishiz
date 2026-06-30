@@ -79,11 +79,12 @@ func (e *Engine) Reconcile(candidates []extractors.Candidate, finalURL string) P
 	}
 
 	product := Product{
-		Name:          name.value,
-		ImageURL:      image.value,
-		PriceAmount:   price.value,
-		PriceCurrency: currency.value,
-		CanonicalURL:  CleanLink(canonical),
+		Name:           name.value,
+		ImageURL:       image.value,
+		PriceAmount:    price.value,
+		PriceAmountMax: price.amountMax,
+		PriceCurrency:  currency.value,
+		CanonicalURL:   CleanLink(canonical),
 		Fields: FieldConfidences{
 			Name:     name.confidence,
 			Price:    price.confidence,

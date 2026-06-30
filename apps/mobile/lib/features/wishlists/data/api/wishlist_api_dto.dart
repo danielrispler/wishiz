@@ -199,6 +199,9 @@ class WishlistItemDto {
     required this.rank,
     required this.notes,
     required this.priceLabel,
+    required this.priceAmount,
+    required this.priceAmountMax,
+    required this.priceCurrencyCode,
     required this.priority,
     required this.status,
     required this.imageUrl,
@@ -215,6 +218,9 @@ class WishlistItemDto {
       rank: json['rank'] as int,
       notes: json['notes'] as String?,
       priceLabel: json['priceLabel'] as String?,
+      priceAmount: json['priceAmount'] as String?,
+      priceAmountMax: json['priceAmountMax'] as String?,
+      priceCurrencyCode: json['priceCurrencyCode'] as String?,
       priority: WishlistItemPriority.fromApiValue(
         json['priority'] as String? ?? WishlistItemPriority.medium.apiValue,
       ),
@@ -236,6 +242,9 @@ class WishlistItemDto {
   final int rank;
   final String? notes;
   final String? priceLabel;
+  final String? priceAmount;
+  final String? priceAmountMax;
+  final String? priceCurrencyCode;
   final WishlistItemPriority priority;
   final WishlistItemStatus status;
   final String? imageUrl;
@@ -251,6 +260,9 @@ class WishlistItemDto {
       rank: rank,
       notes: notes,
       priceLabel: priceLabel,
+      priceAmount: priceAmount,
+      priceAmountMax: priceAmountMax,
+      priceCurrencyCode: priceCurrencyCode,
       priority: priority,
       status: status,
       imageUrl: imageUrl,

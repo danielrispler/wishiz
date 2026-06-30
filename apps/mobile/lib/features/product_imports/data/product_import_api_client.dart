@@ -157,6 +157,9 @@ class ProductImportJobDto {
     required this.retryable,
     this.title,
     this.priceLabel,
+    this.priceAmount,
+    this.priceAmountMax,
+    this.priceCurrencyCode,
     this.priceConfidence,
     this.priceSource,
     this.priceWarnings = const [],
@@ -186,6 +189,9 @@ class ProductImportJobDto {
       retryable: json['retryable'] as bool? ?? false,
       title: json['title'] as String?,
       priceLabel: json['priceLabel'] as String?,
+      priceAmount: json['priceAmount'] as String?,
+      priceAmountMax: json['priceAmountMax'] as String?,
+      priceCurrencyCode: json['priceCurrencyCode'] as String?,
       priceConfidence: json['priceConfidence'] as String?,
       priceSource: json['priceSource'] as String?,
       priceWarnings: (json['priceWarnings'] as List<dynamic>? ?? const [])
@@ -216,6 +222,9 @@ class ProductImportJobDto {
   final bool retryable;
   final String? title;
   final String? priceLabel;
+  final String? priceAmount;
+  final String? priceAmountMax;
+  final String? priceCurrencyCode;
   final String? priceConfidence;
   final String? priceSource;
   final List<String> priceWarnings;
@@ -244,6 +253,9 @@ class ProductImportJobDto {
       retryable: retryable,
       title: title,
       priceLabel: priceLabel,
+      priceAmount: priceAmount,
+      priceAmountMax: priceAmountMax,
+      priceCurrencyCode: priceCurrencyCode,
       priceConfidence: priceConfidence,
       priceSource: priceSource,
       priceWarnings: priceWarnings,

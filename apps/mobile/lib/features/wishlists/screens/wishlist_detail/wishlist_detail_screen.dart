@@ -354,8 +354,16 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
     if (!didLaunch && mounted) _showFeedback(context, 'We could not open that link.');
   }
 
-  String? _formatPriceLabelForUser(String? priceLabel, AppUser? currentUser) {
-    return CurrencyUtils.convertPriceLabel(priceLabel, targetCurrencyCode: currentUser?.preferredCurrencyCode ?? 'USD');
+  String? _formatPriceLabelForUser(WishlistItem item, AppUser? currentUser) {
+    // displayPrice renders a converted range when the item carries a high bound,
+    // otherwise falls back to converting the scalar price label.
+    return CurrencyUtils.displayPrice(
+      priceLabel: item.priceLabel,
+      priceAmount: item.priceAmount,
+      priceAmountMax: item.priceAmountMax,
+      priceCurrencyCode: item.priceCurrencyCode,
+      targetCurrencyCode: currentUser?.preferredCurrencyCode ?? 'USD',
+    );
   }
 
   @override
@@ -499,7 +507,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                               return WishlistItemCard(
                                 key: ValueKey('reorder-${item.id}'),
                                 item: item,
-                                displayedPriceLabel: _formatPriceLabelForUser(item.priceLabel, currentUser),
+                                displayedPriceLabel: _formatPriceLabelForUser(item, currentUser),
                                 canEdit: canEdit,
                                 showDragHandle: true,
                                 dragIndex: index,
@@ -519,7 +527,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       ...visibleItems.map((item) => WishlistItemCard(
                         key: ValueKey('item-${item.id}'),
                         item: item,
-                        displayedPriceLabel: _formatPriceLabelForUser(item.priceLabel, currentUser),
+                        displayedPriceLabel: _formatPriceLabelForUser(item, currentUser),
                         canEdit: canEdit,
                         showDragHandle: false,
                         onSwipeTogglePurchased: () => item.status == WishlistItemStatus.purchased

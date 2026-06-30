@@ -95,7 +95,13 @@ type Candidate struct {
 	// Currency is only set on FieldPrice candidates: the currency that
 	// accompanied this amount ("" when the source gave an amount but no currency).
 	Currency string
-	Source   SourceName
+	// AmountMax is set only on a RANGE price candidate (aggregatePriceRange): the
+	// HIGH bound of a "$low – $high" range. Value carries the LOW bound (which is
+	// what votes in consensus); AmountMax rides alongside it out-of-band so the
+	// range can be displayed without feeding two trusted amounts into consensus
+	// (which would deadlock price into price_conflict). Empty for scalar prices.
+	AmountMax string
+	Source    SourceName
 	// Raw is the original source text, kept for debugging and PriceRawText.
 	Raw string
 	// Inferred marks a currency that was inferred (lang/locale/TLD) rather than

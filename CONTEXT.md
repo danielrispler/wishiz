@@ -23,6 +23,18 @@ A transient value object produced by the scraper representing partially or fully
 
 ---
 
+## Price Range
+A product whose price is not a single amount but a span — a **Starting Price** (low bound) and a high bound — because the product is configurable (size, fabric, finish). A Price Range is shown honestly as "low – high" and still imports without review. Editing the price of a range-priced item picks one amount and **collapses** it to a fixed price (it stops being a Price Range). See [ADR-0007](docs/adr/0007-product-price-ranges.md).
+
+**Avoid:** treating a Price Range as "needs review" — a range is a complete, displayable price, not missing data.
+
+---
+
+## Starting Price
+The low bound of a Price Range — the "from / starting at" amount. It is the single amount that represents a range-priced product wherever one amount is needed (sorting, totals, the price a shopper anchors on). A product with no Price Range has no Starting Price; its price is simply its price.
+
+---
+
 ## My Lists
 Wishlists owned by the current user. Includes lists the user has shared with collaborators. Displayed in the "My Lists" tab.
 

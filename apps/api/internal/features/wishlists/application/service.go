@@ -68,6 +68,7 @@ type AddItemInput struct {
 	Notes             *string
 	PriceLabel        *string
 	PriceAmount       *string
+	PriceAmountMax    *string
 	PriceCurrencyCode *string
 	Priority          string
 	Status            string
@@ -416,6 +417,7 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 		Notes:             normalizeOptionalString(input.Notes),
 		PriceLabel:        normalizeOptionalString(input.PriceLabel),
 		PriceAmount:       normalizeOptionalString(input.PriceAmount),
+		PriceAmountMax:    normalizeOptionalString(input.PriceAmountMax),
 		PriceCurrencyCode: normalizeOptionalString(input.PriceCurrencyCode),
 		Priority:          priority,
 		Status:            status,
@@ -457,17 +459,19 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 	}
 
 	params := ports.UpdateItemParams{
-		WishlistID:  wishlistID,
-		ItemID:      itemID,
-		Title:       current.Title,
-		Rank:        current.Rank,
-		Notes:       cloneString(current.Notes),
-		PriceLabel:  cloneString(current.PriceLabel),
-		Priority:    current.Priority,
-		Status:      current.Status,
-		ImageURL:    cloneString(current.ImageURL),
-		ProductURL:  cloneString(current.ProductURL),
-		PurchasedAt: cloneTime(current.PurchasedAt),
+		WishlistID:     wishlistID,
+		ItemID:         itemID,
+		Title:          current.Title,
+		Rank:           current.Rank,
+		Notes:          cloneString(current.Notes),
+		PriceLabel:     cloneString(current.PriceLabel),
+		PriceAmount:    cloneString(current.PriceAmount),
+		PriceAmountMax: cloneString(current.PriceAmountMax),
+		Priority:       current.Priority,
+		Status:         current.Status,
+		ImageURL:       cloneString(current.ImageURL),
+		ProductURL:     cloneString(current.ProductURL),
+		PurchasedAt:    cloneTime(current.PurchasedAt),
 	}
 
 	if patchErr := s.applyItemPatch(&params, input, current); patchErr != nil {
@@ -502,6 +506,13 @@ func (s *Service) applyItemPatch(
 	}
 	if input.PriceLabel.Set {
 		params.PriceLabel = normalizeOptionalString(input.PriceLabel.Value)
+		// Editing the price collapses a range item to a fixed price: the entered label
+		// is no longer the import-time range snapshot, so clear the structured amounts.
+		// Mobile renders/uses the structured numbers only when priceAmountMax is present,
+		// so a cleared item falls back to the label path. Currency stays frozen (the
+		// UPDATE never touches price_currency_code). See ADR-0007.
+		params.PriceAmount = nil
+		params.PriceAmountMax = nil
 	}
 	if input.Priority.Set {
 		if params.Priority, err = validatePriority(input.Priority.Value); err != nil {

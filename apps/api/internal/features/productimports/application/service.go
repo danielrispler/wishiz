@@ -276,12 +276,15 @@ func (s *Service) Assign(ctx context.Context, id string, wishlistID string) (imp
 	}
 	itemCtx := authctx.WithUser(ctx, authctx.User{ID: job.UserID})
 	item, err := s.wishlists.AddItem(itemCtx, wishlistID, &wishlistapp.AddItemInput{
-		Title:      ptrOrEmpty(job.Title),
-		PriceLabel: job.PriceLabel,
-		ImageURL:   job.ImageURL,
-		ProductURL: &job.NormalizedURL,
-		Priority:   wishlistdomain.ItemPriorityMedium,
-		Status:     wishlistdomain.ItemStatusSaved,
+		Title:             ptrOrEmpty(job.Title),
+		PriceLabel:        job.PriceLabel,
+		PriceAmount:       job.PriceAmount,
+		PriceAmountMax:    job.PriceAmountMax,
+		PriceCurrencyCode: job.PriceCurrencyCode,
+		ImageURL:          job.ImageURL,
+		ProductURL:        &job.NormalizedURL,
+		Priority:          wishlistdomain.ItemPriorityMedium,
+		Status:            wishlistdomain.ItemStatusSaved,
 	})
 	if err != nil {
 		return importdomain.Job{}, err
@@ -414,6 +417,7 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 				Title:             *snap.Title,
 				PriceLabel:        snap.PriceLabel,
 				PriceAmount:       snap.PriceAmount,
+				PriceAmountMax:    snap.PriceAmountMax,
 				PriceCurrencyCode: snap.PriceCurrencyCode,
 				ImageURL:          snap.ImageURL,
 				ProductURL:        &productURL,
@@ -502,13 +506,16 @@ func needsReviewOutcome(ps ports.ProductSnapshot, lastError string) ports.JobOut
 
 func resolveOutcome(snap productSnapshot, scrapeErr error) ports.JobOutcome {
 	ps := ports.ProductSnapshot{
-		Title:           snap.Title,
-		PriceLabel:      snap.PriceLabel,
-		PriceConfidence: snap.PriceConfidence,
-		PriceSource:     snap.PriceSource,
-		PriceWarnings:   snap.PriceWarnings,
-		ImageURL:        snap.ImageURL,
-		Completeness:    snap.Completeness,
+		Title:             snap.Title,
+		PriceLabel:        snap.PriceLabel,
+		PriceAmount:       snap.PriceAmount,
+		PriceAmountMax:    snap.PriceAmountMax,
+		PriceCurrencyCode: snap.PriceCurrencyCode,
+		PriceConfidence:   snap.PriceConfidence,
+		PriceSource:       snap.PriceSource,
+		PriceWarnings:     snap.PriceWarnings,
+		ImageURL:          snap.ImageURL,
+		Completeness:      snap.Completeness,
 	}
 	if scrapeErr != nil {
 		retryable, code := classifyScrapeError(scrapeErr)
@@ -602,6 +609,7 @@ type productSnapshot struct {
 	Title             *string
 	PriceLabel        *string
 	PriceAmount       *string
+	PriceAmountMax    *string
 	PriceCurrencyCode *string
 	PriceConfidence   *string
 	PriceSource       *string
@@ -618,8 +626,14 @@ type productSnapshot struct {
 
 func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 	title := optional(product.Name)
-	priceLabel := optional(strings.TrimSpace(strings.TrimSpace(product.PriceCurrency) + " " + strings.TrimSpace(product.PriceAmount)))
 	priceAmount := optionalAmount(product.PriceAmount)
+	// Only treat the high bound as a range when the low bound itself is a clean
+	// numeric amount — a range label without a parseable low is meaningless.
+	priceAmountMax := optionalAmount(product.PriceAmountMax)
+	if priceAmount == nil {
+		priceAmountMax = nil
+	}
+	priceLabel := optional(buildPriceLabel(product.PriceCurrency, product.PriceAmount, ptrOrEmpty(priceAmountMax)))
 	priceCurrencyCode := optionalCurrencyCode(product.PriceCurrency)
 	priceConfidence := optional(product.PriceConfidence)
 	priceSource := optional(product.PriceSource)
@@ -639,6 +653,7 @@ func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 		Title:             title,
 		PriceLabel:        priceLabel,
 		PriceAmount:       priceAmount,
+		PriceAmountMax:    priceAmountMax,
 		PriceCurrencyCode: priceCurrencyCode,
 		PriceConfidence:   priceConfidence,
 		PriceSource:       priceSource,
@@ -649,6 +664,20 @@ func snapshotFromProduct(product scrapeapp.Product) productSnapshot {
 		Verdict:           product.Verdict,
 		CanonicalURL:      strings.TrimSpace(product.CanonicalURL),
 	}
+}
+
+// buildPriceLabel renders the human-readable price string preserved on the job and
+// item: "<CUR> <low> – <high>" for a range, "<CUR> <amount>" for a scalar. The
+// structured priceAmount/priceAmountMax/priceCurrencyCode fields are the source of
+// truth for clients; this label is the display fallback (older clients / web).
+func buildPriceLabel(currency, amount, amountMax string) string {
+	currency = strings.TrimSpace(currency)
+	amount = strings.TrimSpace(amount)
+	label := strings.TrimSpace(currency + " " + amount)
+	if amountMax = strings.TrimSpace(amountMax); amountMax != "" && amount != "" {
+		label += " – " + amountMax
+	}
+	return label
 }
 
 func isComplete(snapshot productSnapshot) bool {

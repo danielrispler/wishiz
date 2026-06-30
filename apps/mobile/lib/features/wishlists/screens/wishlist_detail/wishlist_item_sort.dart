@@ -53,7 +53,7 @@ List<WishlistItem> sortWishlistItems(
             ? a.rank.compareTo(b.rank)
             : b.rank.compareTo(a.rank),
         SortField.price => _compareNullable(
-            _parsePrice(a.priceLabel), _parsePrice(b.priceLabel),
+            _itemSortPrice(a), _itemSortPrice(b),
             ascending: c.ascending),
         SortField.dateAdded => c.ascending
             ? a.createdAt.compareTo(b.createdAt)
@@ -64,6 +64,16 @@ List<WishlistItem> sortWishlistItems(
     return 0;
   });
   return sorted;
+}
+
+/// Numeric price used for sorting. Prefers the structured low bound (priceAmount):
+/// it is the only correct value for a RANGE item, whose label "579 – 1598" would
+/// otherwise have its digits concatenated into 5791598. Falls back to digits parsed
+/// from the display label for legacy / manually-entered items (priceAmount cleared).
+double? _itemSortPrice(WishlistItem item) {
+  final amount = double.tryParse(item.priceAmount ?? '');
+  if (amount != null) return amount;
+  return _parsePrice(item.priceLabel);
 }
 
 double? _parsePrice(String? label) {

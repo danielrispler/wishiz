@@ -41,6 +41,69 @@ class CurrencyUtils {
     return formatAmount(convertedAmount, targetCurrencyCode);
   }
 
+  /// Renders the user-facing price for a wishlist item / import job. When a price
+  /// RANGE is present (structured low + high amounts + currency), converts both
+  /// bounds to [targetCurrencyCode] and shows "low – high"; otherwise falls back to
+  /// converting the display [priceLabel]. Single entry point so range/scalar
+  /// handling stays consistent across the queue tile, list, and detail views.
+  static String? displayPrice({
+    required String? priceLabel,
+    required String? priceAmount,
+    required String? priceAmountMax,
+    required String? priceCurrencyCode,
+    required String targetCurrencyCode,
+  }) {
+    if (priceAmountMax != null &&
+        priceAmount != null &&
+        priceCurrencyCode != null) {
+      final range = formatRange(
+        priceAmount,
+        priceAmountMax,
+        fromCurrencyCode: priceCurrencyCode,
+        targetCurrencyCode: targetCurrencyCode,
+      );
+      if (range != null) {
+        return range;
+      }
+    }
+    return convertPriceLabel(priceLabel, targetCurrencyCode: targetCurrencyCode);
+  }
+
+  /// Formats a structured price range — the low and high bounds of a configurable
+  /// product — converting BOTH bounds from [fromCurrencyCode] to
+  /// [targetCurrencyCode] and rendering "low – high" (e.g. "₪2,100 – ₪5,800").
+  /// Reuses [convertAmount] + [formatAmount] per bound — no string parsing. Returns
+  /// null when the low bound is unparseable; a missing/unparseable high collapses to
+  /// the single low amount.
+  static String? formatRange(
+    String? lowAmount,
+    String? highAmount, {
+    required String fromCurrencyCode,
+    required String targetCurrencyCode,
+  }) {
+    final low = double.tryParse(lowAmount?.trim() ?? '');
+    if (low == null) {
+      return null;
+    }
+    final lowText = formatAmount(
+      convertAmount(low,
+          fromCurrencyCode: fromCurrencyCode,
+          toCurrencyCode: targetCurrencyCode),
+      targetCurrencyCode,
+    );
+    final high = double.tryParse(highAmount?.trim() ?? '');
+    if (high == null) {
+      return lowText;
+    }
+    final highText = formatAmount(
+      convertAmount(high,
+          fromCurrencyCode: fromCurrencyCode,
+          toCurrencyCode: targetCurrencyCode),
+      targetCurrencyCode,
+    );
+    return '$lowText – $highText';
+  }
+
   static ParsedCurrencyAmount? parsePriceLabel(String? priceLabel) {
     final trimmed = priceLabel?.trim() ?? '';
     if (trimmed.isEmpty) {

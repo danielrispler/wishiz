@@ -126,18 +126,21 @@ type inviteResponse struct {
 }
 
 type itemResponse struct {
-	ID          string     `json:"id"`
-	Title       string     `json:"title"`
-	Rank        int        `json:"rank"`
-	Notes       *string    `json:"notes"`
-	PriceLabel  *string    `json:"priceLabel"`
-	Priority    string     `json:"priority"`
-	Status      string     `json:"status"`
-	ImageURL    *string    `json:"imageUrl"`
-	ProductURL  *string    `json:"productUrl"`
-	PurchasedAt *time.Time `json:"purchasedAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID                string     `json:"id"`
+	Title             string     `json:"title"`
+	Rank              int        `json:"rank"`
+	Notes             *string    `json:"notes"`
+	PriceLabel        *string    `json:"priceLabel"`
+	PriceAmount       *string    `json:"priceAmount"`
+	PriceAmountMax    *string    `json:"priceAmountMax"`
+	PriceCurrencyCode *string    `json:"priceCurrencyCode"`
+	Priority          string     `json:"priority"`
+	Status            string     `json:"status"`
+	ImageURL          *string    `json:"imageUrl"`
+	ProductURL        *string    `json:"productUrl"`
+	PurchasedAt       *time.Time `json:"purchasedAt"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
 type AuthMiddleware func(http.HandlerFunc) http.HandlerFunc
@@ -511,17 +514,20 @@ func (h handler) patchMember(w http.ResponseWriter, r *http.Request) {
 
 func mapItemResponse(item domain.WishlistItem) itemResponse {
 	return itemResponse{
-		ID:          item.ID,
-		Title:       item.Title,
-		Rank:        item.Rank,
-		Notes:       item.Notes,
-		PriceLabel:  item.PriceLabel,
-		Priority:    item.Priority,
-		Status:      item.Status,
-		ImageURL:    item.ImageURL,
-		ProductURL:  item.ProductURL,
-		PurchasedAt: item.PurchasedAt,
-		CreatedAt:   item.CreatedAt,
-		UpdatedAt:   item.UpdatedAt,
+		ID:                item.ID,
+		Title:             item.Title,
+		Rank:              item.Rank,
+		Notes:             item.Notes,
+		PriceLabel:        item.PriceLabel,
+		PriceAmount:       item.PriceAmount,
+		PriceAmountMax:    item.PriceAmountMax,
+		PriceCurrencyCode: item.PriceCurrencyCode,
+		Priority:          item.Priority,
+		Status:            item.Status,
+		ImageURL:          item.ImageURL,
+		ProductURL:        item.ProductURL,
+		PurchasedAt:       item.PurchasedAt,
+		CreatedAt:         item.CreatedAt,
+		UpdatedAt:         item.UpdatedAt,
 	}
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/entities/auth_result.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
+import 'package:wishiz/features/notifications/data/in_memory_notifications_repository.dart';
 import 'package:wishiz/features/product_imports/data/in_memory_product_import_repository.dart';
 import 'package:wishiz/features/wishlists/data/repositories/in_memory_wishlist_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/shared_product_draft.dart';
@@ -98,6 +99,7 @@ Widget _buildSubject({required InMemoryWishlistRepository repository}) {
     home: HomeScreen(
       repository: repository,
       productImportRepository: InMemoryProductImportRepository(),
+      notificationsRepository: InMemoryNotificationsRepository(),
       sharedProductRepository: _FakeSharedProductRepository(),
       authRepository: _FakeAuthRepository(currentUser: _currentUser),
       currentUser: _currentUser,

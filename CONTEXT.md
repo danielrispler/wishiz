@@ -51,3 +51,41 @@ An integer sort order field on a WishlistItem representing the user's priority o
 The terminal result of processing an Import Job. Carries a ProductSnapshot (extracted title, price, image, completeness) plus a terminal status (completed, needs_review, or failed). For error statuses, also carries a LastError message, ErrorCode, and Retryable flag. For completed status, may carry a CreatedItemID if a wishlist item was auto-created.
 
 "Terminal" means the job stays put until the user acts — completed jobs await assignment to a list, and needs_review/failed jobs await an explicit user Retry. The `Retryable` flag gates *whether the user is offered* a Retry; it never triggers automatic re-scraping.
+
+When a Job Outcome reaches a terminal status it also fires an **Import Settled Notification** to the importer (see Notification).
+
+---
+
+## Notification
+A durable, event-driven inbox entry plus a best-effort OS push. It **supersedes the old "Reminder"** as the meaning of "notification": Reminders still exist (see below) but are a separate, client-computed surface and no longer drive the bell badge.
+
+Four event types, each emitted synchronously during the originating HTTP request:
+- **List Member Joined** — an invite was accepted → notify the list owner.
+- **Item Added** — an item was added to a shared list → notify owner + members **except the actor**.
+- **Item Purchased** — an item was marked purchased on a shared list → notify owner + members **except the actor**.
+- **Import Settled** — an Import Job reached a terminal status → notify the importer only.
+
+The persisted row is the **source of truth** for the in-app inbox and the unread badge (badge = count of rows with no `read_at`). The OS push (FCM) is **advisory**: under Cloud Run CPU throttling after the response, a detached push may be delayed or dropped, but the durable row keeps the inbox and badge exact.
+
+Two confirmed product rules:
+1. **Item Purchased notifies the owner too.** Wishiz lists are collaborative, not surprise-gift lists; hiding purchases from the owner "to preserve the gift surprise" is explicitly **out of scope**. (Documented so it is not re-flagged as a spoiler bug.)
+2. **Master toggle OFF ⇒ no row at all** for that recipient (no inbox entry, no badge, no push — "the feature is dark"); **per-list Mute ⇒ a row is still written but already-read** (`read_at = created_at`): visible in inbox history, but it never badges and never pushes.
+
+The master toggle reuses `app_users.notifications_enabled`; it governs both Notifications and Reminders.
+
+**Avoid:** calling the time-based Reminder a "notification" — they are distinct surfaces.
+
+---
+
+## Reminder
+A **client-computed**, ephemeral nudge about the user's own aging saved items (items waiting longer than `reminder_days`). Rendered in the Reminders section of the notifications screen and as an in-app prompt. Reminders are **not** persisted, have no read-state, and **do not** drive the bell badge (only Notifications do). Gated by the same master toggle (`notifications_enabled`) and by `reminder_days`.
+
+---
+
+## Notification Mute
+A per-(user, wishlist) record that silences a list for one user. A muted list still produces Notification rows (so history stays complete), but those rows are inserted already-read — they never increment the badge and never push. Mute is **per-user**: it is stored standalone (not on the membership row) because the owner has no membership row. Mute does **not** apply to Import Settled (that notifies the importer about their own action).
+
+---
+
+## Device Token
+An FCM registration token for one physical device, owned by a user. Registered after notification permission is granted (and on token refresh / authorized launch), de-registered on logout. A token that FCM reports as permanently invalid is pruned. Tokens are how an advisory OS push reaches a recipient; they are irrelevant to the durable inbox.

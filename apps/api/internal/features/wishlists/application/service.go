@@ -20,9 +20,19 @@ var uuidPattern = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 
 const inviteDuration = 7 * 24 * time.Hour
 
+// Notifier emits notification events for collaborative-list activity. It is
+// satisfied structurally by the notifications NotifyService (no import cycle).
+// Its methods are void: a notification failure must never fail the user's action.
+type Notifier interface {
+	MemberJoined(ctx context.Context, recipientIDs []string, wishlistID, wishlistTitle, actorName string)
+	ItemAdded(ctx context.Context, recipientIDs []string, wishlistID, wishlistTitle, itemID, itemTitle, actorName string)
+	ItemPurchased(ctx context.Context, recipientIDs []string, wishlistID, wishlistTitle, itemID, itemTitle, actorName string)
+}
+
 type Service struct {
-	repo  ports.Repository
-	nowFn func() time.Time
+	repo     ports.Repository
+	nowFn    func() time.Time
+	notifier Notifier
 }
 
 func NewService(repo ports.Repository) *Service {
@@ -30,6 +40,13 @@ func NewService(repo ports.Repository) *Service {
 		repo:  repo,
 		nowFn: time.Now,
 	}
+}
+
+// WithNotifier wires the notification emitter. Nil-safe: leaving it unset (or
+// passing nil) disables event notifications without affecting any other behavior.
+func (s *Service) WithNotifier(n Notifier) *Service {
+	s.notifier = n
+	return s
 }
 
 type CreateWishlistInput struct {
@@ -169,17 +186,22 @@ func (s *Service) Join(ctx context.Context, id string, input *JoinWishlistInput)
 
 	uid := s.userID(ctx)
 
-	if err := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
+	if acceptErr := s.repo.AcceptInvite(ctx, ports.AcceptInviteParams{
 		InviteID:   invite.ID,
 		WishlistID: id,
 		UserID:     uid,
 		Role:       role,
 		AcceptedAt: s.nowFn().UTC(),
-	}); err != nil {
-		return domain.Wishlist{}, err
+	}); acceptErr != nil {
+		return domain.Wishlist{}, acceptErr
 	}
 
-	return s.GetByID(ctx, id)
+	result, err := s.GetByID(ctx, id)
+	if err != nil {
+		return domain.Wishlist{}, err
+	}
+	s.notifyMemberJoined(ctx, result, uid)
+	return result, nil
 }
 
 func (s *Service) List(ctx context.Context) ([]domain.Wishlist, error) {
@@ -408,6 +430,7 @@ func (s *Service) AddItem(ctx context.Context, wishlistID string, input *AddItem
 		return domain.WishlistItem{}, err
 	}
 
+	s.notifyItemAdded(ctx, current, item)
 	return item, nil
 }
 
@@ -459,6 +482,9 @@ func (s *Service) PatchItem(ctx context.Context, wishlistID, itemID string, inpu
 		return domain.WishlistItem{}, err
 	}
 
+	if current.Status != domain.ItemStatusPurchased && item.Status == domain.ItemStatusPurchased {
+		s.notifyItemPurchased(ctx, wishlist, item)
+	}
 	return item, nil
 }
 
@@ -710,6 +736,79 @@ func (s *Service) UpdateMemberRole(ctx context.Context, wishlistID string, userI
 		return WishlistNotFound()
 	}
 	return err
+}
+
+func (s *Service) notifyMemberJoined(ctx context.Context, wishlist domain.Wishlist, actorID string) {
+	if s.notifier == nil || wishlist.OwnerID == "" || wishlist.OwnerID == actorID {
+		return
+	}
+	s.notifier.MemberJoined(
+		ctx, []string{wishlist.OwnerID}, wishlist.ID, wishlist.Title, actorDisplayName(wishlist, actorID),
+	)
+}
+
+func (s *Service) notifyItemAdded(ctx context.Context, wishlist domain.Wishlist, item domain.WishlistItem) {
+	if s.notifier == nil {
+		return
+	}
+	actorID := s.userID(ctx)
+	recipients := recipientsExcept(wishlist, actorID)
+	if len(recipients) == 0 {
+		return
+	}
+	s.notifier.ItemAdded(
+		ctx, recipients, wishlist.ID, wishlist.Title, item.ID, item.Title, actorDisplayName(wishlist, actorID),
+	)
+}
+
+func (s *Service) notifyItemPurchased(ctx context.Context, wishlist domain.Wishlist, item domain.WishlistItem) {
+	if s.notifier == nil {
+		return
+	}
+	actorID := s.userID(ctx)
+	recipients := recipientsExcept(wishlist, actorID)
+	if len(recipients) == 0 {
+		return
+	}
+	s.notifier.ItemPurchased(
+		ctx, recipients, wishlist.ID, wishlist.Title, item.ID, item.Title, actorDisplayName(wishlist, actorID),
+	)
+}
+
+// recipientsExcept returns the owner + members of a wishlist, minus excludeUserID
+// (the actor). The result drives item_added/item_purchased fan-out; an empty
+// result (solo list, or the actor is the only collaborator) means no one is notified.
+func recipientsExcept(wishlist domain.Wishlist, excludeUserID string) []string {
+	out := make([]string, 0, len(wishlist.Members)+1)
+	if wishlist.OwnerID != "" && wishlist.OwnerID != excludeUserID {
+		out = append(out, wishlist.OwnerID)
+	}
+	for _, member := range wishlist.Members {
+		if member.UserID != "" && member.UserID != excludeUserID {
+			out = append(out, member.UserID)
+		}
+	}
+	return out
+}
+
+// actorDisplayName resolves the actor's human name from the wishlist (owner or a
+// member), falling back to email then a generic label for notification copy.
+func actorDisplayName(wishlist domain.Wishlist, actorID string) string {
+	if wishlist.OwnerID == actorID && strings.TrimSpace(wishlist.OwnerFullName) != "" {
+		return wishlist.OwnerFullName
+	}
+	for _, member := range wishlist.Members {
+		if member.UserID != actorID {
+			continue
+		}
+		if strings.TrimSpace(member.FullName) != "" {
+			return member.FullName
+		}
+		if strings.TrimSpace(member.Email) != "" {
+			return member.Email
+		}
+	}
+	return "Someone"
 }
 
 func ensureWishlists(wishlists []domain.Wishlist) []domain.Wishlist {

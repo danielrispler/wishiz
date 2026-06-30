@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/auth/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/auth/ports"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 )
 
 type Repository struct {
@@ -49,7 +49,7 @@ func (r *Repository) CreateUser(ctx context.Context, params ports.CreateUserPara
 	`, params.Email, params.FullName, params.Birthday, params.Gender, params.PasswordHash, params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays)
 
 	user, err := scanUser(row)
-	if isUniqueViolation(err) {
+	if db.IsUniqueViolation(err) {
 		return domain.User{}, ports.ErrEmailConflict
 	}
 	if err != nil {
@@ -151,7 +151,7 @@ func (r *Repository) UpdateUser(ctx context.Context, params ports.UpdateUserPara
 		params.PreferredCurrencyCode, params.NotificationsEnabled, params.ReminderDays, rawBrands)
 
 	user, err := scanUser(row)
-	if isUniqueViolation(err) {
+	if db.IsUniqueViolation(err) {
 		return domain.User{}, ports.ErrEmailConflict
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -320,9 +320,4 @@ func scanUserWithPasswordHash(row interface{ Scan(...any) error }) (domain.User,
 		user.PreferredBrands = []string{}
 	}
 	return user, passwordHash, nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

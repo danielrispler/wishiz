@@ -9,7 +9,8 @@ import 'package:wishiz/shared/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/screens/account/account_screen.dart';
-import 'package:wishiz/features/wishlists/screens/reminders/reminders_screen.dart';
+import 'package:wishiz/features/notifications/domain/repositories/notifications_repository.dart';
+import 'package:wishiz/features/notifications/screens/inbox/notifications_screen.dart';
 import 'package:wishiz/features/home/screens/home/components/bottom_nav/glassmorphic_bottom_nav.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_job.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
@@ -33,6 +34,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.productImportRepository,
+    required this.notificationsRepository,
     required this.sharedProductRepository,
     required this.authRepository,
     required this.currentUser,
@@ -46,6 +48,7 @@ class HomeScreen extends StatefulWidget {
 
   final WishlistRepository repository;
   final ProductImportRepository productImportRepository;
+  final NotificationsRepository notificationsRepository;
   final SharedProductRepository sharedProductRepository;
   final AuthRepository authRepository;
   final DiscoverRepository? discoverRepository;
@@ -122,7 +125,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isPolling) return;
     _isPolling = true;
     try {
-      await widget.repository.refresh();
+      // Refresh shared lists AND the notification badge: phase-1 has no push, so
+      // polling is what keeps a collaborator's activity visible while foregrounded.
+      await Future.wait([
+        widget.repository.refresh(),
+        widget.notificationsRepository.refresh(),
+      ]);
     } catch (_) {
       // Ignore poll errors silently.
     } finally {
@@ -154,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
           repository: widget.repository,
           sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
+          notificationsRepository: widget.notificationsRepository,
           wishlistId: wishlistId,
           showPurchasedOnly: showPurchasedOnly,
         ),
@@ -285,8 +294,17 @@ class _HomeScreenState extends State<HomeScreen> {
     MaterialPageRoute<void>(builder: (_) => AccountScreen(authRepository: widget.authRepository)),
   );
 
-  Future<void> _openRemindersScreen() => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => RemindersScreen(authRepository: widget.authRepository)),
+  Future<void> _openNotificationsScreen() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => NotificationsScreen(
+        authRepository: widget.authRepository,
+        wishlistRepository: widget.repository,
+        notificationsRepository: widget.notificationsRepository,
+        currentUser: widget.currentUser,
+        onOpenWishlist: _openWishlistDetails,
+        onOpenImportQueue: () => setState(() => _currentIndex = 0),
+      ),
+    ),
   );
 
   Future<void> _openPurchaseHistoryScreen() => Navigator.of(context).push(
@@ -395,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text('You have $reminderCount wishlist reminder${reminderCount == 1 ? '' : 's'} ready.'),
-            action: SnackBarAction(label: 'View', onPressed: _openRemindersScreen),
+            action: SnackBarAction(label: 'View', onPressed: _openNotificationsScreen),
           ),
         );
     });
@@ -434,11 +452,15 @@ class _HomeScreenState extends State<HomeScreen> {
               appBar: WishizAppBar(
                 useWordmark: true,
                 actions: [
-                  HomeAppBarActions(
-                    reminderCount: reminderCount,
-                    onPurchaseHistory: _openPurchaseHistoryScreen,
-                    onReminders: _openRemindersScreen,
-                    onAccount: _openAccountScreen,
+                  ValueListenableBuilder<int>(
+                    valueListenable: widget.notificationsRepository.watchUnreadCount(),
+                    builder: (context, unreadCount, _) => HomeAppBarActions(
+                      unreadCount: unreadCount,
+                      reminderCount: reminderCount,
+                      onPurchaseHistory: _openPurchaseHistoryScreen,
+                      onNotifications: _openNotificationsScreen,
+                      onAccount: _openAccountScreen,
+                    ),
                   ),
                 ],
               ),
@@ -474,7 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         onYearSelected: (v) => setState(() => _selectedYear = v),
                         onClearFilters: _clearFilters,
                         onNewList: () => _openWishlistEditor(),
-                        onOpenReminders: _openRemindersScreen,
+                        onOpenReminders: _openNotificationsScreen,
                         onOpenWishlist: _openWishlistDetails,
                         importQueueWidget: importQueue,
                       ),

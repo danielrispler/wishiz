@@ -485,6 +485,99 @@ func TestResolveOutcome(t *testing.T) {
 	}
 }
 
+type importSettledCall struct {
+	userID     string
+	jobID      string
+	status     string
+	title      string
+	wishlistID *string
+}
+
+type fakeImportNotifier struct {
+	calls []importSettledCall
+}
+
+func (f *fakeImportNotifier) ImportSettled(
+	_ context.Context, userID, jobID string, wishlistID *string, status, title string,
+) {
+	f.calls = append(f.calls, importSettledCall{
+		userID: userID, jobID: jobID, status: status, title: title, wishlistID: wishlistID,
+	})
+}
+
+func TestImportSettledNotifiesAfterSettleForEachTerminalStatus(t *testing.T) {
+	t.Parallel()
+
+	autoComplete := scrapeapp.Product{
+		Name: "Desk lamp", PriceAmount: "40.00", PriceCurrency: "USD",
+		ImageURL: "https://example.com/lamp.png", Verdict: scrapeapp.VerdictAutoComplete,
+	}
+	cases := []struct {
+		name       string
+		scraper    fakeScraper
+		wantStatus string
+		// wantWishlistID: completed carries the destination list (item landed, tap
+		// opens the list); needs_review/failed carry nil so the mobile tap routes to
+		// the import-review queue instead of an empty list.
+		wantWishlistID bool
+	}{
+		{"completed", fakeScraper{product: autoComplete}, importdomain.StatusCompleted, true},
+		{"needs_review", fakeScraper{product: scrapeapp.Product{
+			Name: "Desk lamp", PriceAmount: "40.00", PriceCurrency: "USD",
+			ImageURL: "https://example.com/lamp.png", Verdict: scrapeapp.VerdictNeedsReview,
+		}}, importdomain.StatusNeedsReview, false},
+		{"failed", fakeScraper{err: errors.New("boom")}, importdomain.StatusFailed, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &fakeRepo{claimedJob: productImportJob()}
+			notifier := &fakeImportNotifier{}
+			service := NewService(testLogger(), repo, &fakeWishlistService{}, tc.scraper, nil).WithNotifier(notifier)
+
+			if err := service.ProcessByID(context.Background(), "job-1"); err != nil {
+				t.Fatalf("process by id: %v", err)
+			}
+			if len(notifier.calls) != 1 {
+				t.Fatalf("expected exactly one ImportSettled call, got %d", len(notifier.calls))
+			}
+			c := notifier.calls[0]
+			if c.status != tc.wantStatus {
+				t.Fatalf("status: got %q, want %q", c.status, tc.wantStatus)
+			}
+			if c.userID != "user-1" || c.jobID != "job-1" {
+				t.Fatalf("unexpected ids: %+v", c)
+			}
+			if tc.wantWishlistID && (c.wishlistID == nil || *c.wishlistID != "wishlist-1") {
+				t.Fatalf("completed import must carry the destination list, got %v", c.wishlistID)
+			}
+			if !tc.wantWishlistID && c.wishlistID != nil {
+				t.Fatalf("%s import must carry nil wishlistID so the tap reaches review, got %v",
+					tc.wantStatus, *c.wishlistID)
+			}
+		})
+	}
+}
+
+func TestImportSettledNotDeliveredWhenSettleFails(t *testing.T) {
+	t.Parallel()
+	repo := &fakeRepo{claimedJob: productImportJob(), settleErr: errors.New("db write failed")}
+	notifier := &fakeImportNotifier{}
+	service := NewService(testLogger(), repo, &fakeWishlistService{}, fakeScraper{
+		product: scrapeapp.Product{
+			Name: "Desk lamp", PriceAmount: "40.00", PriceCurrency: "USD",
+			ImageURL: "https://example.com/lamp.png", Verdict: scrapeapp.VerdictAutoComplete,
+		},
+	}, nil).WithNotifier(notifier)
+
+	if err := service.ProcessByID(context.Background(), "job-1"); err == nil {
+		t.Fatal("expected ProcessByID to surface the Settle error")
+	}
+	if len(notifier.calls) != 0 {
+		t.Fatalf("must not notify when Settle failed, got %+v", notifier.calls)
+	}
+}
+
 func productImportJob() importdomain.Job {
 	wishlistID := "wishlist-1"
 	return importdomain.Job{

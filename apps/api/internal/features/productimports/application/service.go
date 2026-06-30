@@ -64,12 +64,20 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, jobID string) error
 }
 
+// Notifier emits an import_settled notification once a job reaches a terminal
+// status. Satisfied structurally by the notifications NotifyService (no import
+// cycle). Void: a notification failure must never fail the import.
+type Notifier interface {
+	ImportSettled(ctx context.Context, userID, jobID string, wishlistID *string, status, productTitle string)
+}
+
 type Service struct {
 	logger       *slog.Logger
 	repo         ports.Repository
 	wishlists    WishlistService
 	scraper      Scraper
 	dispatcher   Dispatcher
+	notifier     Notifier
 	resolver     scrapeapp.HostResolver
 	nowFn        func() time.Time
 	dedupeWindow time.Duration
@@ -117,6 +125,13 @@ func NewService(logger *slog.Logger, repo ports.Repository, wishlists WishlistSe
 // chaining. Leaving it unset keeps the in-process poller as the drain path.
 func (s *Service) WithDispatcher(d Dispatcher) *Service {
 	s.dispatcher = d
+	return s
+}
+
+// WithNotifier wires the notification emitter (import_settled). Nil-safe: unset
+// disables notifications without affecting import processing.
+func (s *Service) WithNotifier(n Notifier) *Service {
+	s.notifier = n
 	return s
 }
 
@@ -419,8 +434,35 @@ func (s *Service) processClaimed(ctx context.Context, job importdomain.Job) erro
 		}
 	}
 
-	_, err := s.repo.Settle(ctx, job.ID, outcome)
-	return err
+	if _, err := s.repo.Settle(ctx, job.ID, outcome); err != nil {
+		return err
+	}
+	s.notifyImportSettled(ctx, job, outcome)
+	return nil
+}
+
+// notifyImportSettled emits the import_settled notification after a successful
+// Settle. Title prefers the scraped product name, falling back to the job title.
+func (s *Service) notifyImportSettled(ctx context.Context, job importdomain.Job, outcome ports.JobOutcome) {
+	if s.notifier == nil {
+		return
+	}
+	title := ""
+	switch {
+	case outcome.Snapshot.Title != nil:
+		title = *outcome.Snapshot.Title
+	case job.Title != nil:
+		title = *job.Title
+	}
+	// Carry the destination list only when the item actually landed there. On
+	// needs_review/failed the item is never added, so passing the list would route
+	// the notification tap to a wishlist missing the item (the review queue would be
+	// unreachable). A nil wishlistID makes the client fall through to importJobID.
+	var notifyWishlistID *string
+	if outcome.Status == importdomain.StatusCompleted && outcome.CreatedItemID != nil {
+		notifyWishlistID = job.WishlistID
+	}
+	s.notifier.ImportSettled(ctx, job.UserID, job.ID, notifyWishlistID, outcome.Status, title)
 }
 
 // progressReporter returns a monotonic, throttled reporter that persists scrape

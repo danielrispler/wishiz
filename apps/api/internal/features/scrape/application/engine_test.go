@@ -153,6 +153,35 @@ func TestEngineCurrencyInferenceFromTLD(t *testing.T) {
 	}
 }
 
+func TestEngineWestElmAggregatePriceRangeAutoCompletes(t *testing.T) {
+	t.Parallel()
+
+	// West Elm (and every Williams-Sonoma brand) ships no Product JSON-LD, no
+	// og:price, and is not Next.js: the price lives ONLY in window.__INITIAL_STATE__
+	// as an aggregatePrice range. The low selling bound is recovered as the
+	// starting-at price, en-US supplies USD (MEDIUM), and the product auto-completes
+	// instead of dead-ending in needs_review.
+	product := reconcile(t, "https://www.westelm.com/products/cozy-swivel-chair-h3797",
+		`<html lang="en-US"><head>
+		<meta property="og:title" content="Cozy Swivel Chair">
+		<meta property="og:image" content="https://assets.weimgs.com/cozy.jpg">
+		<script>window.__INITIAL_STATE__={"product":{"groupId":"h3797","aggregatePrice":`+
+			`{"lowRegularPrice":579,"highRegularPrice":1598,"lowRetailPrice":579,"highRetailPrice":1598,`+
+			`"lowSellingPrice":579,"highSellingPrice":1598}}};</script>
+		</head><body><h1>Cozy Swivel Chair</h1></body></html>`)
+
+	if product.PriceAmount != "579" || product.PriceCurrency != "USD" || !product.CurrencyInferred {
+		t.Fatalf("expected starting price 579 USD (inferred), got amount=%q cur=%q inferred=%v",
+			product.PriceAmount, product.PriceCurrency, product.CurrencyInferred)
+	}
+	if product.Fields.Price != ConfidenceMedium {
+		t.Fatalf("expected price MEDIUM, got %q", product.Fields.Price)
+	}
+	if product.Verdict != VerdictAutoComplete {
+		t.Fatalf("expected auto_complete, got %q (%v)", product.Verdict, product.Reasons)
+	}
+}
+
 func TestEngineRejectsAntiBotName(t *testing.T) {
 	t.Parallel()
 

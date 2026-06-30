@@ -12,6 +12,7 @@ import 'package:wishiz/core/utils/error_utils.dart';
 import 'package:wishiz/shared/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
+import 'package:wishiz/features/notifications/domain/repositories/notifications_repository.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_enums.dart';
 import 'package:wishiz/features/wishlists/domain/entities/wishlist_item.dart';
@@ -48,12 +49,14 @@ class WishlistDetailScreen extends StatefulWidget {
     required this.authRepository,
     required this.sharedProductRepository,
     required this.wishlistId,
+    this.notificationsRepository,
     this.showPurchasedOnly = false,
   });
 
   final WishlistRepository repository;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
+  final NotificationsRepository? notificationsRepository;
   final String wishlistId;
   final bool showPurchasedOnly;
 
@@ -136,6 +139,49 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
 
   void _showError(Object error, {required String fallbackMessage}) {
     _showFeedback(context, formatErrorMessage(error, fallbackMessage: fallbackMessage));
+  }
+
+  Future<void> _toggleMute(String wishlistId) async {
+    final notificationsRepository = widget.notificationsRepository;
+    if (notificationsRepository == null) return;
+    final muted = notificationsRepository.watchMutedListIds().value.contains(wishlistId);
+    try {
+      if (muted) {
+        await notificationsRepository.unmuteList(wishlistId);
+      } else {
+        await notificationsRepository.muteList(wishlistId);
+      }
+      if (!mounted) return;
+      setState(() {});
+      _showFeedback(context, muted ? 'Notifications unmuted.' : 'Notifications muted for this list.');
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error, fallbackMessage: 'Could not update notification settings.');
+    }
+  }
+
+  Future<void> _confirmAndDelete(Wishlist wishlist) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete list?'),
+        content: Text('Remove "${wishlist.title}" permanently from this device?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+    try {
+      await widget.repository.deleteWishlist(wishlist.id);
+      if (!mounted) return;
+      _showFeedback(context, 'List deleted.');
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error, fallbackMessage: 'Could not delete this list.');
+    }
   }
 
   List<WishlistItem> _applyFilters(List<WishlistItem> items) {
@@ -367,37 +413,34 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
                       ),
                       icon: const Icon(Icons.edit_outlined),
                     ),
-                  if (capability == _UserCapability.owner)
+                  if (capability == _UserCapability.owner || widget.notificationsRepository != null)
                     PopupMenuButton<_WishlistAction>(
                       onSelected: (action) async {
-                        if (action == _WishlistAction.delete) {
-                          final shouldDelete = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Delete list?'),
-                              content: Text('Remove "${wishlist.title}" permanently from this device?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-                                TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
-                              ],
-                            ),
-                          );
-                          if (shouldDelete == true) {
-                            try {
-                              await widget.repository.deleteWishlist(wishlist.id);
-                              if (!context.mounted) return;
-                              _showFeedback(context, 'List deleted.');
-                              Navigator.of(context).pop();
-                            } catch (error) {
-                              if (!context.mounted) return;
-                              _showError(error, fallbackMessage: 'Could not delete this list.');
-                            }
-                          }
+                        switch (action) {
+                          case _WishlistAction.toggleMute:
+                            await _toggleMute(wishlist.id);
+                          case _WishlistAction.delete:
+                            await _confirmAndDelete(wishlist);
                         }
                       },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(value: _WishlistAction.delete, child: Text('Delete list')),
-                      ],
+                      itemBuilder: (context) {
+                        final notificationsRepository = widget.notificationsRepository;
+                        final muted = notificationsRepository != null &&
+                            notificationsRepository.watchMutedListIds().value.contains(wishlist.id);
+                        return [
+                          if (notificationsRepository != null)
+                            CheckedPopupMenuItem(
+                              value: _WishlistAction.toggleMute,
+                              checked: muted,
+                              child: const Text('Mute notifications'),
+                            ),
+                          if (capability == _UserCapability.owner)
+                            const PopupMenuItem(
+                              value: _WishlistAction.delete,
+                              child: Text('Delete list'),
+                            ),
+                        ];
+                      },
                     ),
                 ],
               ),
@@ -498,7 +541,7 @@ class _WishlistDetailScreenState extends State<WishlistDetailScreen> {
   }
 }
 
-enum _WishlistAction { delete }
+enum _WishlistAction { toggleMute, delete }
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.filter});

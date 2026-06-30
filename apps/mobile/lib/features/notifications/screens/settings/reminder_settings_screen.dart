@@ -4,19 +4,23 @@ import 'package:wishiz/shared/widgets/wishiz_app_bar.dart';
 import 'package:wishiz/features/auth/domain/entities/app_user.dart';
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 
-class RemindersScreen extends StatefulWidget {
-  const RemindersScreen({super.key, required this.authRepository});
+/// Settings for the aging-item reminders: the master notifications toggle
+/// (app_users.notifications_enabled — also gates event notifications) and the
+/// reminder-days window. Opened from the gear in the Reminders section of the
+/// notifications inbox.
+class ReminderSettingsScreen extends StatefulWidget {
+  const ReminderSettingsScreen({super.key, required this.authRepository});
 
   final AuthRepository authRepository;
 
   @override
-  State<RemindersScreen> createState() => _RemindersScreenState();
+  State<ReminderSettingsScreen> createState() => _ReminderSettingsScreenState();
 }
 
-class _RemindersScreenState extends State<RemindersScreen> {
+class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   late bool _notificationsEnabled;
   late int _reminderDays;
-  bool _isSavingReminderSettings = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -26,14 +30,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
     _reminderDays = user.reminderDays;
   }
 
-  Future<void> _saveReminderSettings(AppUser currentUser) async {
-    if (_isSavingReminderSettings) {
-      return;
-    }
-
-    setState(() {
-      _isSavingReminderSettings = true;
-    });
+  Future<void> _save(AppUser currentUser) async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
 
     final result = await widget.authRepository.updateCurrentUser(
       email: currentUser.email,
@@ -45,12 +44,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       reminderDays: _reminderDays,
     );
 
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() {
-      _isSavingReminderSettings = false;
+      _isSaving = false;
       if (!result.isSuccess) {
         _notificationsEnabled = currentUser.notificationsEnabled;
         _reminderDays = currentUser.reminderDays;
@@ -63,14 +59,45 @@ class _RemindersScreenState extends State<RemindersScreen> {
         SnackBar(
           content: Text(
             result.isSuccess
-                ? 'Reminder settings updated.'
-                : result.errorMessage ?? 'Unable to update reminder settings.',
+                ? 'Notification settings updated.'
+                : result.errorMessage ?? 'Unable to update notification settings.',
           ),
         ),
       );
   }
 
-  Widget _buildReminderSettingsCard(AppUser currentUser) {
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = widget.authRepository.getCurrentUser()!;
+
+    return Scaffold(
+      appBar: const WishizAppBar(titleText: 'Notification settings'),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppConstants.pagePadding,
+            AppConstants.spacing4,
+            AppConstants.pagePadding,
+            120,
+          ),
+          children: [
+            Text(
+              _notificationsEnabled
+                  ? 'Master switch for all Wishiz notifications. Reminders nudge you about saved '
+                        'items that have been waiting $_reminderDays day${_reminderDays == 1 ? '' : 's'} or longer.'
+                  : 'Notifications are off. Turn them back on to get reminders and updates when '
+                        'people join your lists or items are added.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: AppConstants.sectionGap),
+            _buildCard(currentUser),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(AppUser currentUser) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -84,18 +111,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
           const SizedBox(height: AppConstants.itemGap),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Enable wishlist reminders'),
+            title: const Text('Enable notifications'),
             subtitle: const Text(
-              'Show reminders inside the app when saved items have been waiting too long.',
+              'Reminders for waiting items, plus updates when collaborators join or change your lists.',
             ),
             value: _notificationsEnabled,
-            onChanged: _isSavingReminderSettings
+            onChanged: _isSaving
                 ? null
-                : (value) {
-                    setState(() {
-                      _notificationsEnabled = value;
-                    });
-                  },
+                : (value) => setState(() => _notificationsEnabled = value),
           ),
           const SizedBox(height: AppConstants.itemGap),
           Row(
@@ -106,10 +129,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
               ),
-              Text(
-                '$_reminderDays',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('$_reminderDays', style: Theme.of(context).textTheme.titleMedium),
             ],
           ),
           Slider(
@@ -118,12 +138,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
             max: 60,
             divisions: 59,
             label: '$_reminderDays days',
-            onChanged: _notificationsEnabled && !_isSavingReminderSettings
-                ? (value) {
-                    setState(() {
-                      _reminderDays = value.round();
-                    });
-                  }
+            onChanged: _notificationsEnabled && !_isSaving
+                ? (value) => setState(() => _reminderDays = value.round())
                 : null,
           ),
           const SizedBox(height: AppConstants.itemGap),
@@ -131,49 +147,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
             width: double.infinity,
             child: FilledButton(
               onPressed:
-                  _isSavingReminderSettings ||
-                      (_notificationsEnabled ==
-                              currentUser.notificationsEnabled &&
+                  _isSaving ||
+                      (_notificationsEnabled == currentUser.notificationsEnabled &&
                           _reminderDays == currentUser.reminderDays)
                   ? null
-                  : () => _saveReminderSettings(currentUser),
-              child: Text(
-                _isSavingReminderSettings
-                    ? 'Saving...'
-                    : 'Update Reminder Settings',
-              ),
+                  : () => _save(currentUser),
+              child: Text(_isSaving ? 'Saving...' : 'Update settings'),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final currentUser = widget.authRepository.getCurrentUser()!;
-
-    return Scaffold(
-      appBar: const WishizAppBar(titleText: 'Reminders'),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppConstants.pagePadding,
-            AppConstants.spacing4,
-            AppConstants.pagePadding,
-            120,
-          ),
-          children: [
-            Text(
-              _notificationsEnabled
-                  ? 'Items appear here once they have been waiting for $_reminderDays days or longer.'
-                  : 'Reminder notifications are off right now. Turn them back on here whenever you want the app to nudge you again.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: AppConstants.sectionGap),
-            _buildReminderSettingsCard(currentUser),
-          ],
-        ),
       ),
     );
   }

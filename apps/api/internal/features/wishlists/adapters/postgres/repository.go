@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/wishlists/ports"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 )
 
 type Repository struct {
@@ -473,7 +473,7 @@ func (r *Repository) CreateInvite(ctx context.Context, params ports.CreateInvite
 	`, params.WishlistID, params.Email, params.Role, params.InvitedByUserID, params.TokenHash, params.ExpiresAt)
 
 	invite, err := scanInvite(row)
-	if isForeignKeyViolation(err) {
+	if db.IsForeignKeyViolation(err) {
 		return domain.WishlistInvite{}, ports.ErrNotFound
 	}
 	if err != nil {
@@ -568,7 +568,7 @@ func (r *Repository) AcceptInvite(ctx context.Context, params ports.AcceptInvite
 		ON CONFLICT (wishlist_id, user_id) DO UPDATE
 		SET role = EXCLUDED.role
 	`, params.WishlistID, params.UserID, params.Role)
-	if isForeignKeyViolation(err) {
+	if db.IsForeignKeyViolation(err) {
 		return ports.ErrNotFound
 	}
 	if err != nil {
@@ -593,7 +593,7 @@ func (r *Repository) AddMember(ctx context.Context, wishlistID string, userID st
 		ON CONFLICT (wishlist_id, user_id) DO UPDATE
 		SET role = EXCLUDED.role
 	`, wishlistID, userID, role)
-	if isForeignKeyViolation(err) {
+	if db.IsForeignKeyViolation(err) {
 		return ports.ErrNotFound
 	}
 	if err != nil {
@@ -1011,9 +1011,4 @@ func scanInvite(row interface{ Scan(...any) error }) (domain.WishlistInvite, err
 	}
 
 	return invite, nil
-}
-
-func isForeignKeyViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }

@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielrispler/wishiz/apps/api/internal/features/productimports/domain"
 	"github.com/danielrispler/wishiz/apps/api/internal/features/productimports/ports"
+	"github.com/danielrispler/wishiz/apps/api/internal/platform/db"
 )
 
 type Repository struct {
@@ -70,7 +70,7 @@ func (r *Repository) CreateOrGet(ctx context.Context, params ports.CreateJobPara
 		params.TargetCurrencyCode,
 	)
 	job, err = scanJob(row)
-	if isUniqueViolation(err) {
+	if db.IsUniqueViolation(err) {
 		existing, getErr := getByClientRequestID(ctx, tx, params.UserID, params.ClientRequestID)
 		if getErr != nil {
 			return domain.Job{}, false, getErr
@@ -534,11 +534,6 @@ func nullableTime(value sql.NullTime) *time.Time {
 		return nil
 	}
 	return &value.Time
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func ptrOrEmpty(s *string) string {

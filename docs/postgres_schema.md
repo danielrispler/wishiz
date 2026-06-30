@@ -1,8 +1,11 @@
 # PostgreSQL Schema
 
-Source of truth: `apps/api/internal/platform/db/migrations/000001_init_wishlists.up.sql`.
-Pre-launch convention is to edit that migration in place and drop & recreate the local DB
-(`docker compose down -v && docker compose up --build`). This doc mirrors that file.
+Source of truth: the migration files in `apps/api/internal/platform/db/migrations/` —
+`000001_init_wishlists` (launch schema), `000002` (widened `price_source` CHECK), and
+`000003_notifications` (the `notifications`/`device_tokens`/`notification_mutes` tables).
+Migrations are **append-only** (the app has real users): add a new `NNN_<name>.up.sql` per
+change, never edit an applied migration or drop/recreate the prod DB. This doc mirrors those
+files; each table below notes the migration that introduced it where it is not `000001`.
 
 ## Extensions
 
@@ -174,9 +177,53 @@ Expired, unaccepted rows are swept periodically by the maintenance worker.
 - `rank INTEGER NOT NULL` — CHECK `rank > 0`
 - `PRIMARY KEY (pack_id, product_id)`
 
+### `notifications`
+
+Added in migration `000003_notifications`. Durable inbox rows — the source of truth for the
+in-app inbox and unread badge; any FCM push derived from a row is best-effort/advisory. No
+`updated_at` trigger: only `read_at` ever mutates.
+
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE`
+- `type TEXT NOT NULL` — CHECK `IN ('list_member_joined','item_added','item_purchased','import_settled')` (drift-tested against `domain.AllTypes()`)
+- `title TEXT NOT NULL`, `body TEXT NOT NULL DEFAULT ''`
+- `wishlist_id UUID REFERENCES wishlists(id) ON DELETE SET NULL` — nullable deep-link target
+- `item_id UUID REFERENCES wishlist_items(id) ON DELETE SET NULL`
+- `import_job_id UUID REFERENCES product_import_jobs(id) ON DELETE SET NULL`
+- `read_at TIMESTAMPTZ` — **NULL = unread** (drives the badge); a per-list-muted row is inserted with `read_at = created_at` (silent-but-visible, never badges/pushes)
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- Indexes:
+  - `(user_id, created_at DESC)` — backs `ListByUser`
+  - partial `(user_id) WHERE read_at IS NULL` — backs `CountUnread`
+
+### `device_tokens`
+
+Added in migration `000003_notifications`. FCM device registrations. No `updated_at` trigger;
+`last_seen_at` is refreshed on upsert.
+
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE`
+- `token TEXT NOT NULL UNIQUE` — `ON CONFLICT (token)` re-points a device that moves between accounts to the new user
+- `platform TEXT NOT NULL` — CHECK `IN ('ios','android')`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- Index: `(user_id)`
+- The user-facing deregister deletes scoped by `(token, user_id)` (IDOR guard); FCM-dead tokens are pruned by token only via a batch delete.
+
+### `notification_mutes`
+
+Added in migration `000003_notifications`. Per-list notification mutes. Standalone (not a
+`wishlist_members` column) because the owner has no `wishlist_members` row — ownership lives only
+on `wishlists.owner_id`. Insert/delete only, no `updated_at`.
+
+- `user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE`
+- `wishlist_id UUID NOT NULL REFERENCES wishlists(id) ON DELETE CASCADE`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `PRIMARY KEY (user_id, wishlist_id)`
+
 ## Updated Timestamps
 
 One `set_updated_at()` trigger function is attached to every table that carries an `updated_at`
 column: `app_users`, `wishlists`, `wishlist_items`, `product_import_jobs`, `wishlist_members`,
 `wishlist_invites`, `discover_products`, and `starter_packs`. (`app_sessions`,
-`discover_product_saves`, and `starter_pack_items` have no `updated_at` and no trigger.)
+`discover_product_saves`, `starter_pack_items`, and the `000003` notification tables —
+`notifications`, `device_tokens`, `notification_mutes` — have no `updated_at` and no trigger.)

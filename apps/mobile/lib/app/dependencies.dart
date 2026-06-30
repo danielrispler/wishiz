@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:wishiz/app/app.dart' show WishizApp, WishlistRepositoryLoader, ProductImportRepositoryFactory, DiscoverRepositoryFactory, BootstrapErrorApp;
+import 'package:wishiz/app/app.dart' show WishizApp, WishlistRepositoryLoader, ProductImportRepositoryFactory, DiscoverRepositoryFactory, NotificationsRepositoryFactory, BootstrapErrorApp;
 import 'package:wishiz/core/config/api_config.dart';
 import 'package:wishiz/core/theme/app_theme.dart';
 import 'package:wishiz/features/auth/data/api/auth_api_client.dart';
@@ -8,6 +8,8 @@ import 'package:wishiz/features/auth/data/storage/shared_preferences_auth_storag
 import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/discover/data/api/discover_api_client.dart';
 import 'package:wishiz/features/discover/data/repositories/api_discover_repository.dart';
+import 'package:wishiz/features/notifications/data/api/notifications_api_client.dart';
+import 'package:wishiz/features/notifications/data/repositories/api_notifications_repository.dart';
 import 'package:wishiz/features/product_imports/data/api_product_import_repository.dart';
 import 'package:wishiz/features/product_imports/data/product_import_api_client.dart';
 import 'package:wishiz/features/wishlists/data/api/image_upload_api_client.dart';
@@ -46,6 +48,10 @@ Future<Widget> createApp({
         authRepository,
         baseUrl,
       ),
+      notificationsRepositoryFactory: _createNotificationsRepositoryFactory(
+        authRepository,
+        baseUrl,
+      ),
       discoverRepositoryFactory: _createDiscoverRepositoryFactory(
         authRepository,
         baseUrl,
@@ -72,6 +78,27 @@ ProductImportRepositoryFactory _createProductImportRepositoryFactory(
     }
     return ApiProductImportRepository(
       apiClient: ProductImportApiClient(
+        baseUri: Uri.parse(baseUrl),
+        authToken: authToken,
+      ),
+    );
+  };
+}
+
+NotificationsRepositoryFactory _createNotificationsRepositoryFactory(
+  AuthRepository authRepository,
+  String baseUrl,
+) {
+  return (user) {
+    final tokenProvider = authRepository is SessionTokenProvider
+        ? authRepository as SessionTokenProvider
+        : null;
+    final authToken = tokenProvider?.getSessionToken();
+    if (authToken == null || authToken.isEmpty) {
+      throw StateError('No authenticated API session is available.');
+    }
+    return ApiNotificationsRepository(
+      apiClient: NotificationsApiClient(
         baseUri: Uri.parse(baseUrl),
         authToken: authToken,
       ),

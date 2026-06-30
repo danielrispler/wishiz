@@ -184,3 +184,32 @@ func TestEngineWayfairFlightFrequencyTieStaysReview(t *testing.T) {
 			product.Verdict, product.PriceAmount)
 	}
 }
+
+// Guard (wayfair.com): DECOYS that coincidentally share a price must not out-vote
+// the real one. The main product has a single primaryPrice (143.99) while two
+// recommendation-carousel items share one amount (99.99) — raw Money-node frequency
+// would rank the decoy (freq 2) above the main (freq 1) and emit it as the SOLE
+// price, silently auto-completing at the wrong amount. The genuine main price
+// recurs across DISTINCT container keys (primaryPrice + sellingPrice); two decoys
+// recurring under the SAME key (primaryPrice) is not that signal, so the prices are
+// ambiguous and must stay all-emitted → price_conflict → needs_review.
+func TestEngineWayfairFlightDecoyOutcountsMainStaysReview(t *testing.T) {
+	t.Parallel()
+
+	chunk := `2c:{"product":{"name":"Foo Desk","pricing":{` +
+		`"primaryPrice":{"price":{"value":{"amount":"143.99","currency":{"code":"USD"}}}}}},` +
+		`"recommendations":[` +
+		`{"name":"Cushion","pricing":{"primaryPrice":{"price":{"value":{"amount":"99.99","currency":{"code":"USD"}}}}}},` +
+		`{"name":"Throw","pricing":{"primaryPrice":{"price":{"value":{"amount":"99.99","currency":{"code":"USD"}}}}}}]}` + "\n"
+
+	product := reconcile(t, "https://www.wayfair.com/furniture/pdp/foo-w2.html",
+		`<html><head></head><body><h1>Foo Desk</h1>`+flightScript(chunk)+`</body></html>`)
+
+	if product.Verdict == VerdictAutoComplete {
+		t.Fatalf("a decoy that out-counts the main price must not auto_complete, got %q price=%q (reasons %v)",
+			product.Verdict, product.PriceAmount, product.Reasons)
+	}
+	if product.PriceAmount == "99.99" {
+		t.Fatalf("must never emit the decoy 99.99 as the resolved price")
+	}
+}

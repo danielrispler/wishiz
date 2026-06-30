@@ -24,6 +24,9 @@ import (
 	discoverapp "github.com/danielrispler/wishiz/apps/api/internal/features/discover/application"
 	healthhttp "github.com/danielrispler/wishiz/apps/api/internal/features/health/adapters/http"
 	legalhttp "github.com/danielrispler/wishiz/apps/api/internal/features/legal/adapters/http"
+	notificationhttp "github.com/danielrispler/wishiz/apps/api/internal/features/notifications/adapters/http"
+	notificationpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/notifications/adapters/postgres"
+	notificationapp "github.com/danielrispler/wishiz/apps/api/internal/features/notifications/application"
 	productimporthttp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/http"
 	productimportpostgres "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/adapters/postgres"
 	productimportapp "github.com/danielrispler/wishiz/apps/api/internal/features/productimports/application"
@@ -159,6 +162,15 @@ func registerDBRoutes(
 	wishlistRepo := wishlistpostgres.NewRepository(pool)
 	wishlistService := wishlistapp.NewService(wishlistRepo)
 
+	// Notifications: one NotifyService fans events out to a durable inbox (+ FCM
+	// in phase 2). Push runs detached in user-facing roles (api/all) and inline in
+	// the background scraper role. pusher is nil for now (phase 1: inbox only).
+	notifRepo := notificationpostgres.NewRepository(pool)
+	notifyService := notificationapp.NewNotifyService(notifRepo, nil, appLogger, roleServesAPI(role))
+	// Attach to both event sources in every role so api emits join/add/purchase,
+	// scraper emits import_settled, and an import's AddItem notifies co-members.
+	wishlistService = wishlistService.WithNotifier(notifyService)
+
 	// The scrape service is only present on scrape-capable roles. api builds its
 	// import/discover services with a nil scraper — the code paths that would
 	// deref it (processing, discover seed) are never registered on api.
@@ -170,7 +182,7 @@ func registerDBRoutes(
 	productImportRepo := productimportpostgres.NewRepository(pool)
 	productImportService := productimportapp.NewService(
 		appLogger, productImportRepo, wishlistService, scrapeImporter(scrapeService), net.DefaultResolver,
-	)
+	).WithNotifier(notifyService)
 
 	discoverRepo := discoverpostgres.NewRepository(pool, cfg.DiscoverItemTTL)
 	discoverService := discoverapp.NewService(discoverRepo, scrapeService)
@@ -219,6 +231,7 @@ func registerDBRoutes(
 		productimporthttp.RegisterRoutes(mux, appLogger, productImportService, authMiddleware)
 		wishlisthttp.RegisterRoutes(mux, appLogger, wishlistService, authMiddleware)
 		discoverhttp.RegisterRoutes(mux, appLogger, discoverService, authService, authMiddleware, cfg.InternalAPIKey)
+		notificationhttp.RegisterRoutes(mux, appLogger, notificationapp.NewInboxService(notifRepo), authMiddleware)
 	}
 
 	if roleServesScrape(role) {
@@ -321,10 +334,13 @@ func runWeeklyBatch(
 
 	// 3. Drain pending imports: the only prod backstop now that import-drain is gone
 	// — recovers jobs whose Cloud Task was never created or exhausted its retries.
-	wishlistService := wishlistapp.NewService(wishlistRepo)
+	// Notifications are sent inline (async=false) — a detached goroutine could be
+	// frozen after this short-lived Job exits.
+	notifyService := notificationapp.NewNotifyService(notificationpostgres.NewRepository(pool), nil, appLogger, false)
+	wishlistService := wishlistapp.NewService(wishlistRepo).WithNotifier(notifyService)
 	importService := productimportapp.NewService(
 		appLogger, productimportpostgres.NewRepository(pool), wishlistService, scrape.service, net.DefaultResolver,
-	)
+	).WithNotifier(notifyService)
 	processed, errDrain := importService.DrainPending(ctx, cfg.ImportDrainLimit)
 	if errDrain == nil {
 		appLogger.Info("weekly batch import drain finished", "processed", processed)

@@ -109,6 +109,63 @@ func TestJSStateIgnoresNonProductMaps(t *testing.T) {
 	}
 }
 
+func TestJSStateAggregatePriceRange(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://www.westelm.com/products/cozy-swivel-chair-h3797")
+	// Williams-Sonoma family PDP shape: the price lives only in
+	// window.__INITIAL_STATE__ as an aggregatePrice RANGE (no Product JSON-LD, no
+	// og:price). The low SELLING bound is the canonical "starting at" price, and
+	// exactly ONE candidate is emitted (never low AND high, which would deadlock
+	// price consensus into price_conflict). No currency in the blob → empty, left
+	// for locale/TLD inference downstream.
+	html := `<script>window.__INITIAL_STATE__={"product":{"groupId":"h3797","aggregatePrice":` +
+		`{"lowRegularPrice":579,"highRegularPrice":1598,"lowRetailPrice":579,` +
+		`"highRetailPrice":1598,"lowSellingPrice":579,"highSellingPrice":1598}}};</script>`
+	candidates := JSState(parse(t, html), html, base)
+
+	var prices []Candidate
+	for _, candidate := range candidates {
+		if candidate.Field == FieldPrice {
+			prices = append(prices, candidate)
+		}
+	}
+	if len(prices) != 1 {
+		t.Fatalf("expected exactly one price candidate (the low bound), got %d: %+v", len(prices), prices)
+	}
+	if prices[0].Value != "579" || prices[0].Source != SourceJSState || prices[0].Currency != "" {
+		t.Fatalf("unexpected price: %+v", prices[0])
+	}
+}
+
+func TestJSStateAggregatePriceIgnoresLoneLowKey(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://shop.example/p")
+	// A lone lowPrice without the paired highPrice is not a range — the generic
+	// readers already own scalar prices, so the range reader must stay out.
+	html := `<script type="application/json">{"facets":{"lowSellingPrice":50}}</script>`
+	if candidates := JSState(parse(t, html), html, base); len(candidates) != 0 {
+		t.Fatalf("expected no range candidate from a lone low key, got %+v", candidates)
+	}
+}
+
+func TestJSStateAggregatePriceIgnoresBareSchemaRange(t *testing.T) {
+	t.Parallel()
+
+	base, _ := url.Parse("https://shop.example/p")
+	// A BARE lowPrice/highPrice range is the schema.org AggregateOffer / facet-slider
+	// shape — unscoped, it can be a category aggregate or a price filter, not THIS
+	// product's price. The JSON-LD extractor owns genuine AggregateOffer (gated on
+	// @type Product); the generic JS-state reader must not vote a sole price from a
+	// bare range. Only explicit commerce tiers (lowSellingPrice, lowRegularPrice, …)
+	// qualify.
+	html := `<script type="application/json">{"priceFilter":{"lowPrice":50,"highPrice":900}}</script>`
+	if candidates := JSState(parse(t, html), html, base); len(candidates) != 0 {
+		t.Fatalf("bare lowPrice/highPrice must not emit a range price, got %+v", candidates)
+	}
+}
+
 func TestJSStateReactFlightContainerPrice(t *testing.T) {
 	t.Parallel()
 

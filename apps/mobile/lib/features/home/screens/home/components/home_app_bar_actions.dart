@@ -4,20 +4,25 @@ import 'package:wishiz/core/constants/app_constants.dart';
 class HomeAppBarActions extends StatelessWidget {
   const HomeAppBarActions({
     super.key,
-    required this.reminderCount,
+    required this.unreadCount,
+    this.reminderCount = 0,
     required this.onPurchaseHistory,
-    required this.onReminders,
+    required this.onNotifications,
     required this.onAccount,
   });
 
+  final int unreadCount;
+  /// Aging-saved-items count surfaced in the inbox's Reminders section. The bell
+  /// opens that inbox, so the badge reflects unread notifications AND reminders.
   final int reminderCount;
   final VoidCallback onPurchaseHistory;
-  final VoidCallback onReminders;
+  final VoidCallback onNotifications;
   final VoidCallback onAccount;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final badgeCount = unreadCount + reminderCount;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -33,13 +38,13 @@ class HomeAppBarActions extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             IconButton(
-              tooltip: 'Reminders',
-              onPressed: onReminders,
+              tooltip: 'Notifications',
+              onPressed: onNotifications,
               visualDensity: VisualDensity.compact,
               color: colorScheme.onSurfaceVariant,
               icon: const Icon(Icons.notifications_outlined),
             ),
-            if (reminderCount > 0)
+            if (badgeCount > 0)
               Positioned(
                 right: 4,
                 top: 4,
@@ -50,7 +55,7 @@ class HomeAppBarActions extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppConstants.radiusFull),
                   ),
                   child: Text(
-                    reminderCount > 9 ? '9+' : '$reminderCount',
+                    badgeCount > 9 ? '9+' : '$badgeCount',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: colorScheme.onPrimary,
                       fontWeight: FontWeight.w700,

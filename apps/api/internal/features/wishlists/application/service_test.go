@@ -1032,3 +1032,160 @@ func userContext(userID string, email string) context.Context {
 		Email: email,
 	})
 }
+
+// --- notification event hooks ---
+
+type notifierCall struct {
+	kind       string
+	recipients []string
+	wishlistID string
+	itemID     string
+	actorName  string
+}
+
+type fakeNotifier struct {
+	calls []notifierCall
+}
+
+func (f *fakeNotifier) MemberJoined(_ context.Context, recipientIDs []string, wishlistID, _, actorName string) {
+	f.calls = append(f.calls, notifierCall{
+		kind: "member_joined", recipients: recipientIDs, wishlistID: wishlistID, actorName: actorName,
+	})
+}
+
+func (f *fakeNotifier) ItemAdded(_ context.Context, recipientIDs []string, wishlistID, _, itemID, _, actorName string) {
+	f.calls = append(f.calls, notifierCall{
+		kind: "item_added", recipients: recipientIDs, wishlistID: wishlistID, itemID: itemID, actorName: actorName,
+	})
+}
+
+func (f *fakeNotifier) ItemPurchased(_ context.Context, recipientIDs []string, wishlistID, _, itemID, _, actorName string) {
+	f.calls = append(f.calls, notifierCall{
+		kind: "item_purchased", recipients: recipientIDs, wishlistID: wishlistID, itemID: itemID, actorName: actorName,
+	})
+}
+
+func sharedWishlist() domain.Wishlist {
+	return domain.Wishlist{
+		ID:            wishlistID1,
+		OwnerID:       ownerID,
+		OwnerFullName: "Olivia",
+		Title:         "Birthday",
+		Year:          2026,
+		Members: []domain.WishlistMember{
+			{WishlistID: wishlistID1, UserID: editorID, Email: "ed@example.com", FullName: "Ed", Role: domain.MemberRoleEditor},
+		},
+		Items: []domain.WishlistItem{},
+	}
+}
+
+func TestAddItemNotifiesRecipientsExcludingActor(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = sharedWishlist()
+	notifier := &fakeNotifier{}
+	svc := NewService(repo).WithNotifier(notifier)
+
+	// The editor adds the item -> owner is notified, the editor (actor) is not.
+	_, err := svc.AddItem(userContext(editorID, "ed@example.com"), wishlistID1, &AddItemInput{Title: "Headphones"})
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+
+	if len(notifier.calls) != 1 || notifier.calls[0].kind != "item_added" {
+		t.Fatalf("expected one item_added call, got %+v", notifier.calls)
+	}
+	if got := notifier.calls[0].recipients; len(got) != 1 || got[0] != ownerID {
+		t.Fatalf("expected recipients [owner], got %v", got)
+	}
+	if notifier.calls[0].actorName != "Ed" {
+		t.Fatalf("expected actor name Ed, got %q", notifier.calls[0].actorName)
+	}
+}
+
+func TestAddItemOnSoloListNotifiesNoOne(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	solo := sharedWishlist()
+	solo.Members = nil // owner-only list
+	repo.wishlists[wishlistID1] = solo
+	notifier := &fakeNotifier{}
+	svc := NewService(repo).WithNotifier(notifier)
+
+	if _, err := svc.AddItem(userContext(ownerID, "olivia@example.com"), wishlistID1, &AddItemInput{Title: "Mug"}); err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if len(notifier.calls) != 0 {
+		t.Fatalf("owner adding to a solo list should notify no one, got %+v", notifier.calls)
+	}
+}
+
+func TestPatchItemNotifiesOnlyOnPurchaseTransition(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	wl := sharedWishlist()
+	wl.Items = []domain.WishlistItem{{
+		ID: itemID1, Title: "Headphones", Rank: 1, Priority: domain.ItemPriorityMedium, Status: domain.ItemStatusSaved,
+	}}
+	repo.wishlists[wishlistID1] = wl
+	notifier := &fakeNotifier{}
+	svc := NewService(repo).WithNotifier(notifier)
+	ctx := userContext(editorID, "ed@example.com")
+
+	// saved -> purchased fires.
+	purchased := PatchField[string]{Set: true, Value: domain.ItemStatusPurchased}
+	if _, err := svc.PatchItem(ctx, wishlistID1, itemID1, &PatchItemInput{Status: purchased}); err != nil {
+		t.Fatalf("patch to purchased: %v", err)
+	}
+	if len(notifier.calls) != 1 || notifier.calls[0].kind != "item_purchased" {
+		t.Fatalf("expected one item_purchased call, got %+v", notifier.calls)
+	}
+	if got := notifier.calls[0].recipients; len(got) != 1 || got[0] != ownerID {
+		t.Fatalf("expected purchase recipients [owner], got %v", got)
+	}
+
+	// purchased -> purchased (only a title edit) does NOT fire again.
+	titleEdit := PatchField[string]{Set: true, Value: "Headphones Pro"}
+	if _, err := svc.PatchItem(ctx, wishlistID1, itemID1, &PatchItemInput{Title: titleEdit}); err != nil {
+		t.Fatalf("patch title: %v", err)
+	}
+	if len(notifier.calls) != 1 {
+		t.Fatalf("no second purchase notification expected, got %+v", notifier.calls)
+	}
+}
+
+func TestJoinNotifiesOwner(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	wl := sharedWishlist()
+	wl.Members = nil
+	repo.wishlists[wishlistID1] = wl
+	notifier := &fakeNotifier{}
+	svc := NewService(repo).WithNotifier(notifier)
+
+	invite, err := svc.CreateInvite(userContext(ownerID, "olivia@example.com"), wishlistID1, &CreateInviteInput{Role: domain.MemberRoleViewer})
+	if err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+	if _, err := svc.Join(userContext(viewerID, "viewer@example.com"), wishlistID1, &JoinWishlistInput{Token: invite.Token}); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if len(notifier.calls) != 1 || notifier.calls[0].kind != "member_joined" {
+		t.Fatalf("expected one member_joined call, got %+v", notifier.calls)
+	}
+	if got := notifier.calls[0].recipients; len(got) != 1 || got[0] != ownerID {
+		t.Fatalf("expected member_joined recipients [owner], got %v", got)
+	}
+}
+
+func TestNilNotifierIsSafe(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepository()
+	repo.wishlists[wishlistID1] = sharedWishlist()
+	svc := NewService(repo) // no WithNotifier
+
+	if _, err := svc.AddItem(userContext(editorID, "ed@example.com"), wishlistID1, &AddItemInput{Title: "Headphones"}); err != nil {
+		t.Fatalf("add item with nil notifier must succeed: %v", err)
+	}
+}

@@ -36,6 +36,7 @@ func JSState(document *goquery.Document, rawHTML string, base *url.URL) []Candid
 		}
 		for _, node := range flattenJSONMaps(decoded) {
 			candidates = append(candidates, productShapedCandidates(node, base, seen)...)
+			candidates = append(candidates, aggregatePriceRange(node, seen)...)
 		}
 	}
 
@@ -110,19 +111,18 @@ var strongPriceContainers = map[string]bool{
 // threads the shared seen map so flight values dedupe against the marker/script
 // candidates already emitted.
 //
-// Part B is frequency-ranked: a single page embeds many products (Wayfair-class
-// PDPs carry recommendation carousels, each with its own primaryPrice), so naively
+// Part B is decoy-filtered: a single page embeds many products (Wayfair-class PDPs
+// carry recommendation carousels, each with its own primaryPrice), so naively
 // emitting every allowlisted container price floods consensus with decoys and
-// deadlocks it into price_conflict. The MAIN product's amount recurs across the
-// flight payload (primaryPrice + sellingPrice + repeated Money nodes) while each
-// embedded product's price appears once, so only the most-frequent container
-// price(s) are emitted (see dominantFlightPrices).
+// deadlocks it into price_conflict. dominantFlightPrices keeps only the price that
+// recurs across DISTINCT container keys of the same product (the main-product
+// signal), or emits all and lets consensus flag/disambiguate when that signal is
+// absent.
 func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Candidate {
 	if blob == "" {
 		return nil
 	}
 	var out []Candidate
-	moneyFreq := map[string]int{}
 	var containerPrices []flightContainerPrice
 	rest := blob
 	for {
@@ -141,48 +141,75 @@ func flightCandidates(blob string, base *url.URL, seen map[string]struct{}) []Ca
 			continue
 		}
 		for _, node := range flattenJSONMaps(decoded) {
-			if amount := stringValue(node["amount"]); amount != "" {
-				if code := currencyCodeOf(node); code != "" {
-					moneyFreq[amount+"|"+strings.ToUpper(code)]++
-				}
-			}
 			out = append(out, productShapedCandidates(node, base, seen)...)
 			containerPrices = append(containerPrices, containerPriceEntries(node)...)
 		}
 	}
-	out = append(out, dominantFlightPrices(containerPrices, moneyFreq, seen)...)
+	out = append(out, dominantFlightPrices(containerPrices, seen)...)
 	return out
 }
 
-// flightContainerPrice is an allowlisted container price plus its amount|CODE key,
-// used to frequency-rank flight prices before emission.
+// flightContainerPrice is an allowlisted container price plus its amount|CODE key
+// and the container key it came from, used to decoy-filter flight prices by
+// distinct-container-key recurrence before emission.
 type flightContainerPrice struct {
 	candidate Candidate
 	amount    string
 	code      string
+	container string
 }
 
-// dominantFlightPrices keeps only the container price(s) whose amount recurs most
-// across the whole flight payload (moneyFreq), so a page full of recommendation /
-// add-on prices can't deadlock price consensus. An exact frequency tie keeps all
-// tied candidates — the genuinely-ambiguous case falls back to the displayed-price
-// disambiguation in consensus rather than guessing. Emission dedupes via the shared
-// seen map, matching the original "price:"+amount+"|"+code key.
-func dominantFlightPrices(
-	prices []flightContainerPrice, moneyFreq map[string]int, seen map[string]struct{},
-) []Candidate {
-	maxFreq := 0
+// dominantFlightPrices decides which allowlisted flight container prices to emit.
+// A page embeds many products (recommendation carousels, add-ons), each with its
+// own primaryPrice, so naively emitting all floods consensus into price_conflict.
+//
+// The signal that an amount is the MAIN product's price (not a decoy) is that it
+// recurs across DISTINCT container KEYS of the same product — primaryPrice AND
+// sellingPrice (and/or offers) all carry it. A decoy amount, even when several
+// sibling products happen to share it, recurs only under the SAME key
+// (primaryPrice), so raw Money-node frequency cannot tell the two apart — counting
+// DISTINCT container keys per amount can.
+//
+// Emit a single price only when one amount is the UNIQUE maximum by distinct-key
+// count AND that count is ≥2 (genuine cross-key repetition), or when there is only
+// one distinct amount at all (no ambiguity). Otherwise emit every distinct amount,
+// leaving consensus to flag price_conflict (→ needs_review) or, when a visible price
+// exists, disambiguate by it. Emission dedupes via the shared seen map.
+func dominantFlightPrices(prices []flightContainerPrice, seen map[string]struct{}) []Candidate {
+	keysByAmount := map[string]map[string]struct{}{}
 	for _, price := range prices {
-		if freq := moneyFreq[price.amount+"|"+price.code]; freq > maxFreq {
-			maxFreq = freq
+		amountKey := price.amount + "|" + price.code
+		set := keysByAmount[amountKey]
+		if set == nil {
+			set = map[string]struct{}{}
+			keysByAmount[amountKey] = set
 		}
+		set[price.container] = struct{}{}
 	}
+
+	emitAll, winner := true, ""
+	if len(keysByAmount) > 1 {
+		maxKeys, unique := 0, false
+		for amountKey, set := range keysByAmount {
+			switch {
+			case len(set) > maxKeys:
+				maxKeys, unique, winner = len(set), true, amountKey
+			case len(set) == maxKeys:
+				unique = false
+			}
+		}
+		// Trust a single amount only when it recurs across ≥2 distinct container
+		// keys and is the sole amount that does so; otherwise stay ambiguous.
+		emitAll = !unique || maxKeys < 2
+	}
+
 	var out []Candidate
 	for _, price := range prices {
-		if moneyFreq[price.amount+"|"+price.code] != maxFreq {
+		amountKey := price.amount + "|" + price.code
+		if !emitAll && amountKey != winner {
 			continue
 		}
-		dedupKey := "price:" + price.amount + "|" + price.code
+		dedupKey := "price:" + amountKey
 		if _, dup := seen[dedupKey]; dup {
 			continue
 		}
@@ -230,7 +257,7 @@ func containerPriceEntries(node map[string]any) []flightContainerPrice {
 		if !ok {
 			continue
 		}
-		out = append(out, flightContainerPrice{candidate: candidate, amount: amount, code: code})
+		out = append(out, flightContainerPrice{candidate: candidate, amount: amount, code: code, container: key})
 	}
 	return out
 }
@@ -334,6 +361,84 @@ func jsPrice(node map[string]any) (amount string, currency string) {
 		}
 	}
 	return "", currency
+}
+
+// rangePriceTiers names the price-range key stems in preference order: the
+// shopper-facing selling/sale price wins over list/regular/retail (so a discounted
+// range reports the sale floor, not the struck-through MSRP). Each stem T matches
+// the paired keys low<T>price / high<T>price.
+//
+// The BARE stem ("" → lowPrice/highPrice) is deliberately EXCLUDED: that schema.org
+// AggregateOffer shape is unscoped in a generic state blob — it is just as often a
+// category aggregate or a facet/price-filter slider as the product's price. Genuine
+// AggregateOffer is recovered by the JSON-LD extractor (gated on @type Product); the
+// generic reader only trusts explicit commerce tiers, which are product-specific.
+var rangePriceTiers = []string{"selling", "sale", "current", "regular", "list", "retail", "msrp"}
+
+// aggregatePriceRange emits a single "starting at" price candidate from a price
+// RANGE map: a node carrying paired low<tier>price + high<tier>price keys. This
+// is the schema.org AggregateOffer shape (lowPrice/highPrice) and the bespoke
+// commerce-state shape alike — Williams-Sonoma brands (West Elm, Pottery Barn, …)
+// embed the price ONLY as __INITIAL_STATE__.aggregatePrice.{low,high}SellingPrice,
+// with no Product JSON-LD / og:price for the generic readers to find.
+//
+// Only the LOW bound is emitted, as ONE candidate — mirroring the JSON-LD
+// extractor, which already treats AggregateOffer.lowPrice as the starting price.
+// Emitting both bounds would feed consensus two trusted-tier amounts that disagree
+// and deadlock price into price_conflict → needs_review (the very failure this
+// fixes). The pairing requirement (a lone low<tier>price never qualifies) keeps it
+// from latching onto facet/filter sliders, and currency is left empty for the
+// locale/TLD inference step — these state blobs rarely carry an explicit code.
+func aggregatePriceRange(node map[string]any, seen map[string]struct{}) []Candidate {
+	// Probe for low<tier>price / high<tier>price keys directly, allocating the small
+	// tier maps only once an actual range key is seen. Most nodes carry none, so the
+	// common path is a single ToLower + prefix/suffix check per key and no alloc.
+	var lows, highs map[string]string
+	for key, value := range node {
+		lower := strings.ToLower(key)
+		if !strings.HasSuffix(lower, "price") {
+			continue
+		}
+		var bucket *map[string]string
+		var tier string
+		switch {
+		case strings.HasPrefix(lower, "low"):
+			tier, bucket = lower[len("low"):len(lower)-len("price")], &lows
+		case strings.HasPrefix(lower, "high"):
+			tier, bucket = lower[len("high"):len(lower)-len("price")], &highs
+		default:
+			continue
+		}
+		amount := stringValue(value)
+		if amount == "" {
+			continue
+		}
+		if *bucket == nil {
+			*bucket = map[string]string{}
+		}
+		(*bucket)[tier] = amount
+	}
+	if lows == nil || highs == nil {
+		return nil
+	}
+	for _, tier := range rangePriceTiers {
+		low := lows[tier]
+		high := highs[tier]
+		if low == "" || high == "" {
+			continue
+		}
+		candidate, ok := newPriceCandidate(SourceJSState, "", low)
+		if !ok {
+			return nil
+		}
+		dedupKey := "price:" + candidate.Value + "|" + candidate.Currency
+		if _, dup := seen[dedupKey]; dup {
+			return nil
+		}
+		seen[dedupKey] = struct{}{}
+		return []Candidate{candidate}
+	}
+	return nil
 }
 
 func firstStringField(node map[string]any, keys ...string) string {

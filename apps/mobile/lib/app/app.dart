@@ -11,6 +11,8 @@ import 'package:wishiz/features/auth/domain/repositories/auth_repository.dart';
 import 'package:wishiz/features/auth/screens/login/login_screen.dart';
 import 'package:wishiz/features/auth/screens/signup/signup_screen.dart';
 import 'package:wishiz/features/home/screens/home/home_screen.dart';
+import 'package:wishiz/features/notifications/data/in_memory_notifications_repository.dart';
+import 'package:wishiz/features/notifications/domain/repositories/notifications_repository.dart';
 import 'package:wishiz/features/product_imports/application/product_import_sync_service.dart';
 import 'package:wishiz/features/product_imports/data/in_memory_product_import_repository.dart';
 import 'package:wishiz/features/product_imports/domain/product_import_repository.dart';
@@ -24,6 +26,8 @@ typedef ProductImportRepositoryFactory =
     ProductImportRepository Function(AppUser user);
 typedef DiscoverRepositoryFactory =
     DiscoverRepository Function(AppUser user);
+typedef NotificationsRepositoryFactory =
+    NotificationsRepository Function(AppUser user);
 
 class WishizApp extends StatelessWidget {
   const WishizApp({
@@ -32,13 +36,17 @@ class WishizApp extends StatelessWidget {
     required this.authRepository,
     required this.sharedProductRepository,
     ProductImportRepositoryFactory? productImportRepositoryFactory,
+    NotificationsRepositoryFactory? notificationsRepositoryFactory,
     this.discoverRepositoryFactory,
     this.shareIntakeService = const ShareIntakeService(),
   }) : productImportRepositoryFactory =
-           productImportRepositoryFactory ?? _defaultProductImportRepository;
+           productImportRepositoryFactory ?? _defaultProductImportRepository,
+       notificationsRepositoryFactory =
+           notificationsRepositoryFactory ?? _defaultNotificationsRepository;
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
   final ProductImportRepositoryFactory productImportRepositoryFactory;
+  final NotificationsRepositoryFactory notificationsRepositoryFactory;
   final DiscoverRepositoryFactory? discoverRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
@@ -52,6 +60,7 @@ class WishizApp extends StatelessWidget {
       home: _RootScreen(
         wishlistRepositoryLoader: wishlistRepositoryLoader,
         productImportRepositoryFactory: productImportRepositoryFactory,
+        notificationsRepositoryFactory: notificationsRepositoryFactory,
         discoverRepositoryFactory: discoverRepositoryFactory,
         authRepository: authRepository,
         sharedProductRepository: sharedProductRepository,
@@ -64,6 +73,10 @@ class WishizApp extends StatelessWidget {
 
 ProductImportRepository _defaultProductImportRepository(AppUser user) {
   return InMemoryProductImportRepository();
+}
+
+NotificationsRepository _defaultNotificationsRepository(AppUser user) {
+  return InMemoryNotificationsRepository();
 }
 
 class BootstrapErrorApp extends StatelessWidget {
@@ -117,6 +130,7 @@ class _RootScreen extends StatefulWidget {
   const _RootScreen({
     required this.wishlistRepositoryLoader,
     required this.productImportRepositoryFactory,
+    required this.notificationsRepositoryFactory,
     required this.authRepository,
     required this.sharedProductRepository,
     required this.shareIntakeService,
@@ -125,6 +139,7 @@ class _RootScreen extends StatefulWidget {
 
   final WishlistRepositoryLoader wishlistRepositoryLoader;
   final ProductImportRepositoryFactory productImportRepositoryFactory;
+  final NotificationsRepositoryFactory notificationsRepositoryFactory;
   final DiscoverRepositoryFactory? discoverRepositoryFactory;
   final AuthRepository authRepository;
   final SharedProductRepository sharedProductRepository;
@@ -143,6 +158,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
   WishlistRepository? _wishlistRepository;
   ProductImportRepository? _productImportRepository;
   ProductImportSyncService? _productImportSyncService;
+  NotificationsRepository? _notificationsRepository;
   DiscoverRepository? _discoverRepository;
   Object? _wishlistRepositoryError;
   String? _wishlistRepositoryUserId;
@@ -214,6 +230,9 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     }
 
     _consumePendingSharedTexts();
+    // Re-sync the unread badge on resume: phase-1 has no push, so activity that
+    // happened while backgrounded would otherwise leave the badge stale.
+    unawaited(_notificationsRepository?.refresh().catchError((Object _) {}));
   }
 
   String? _extractWishlistId(String? route) {
@@ -272,6 +291,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
       setState(() {
         _wishlistRepository = null;
         _productImportRepository = null;
+        _notificationsRepository = null;
         _discoverRepository = null;
         _wishlistRepositoryError = null;
         _wishlistRepositoryUserId = null;
@@ -288,6 +308,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
     setState(() {
       _wishlistRepository = null;
       _productImportRepository = null;
+      _notificationsRepository = null;
       _discoverRepository = null;
       _wishlistRepositoryError = null;
       _wishlistRepositoryUserId = requestedUserId;
@@ -302,6 +323,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
 
           late final ProductImportRepository productImportRepository;
           late final ProductImportSyncService productImportSyncService;
+          late final NotificationsRepository notificationsRepository;
           try {
             productImportRepository = widget.productImportRepositoryFactory(
               user,
@@ -310,6 +332,9 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
               repository: productImportRepository,
               onJobCompleted: (_) => repository.refresh(),
             )..start();
+            notificationsRepository = widget.notificationsRepositoryFactory(
+              user,
+            );
           } catch (error) {
             setState(() {
               _wishlistRepositoryError = error;
@@ -324,8 +349,11 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
             _wishlistRepository = repository;
             _productImportRepository = productImportRepository;
             _productImportSyncService = productImportSyncService;
+            _notificationsRepository = notificationsRepository;
             _discoverRepository = discoverRepository;
           });
+          // Warm the inbox/badge/mutes off the UI path; failures are non-fatal.
+          unawaited(notificationsRepository.refresh().catchError((Object _) {}));
         })
         .catchError((error) {
           if (!mounted || _wishlistRepositoryUserId != requestedUserId) {
@@ -384,6 +412,7 @@ class _RootScreenState extends State<_RootScreen> with WidgetsBindingObserver {
         return HomeScreen(
           repository: repository,
           productImportRepository: _productImportRepository!,
+          notificationsRepository: _notificationsRepository!,
           sharedProductRepository: widget.sharedProductRepository,
           authRepository: widget.authRepository,
           discoverRepository: _discoverRepository,
